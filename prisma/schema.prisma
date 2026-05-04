@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  role           Role            @default(CITIZEN)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  departmentId   String?
+  passwordHash   String
+  name           String?
+  citizenProfile CitizenProfile?
+  comments       Comment[]
+  department     Department?     @relation(fields: [departmentId], references: [id])
+}
+
+model CitizenProfile {
+  id         String     @id @default(cuid())
+  userId     String     @unique
+  tier       Tier       @default(CITIZEN)
+  phone      String?
+  reputation Int        @default(0)
+  verified   Boolean    @default(false)
+  user       User       @relation(fields: [userId], references: [id])
+  pointLogs  PointLog[]
+  reports    Report[]
+  votes      Vote[]
+}
+
+model Department {
+  id         String      @id @default(cuid())
+  name       String
+  code       String      @unique
+  slaHours   Int         @default(72)
+  personnels Personnel[]
+  reports    Report[]
+  users      User[]
+}
+
+model Personnel {
+  id           String       @id @default(cuid())
+  name         String
+  role         String
+  contact      String
+  departmentId String
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  assignments  Assignment[]
+  department   Department   @relation(fields: [departmentId], references: [id])
+}
+
+model Report {
+  id              String         @id @default(cuid())
+  title           String
+  description     String
+  latitude        Float
+  longitude       Float
+  departmentId    String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  address         String?
+  category        Category
+  citizenId       String
+  photoUrl        String?
+  priorityScore   Float          @default(0)
+  resolvedAt      DateTime?
+  slaBreached     Boolean        @default(false)
+  status          Status         @default(OPEN)
+  resolutionDesc  String?
+  resolutionPhoto String?
+  assignedAt      DateTime?
+  confirmedAt     DateTime?
+  confirmedBy     String?
+  rejectedAt      DateTime?
+  startedAt       DateTime?
+  assignments     Assignment[]
+  comments        Comment[]
+  pointLogs       PointLog[]
+  citizen         CitizenProfile @relation(fields: [citizenId], references: [id])
+  department      Department     @relation(fields: [departmentId], references: [id])
+  votes           Vote[]
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  text      String
+  userId    String
+  reportId  String
+  createdAt DateTime @default(now())
+  report    Report   @relation(fields: [reportId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model PointLog {
+  id        String         @id @default(cuid())
+  points    Int
+  reason    String
+  citizenId String
+  reportId  String?
+  createdAt DateTime       @default(now())
+  citizen   CitizenProfile @relation(fields: [citizenId], references: [id])
+  report    Report?        @relation(fields: [reportId], references: [id])
+}
+
+model Vote {
+  id        String         @id @default(cuid())
+  value     Int
+  reportId  String
+  citizenId String
+  citizen   CitizenProfile @relation(fields: [citizenId], references: [id])
+  report    Report         @relation(fields: [reportId], references: [id])
+
+  @@unique([reportId, citizenId])
+}
+
+model Assignment {
+  id          String           @id @default(cuid())
+  reportId    String
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+  status      AssignmentStatus @default(PENDING)
+  personnelId String
+  personnel   Personnel        @relation(fields: [personnelId], references: [id])
+  report      Report           @relation(fields: [reportId], references: [id])
+}
+
+enum Role {
+  CITIZEN
+  AUTHORITY
+}
+
+enum Tier {
+  CITIZEN
+  CONTRIBUTOR
+  GUARDIAN
+  AMBASSADOR
+}
+
+enum Category {
+  POTHOLES
+  DRAINAGE
+  STREETLIGHTS
+  SIDEWALKS
+  TRAFFIC_SIGNS
+  GRAFFITI
+  TRASH
+  OTHER
+}
+
+enum Status {
+  OPEN
+  CONFIRMED
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+enum AssignmentStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}

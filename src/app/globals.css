@@ -1,26 +1,359 @@
 @import "tailwindcss";
 
+/* ═══════════════════════════════════════════════
+   NEON METROPOLITAN — CivicPulse Design System
+   ═══════════════════════════════════════════════ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Primary Background - Deep Urban Black */
+  --bg-primary: #0A0A0B;
+  --bg-secondary: #111113;
+  --bg-elevated: #1A1A1D;
+  --bg-card: #151518;
+
+  /* Accent Colors - Neon Metropolitan */
+  --accent-cyan: #00F5D4;
+  --accent-magenta: #FF2E63;
+  --accent-amber: #FFB800;
+  --accent-electric-blue: #00D4FF;
+  --accent-lime: #C4FE00;
+
+  /* Neutral Text */
+  --text-primary: #FFFFFF;
+  --text-secondary: #A1A1AA;
+  --text-muted: #52525B;
+
+  /* Functional Colors */
+  --status-open: #00D4FF;
+  --status-progress: #FFB800;
+  --status-resolved: #C4FE00;
+  --status-escalated: #FF2E63;
+
+  /* Tier Colors */
+  --tier-citizen: #A1A1AA;
+  --tier-contributor: #00D4FF;
+  --tier-guardian: #C4FE00;
+  --tier-ambassador: #FFB800;
+
+  /* Category Colors (Report Filing + Maps) */
+  --cat-potholes: #FF7043;
+  --cat-drainage: #29B6F6;
+  --cat-streetlights: #FDD835;
+  --cat-sidewalks: #78909C;
+  --cat-traffic-signs: #EF5350;
+  --cat-graffiti: #AB47BC;
+  --cat-trash: #66BB6A;
+  --cat-other: #FFFFFF;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+@theme {
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-bg-card: var(--bg-card);
+
+  --color-cyan: var(--accent-cyan);
+  --color-magenta: var(--accent-magenta);
+  --color-amber: var(--accent-amber);
+  --color-blue: var(--accent-electric-blue);
+  --color-lime: var(--accent-lime);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+
+  --radius-3xl: 24px;
+  --radius-4xl: 32px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Base Reset ── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Noise Texture Overlay ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* ── Typography Classes ── */
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-body {
+  font-family: var(--font-body);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Selection ── */
+::selection {
+  background: rgba(0, 245, 212, 0.25);
+  color: white;
+}
+
+/* ── Glow Effects ── */
+.glow-cyan {
+  box-shadow: 0 0 20px rgba(0, 245, 212, 0.15), 0 0 60px rgba(0, 245, 212, 0.05);
+}
+
+.glow-magenta {
+  box-shadow: 0 0 20px rgba(255, 46, 99, 0.15), 0 0 60px rgba(255, 46, 99, 0.05);
+}
+
+.glow-amber {
+  box-shadow: 0 0 20px rgba(255, 184, 0, 0.15), 0 0 60px rgba(255, 184, 0, 0.05);
+}
+
+.glow-lime {
+  box-shadow: 0 0 20px rgba(196, 254, 0, 0.15), 0 0 60px rgba(196, 254, 0, 0.05);
+}
+
+.glow-blue {
+  box-shadow: 0 0 20px rgba(0, 212, 255, 0.15), 0 0 60px rgba(0, 212, 255, 0.05);
+}
+
+/* ── Gradient Text ── */
+.text-gradient-cyan {
+  background: linear-gradient(135deg, var(--accent-cyan), var(--accent-electric-blue));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-magenta {
+  background: linear-gradient(135deg, var(--accent-magenta), #FF6B6B);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Neon Input Focus ── */
+.neon-input {
+  background: var(--bg-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: white;
+  font-family: var(--font-body);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.neon-input:focus {
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 245, 212, 0.1), 0 0 20px rgba(0, 245, 212, 0.05);
+}
+
+.neon-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── Neon Button ── */
+.neon-btn {
+  font-family: var(--font-display);
+  font-weight: 700;
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.neon-btn:active {
+  transform: scale(0.97);
+}
+
+.neon-btn-cyan {
+  background: var(--accent-cyan);
+  color: #0A0A0B;
+}
+
+.neon-btn-cyan:hover {
+  box-shadow: 0 0 30px rgba(0, 245, 212, 0.3), 0 0 60px rgba(0, 245, 212, 0.1);
+  filter: brightness(1.1);
+}
+
+.neon-btn-outline {
+  background: transparent;
+  border: 1.5px solid var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+.neon-btn-outline:hover {
+  background: rgba(0, 245, 212, 0.08);
+  box-shadow: 0 0 20px rgba(0, 245, 212, 0.1);
+}
+
+/* ── Neon Card ── */
+.neon-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 20px;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.neon-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Animations ── */
+@keyframes pulse-cyan {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0, 245, 212, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(0, 245, 212, 0); }
+}
+
+@keyframes pulse-magenta {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 46, 99, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 46, 99, 0); }
+}
+
+@keyframes pulse-amber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 184, 0, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(255, 184, 0, 0); }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-12px) rotate(1deg); }
+}
+
+@keyframes neon-border {
+  0%, 100% { border-color: rgba(0, 245, 212, 0.3); }
+  50% { border-color: rgba(0, 245, 212, 0.6); }
+}
+
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+
+.animate-pulse-cyan { animation: pulse-cyan 2s infinite; }
+.animate-pulse-magenta { animation: pulse-magenta 2s infinite; }
+.animate-pulse-amber { animation: pulse-amber 2s infinite; }
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+.animate-float { animation: float 4s ease-in-out infinite; }
+.animate-neon-border { animation: neon-border 3s ease-in-out infinite; }
+.animate-count-up { animation: count-up 0.5s ease-out forwards; }
+.animate-slide-in { animation: slide-in-right 0.4s ease-out forwards; }
+.animate-shake { animation: shake 0.3s ease-in-out; }
+
+/* ── Reduced Motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Leaflet Override (Dark Mode Maps) ── */
+.leaflet-container {
+  background: var(--bg-primary) !important;
+}
+
+.leaflet-control-zoom a {
+  background: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+/* ── Layout Utilities ── */
+@utility app-container {
+  max-width: 80rem; /* 1280px */
+  margin-left: auto;
+  margin-right: auto;
+  padding: 1.5rem; /* p-6 */
+  @media (min-width: 768px) {
+    padding: 2rem; /* p-8 */
+  }
+}
+
+@utility app-main {
+  flex: 1 1 0%;
+  overflow-y: auto;
+  width: 100%;
+  height: 100%;
+  padding-bottom: 6rem; /* pb-24 */
+  @media (min-width: 1024px) {
+    padding-bottom: 0;
+  }
+  background-color: var(--bg-primary);
+}
+
+@utility section-gap {
+  margin-top: 2rem;
+  @media (min-width: 768px) {
+    margin-top: 3rem;
+  }
 }
