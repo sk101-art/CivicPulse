@@ -14,6 +14,7 @@ export function VoteButton({ reportId, initialVoteCount, initialUserVote }: Prop
   const [voteCount, setVoteCount] = useState(initialVoteCount);
   const [userVote, setUserVote] = useState(initialUserVote);
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
 
   const handleVote = async () => {
     setLoading(true);
@@ -27,6 +28,7 @@ export function VoteButton({ reportId, initialVoteCount, initialUserVote }: Prop
       if (res.ok) {
         setUserVote(newValue);
         setVoteCount(prev => newValue === 1 ? prev + 1 : Math.max(0, prev - 1));
+        router.refresh();
       }
     } catch (e) {
       console.error('Vote failed:', e);
@@ -63,6 +65,7 @@ export function CommentSection({ reportId }: { reportId: string }) {
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const router = useRouter();
 
   const fetchComments = async () => {
     try {
@@ -92,6 +95,7 @@ export function CommentSection({ reportId }: { reportId: string }) {
       if (res.ok) {
         setText('');
         fetchComments();
+        router.refresh();
       }
     } catch (e) {
       console.error('Comment failed:', e);

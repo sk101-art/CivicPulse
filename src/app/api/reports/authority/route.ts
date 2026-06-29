@@ -84,7 +84,7 @@ export async function POST(req: Request) {
         address: address || `Map Pin (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
         citizenId: systemProfile.id,
         departmentId: dept.id,
-        status: 'OPEN',
+        status: 'CONFIRMED',
         priorityScore
       }
     });

@@ -298,9 +298,9 @@ function FileReportContent() {
 
             {/* ── STEP 3: LOCATION ── */}
             {step === 'LOCATION' && (
-              <div className="space-y-12">
-                <div className="rounded-[3rem] p-12 space-y-10 shadow-2xl relative overflow-hidden" style={{ background: 'rgba(20,20,22,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                  <div className="flex items-center gap-6">
+              <div className="flex-1 flex flex-col space-y-6">
+                <div className="flex-1 flex flex-col rounded-[3rem] p-8 md:p-12 shadow-2xl relative box-border" style={{ background: 'rgba(20,20,22,0.6)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                  <div className="flex items-center gap-6 shrink-0 mb-8">
                     <div className="w-16 h-16 rounded-[1.5rem] flex items-center justify-center shadow-lg" style={{ background: 'rgba(0,245,212,0.1)' }}>
                       <MapPin className="w-8 h-8" style={{ color: 'var(--accent-cyan)' }} />
                     </div>
@@ -312,7 +312,7 @@ function FileReportContent() {
                     </div>
                   </div>
 
-                  <div className="h-[500px] rounded-[2.5rem] bg-white/5 border border-white/5 overflow-hidden relative shadow-inner">
+                  <div className="flex-1 min-h-[300px] md:min-h-[400px] rounded-[2.5rem] bg-white/5 border border-white/5 overflow-hidden relative shadow-inner mb-8">
                     <ReportPickerMap 
                       latitude={formData.latitude} 
                       longitude={formData.longitude} 
@@ -320,16 +320,26 @@ function FileReportContent() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                    <div className="space-y-6">
-                      <div className="flex items-center justify-between">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10 shrink-0">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-center justify-between h-8 mb-2">
                         <span className="text-[10px] font-mono uppercase tracking-[0.3em] font-black opacity-30">
                           Automatic Telemetry
                         </span>
                         <button
                           type="button"
-                          onClick={() => setUseMyLocation(v => !v)}
-                          className="relative w-14 h-7 rounded-full border transition-colors"
+                          onClick={() => {
+                            const newValue = !useMyLocation;
+                            setUseMyLocation(newValue);
+                            if (newValue) {
+                              setFormData(prev => ({
+                                ...prev,
+                                latitude: 12.990939,
+                                longitude: 77.678665
+                              }));
+                            }
+                          }}
+                          className="relative w-14 h-7 shrink-0 rounded-full border transition-colors"
                           style={{
                             background: useMyLocation ? 'rgba(0,245,212,0.18)' : 'rgba(255,255,255,0.06)',
                             borderColor: useMyLocation ? 'rgba(0,245,212,0.35)' : 'rgba(255,255,255,0.12)',
@@ -338,11 +348,12 @@ function FileReportContent() {
                           aria-pressed={useMyLocation}
                         >
                           <motion.span
-                            animate={{ x: useMyLocation ? 30 : 6 }}
+                            animate={{ x: useMyLocation ? 34 : 4 }}
                             transition={{ type: 'tween', duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                            className="absolute top-1.5 w-4 h-4 rounded-full"
+                            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full"
                             style={{
                               background: useMyLocation ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.35)',
+                              left: 0
                             }}
                           />
                         </button>
@@ -376,11 +387,11 @@ function FileReportContent() {
                       </div>
                     </div>
                     
-                    <div className="space-y-6">
-                      <label className="text-[10px] font-mono uppercase tracking-[0.3em] font-black opacity-30 block">
+                    <div className="flex flex-col gap-4">
+                      <label className="text-[10px] font-mono uppercase tracking-[0.3em] font-black opacity-30 block h-8 flex items-center mb-2">
                         Manual Address Override
                       </label>
-                      <div className="relative">
+                      <div className="relative mb-2">
                         <input 
                           type="text"
                           placeholder="Type address for parsing..."
@@ -390,14 +401,14 @@ function FileReportContent() {
                         />
                         <MapPin className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--text-muted)' }} />
                       </div>
-                      <p className="text-[10px] font-mono opacity-20 tracking-wider leading-relaxed">
+                      <p className="text-[10px] font-mono opacity-20 tracking-wider leading-relaxed mt-2">
                         If GPS precision is insufficient, manually define the nearest intersection or street address.
                       </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="pt-8">
+                <div className="pt-4 shrink-0 pb-8">
                   <button 
                     disabled={formData.latitude === 0 && !formData.address}
                     onClick={nextStep}

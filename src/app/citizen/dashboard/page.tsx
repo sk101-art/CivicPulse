@@ -115,13 +115,15 @@ export default async function CitizenDashboard() {
         </div>
 
         {/* Active Reports */}
-        <ActiveReports reports={profile.reports.map((r: any) => ({
+        <ActiveReports initialReports={profile.reports.map((r: any) => ({
           id: r.id,
           title: r.title,
           category: r.category,
           status: r.status,
           createdAt: r.createdAt,
           address: r.address,
+          latitude: r.latitude,
+          longitude: r.longitude,
           priorityScore: r.priorityScore,
           voteCount: r._count?.votes || 0,
           commentCount: r._count?.comments || 0,

@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { Clock, MapPin, CheckCircle2, Circle, Settings2, Loader2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, fadeUp } from '@/lib/framer';
+import { toast } from '@/lib/toast';
 
 interface ReportData {
   id: string;
@@ -85,6 +86,11 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
   const router = useRouter();
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [showOverride, setShowOverride] = useState<string | null>(null);
+  const [localReports, setLocalReports] = useState<ReportData[]>(reports);
+
+  useEffect(() => {
+    setLocalReports(reports);
+  }, [reports]);
 
   const handleFilterChange = (filter: string) => {
     const params = new URLSearchParams();
@@ -101,11 +107,16 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
         body: JSON.stringify({ status: newStatus })
       });
       if (res.ok) {
+        setLocalReports(prev => prev.map(r => r.id === reportId ? { ...r, status: newStatus } : r));
         setShowOverride(null);
+        toast({ title: 'Status Updated', description: 'Manual override successful.', variant: 'success' });
         router.refresh();
+      } else {
+        toast({ title: 'Error', description: 'Failed to update status.', variant: 'error' });
       }
     } catch (e) {
       console.error(e);
+      toast({ title: 'Error', description: 'Failed to update status.', variant: 'error' });
     } finally {
       setUpdatingId(null);
     }
@@ -144,7 +155,7 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
       </div>
 
       {/* Reports Grid */}
-      {reports.length === 0 ? (
+      {localReports.length === 0 ? (
         <div className="py-32 flex flex-col items-center justify-center text-center border-2 border-dashed border-white/5 rounded-2xl bg-white/[0.01]">
           <h4 className="text-xl font-display font-bold text-white/40 uppercase tracking-tight">No Reports Found</h4>
           <p className="text-sm text-white/20 mt-2">Adjust filters to view different lifecycle stages.</p>
@@ -156,7 +167,7 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
           animate="show"
           className="grid grid-cols-1 md:grid-cols-2 gap-4"
         >
-          {reports.map((report) => {
+          {localReports.map((report) => {
             const currentIdx = getStageIndex(report.status);
             const isResolved = report.status === 'RESOLVED';
             const isRejected = report.status === 'REJECTED';

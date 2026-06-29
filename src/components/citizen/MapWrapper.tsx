@@ -6,6 +6,7 @@ import { Radio, X, Send, Loader2, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { modalBackdrop, modalContent } from '@/lib/framer';
 import { useRouter } from 'next/navigation';
+import { useOfflineSync } from '@/hooks/useOfflineSync';
 
 const Map = dynamic(
   () => import('./IssuesNearMeMap').then(mod => mod.IssuesNearMeMap),
@@ -31,6 +32,7 @@ export function MapWrapper(props: any) {
     category: 'POTHOLES'
   });
   const [submitting, setSubmitting] = useState(false);
+  const { isOnline, queueReport } = useOfflineSync();
 
   const handleReportLocation = (lat: number, lng: number) => {
     setReportModal({ lat, lng });
@@ -40,24 +42,37 @@ export function MapWrapper(props: any) {
     if (!reportModal || !formData.title || !formData.description) return;
     setSubmitting(true);
     try {
-      const res = await fetch('/api/reports', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      if (isOnline) {
+        const res = await fetch('/api/reports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ...formData,
+            latitude: reportModal.lat,
+            longitude: reportModal.lng,
+            address: `Map Pin (${reportModal.lat.toFixed(4)}, ${reportModal.lng.toFixed(4)})`
+          })
+        });
+
+        if (res.ok) {
+          setReportModal(null);
+          setFormData({ title: '', description: '', category: 'POTHOLES' });
+          router.refresh();
+        } else {
+          const errData = await res.text();
+          alert(`Submission Failed: ${errData}`);
+        }
+      } else {
+        await queueReport({
+          id: crypto.randomUUID(),
           ...formData,
           latitude: reportModal.lat,
           longitude: reportModal.lng,
-          address: `Map Pin (${reportModal.lat.toFixed(4)}, ${reportModal.lng.toFixed(4)})`
-        })
-      });
-
-      if (res.ok) {
+        });
         setReportModal(null);
         setFormData({ title: '', description: '', category: 'POTHOLES' });
+        alert('You are offline. Report queued for sync.');
         router.refresh();
-      } else {
-        const errData = await res.text();
-        alert(`Submission Failed: ${errData}`);
       }
     } catch (e) {
       console.error('Report submission failed:', e);
@@ -71,7 +86,7 @@ export function MapWrapper(props: any) {
     <>
       <Map 
         {...props} 
-        onReportLocation={handleReportLocation}
+        onReportLocationAction={handleReportLocation}
       />
 
       {/* Report Modal */}

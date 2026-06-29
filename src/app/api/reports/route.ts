@@ -152,7 +152,11 @@ export async function GET(req: Request) {
       take: 50
     });
 
-    return NextResponse.json(reports);
+    return NextResponse.json(reports, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      }
+    });
   } catch (error) {
     return new NextResponse("Error fetching reports", { status: 500 });
   }

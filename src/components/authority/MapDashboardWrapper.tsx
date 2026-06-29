@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { X, Send, Loader2, MapPin, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { modalBackdrop, modalContent } from '@/lib/framer';
+import { useReports } from '@/hooks/useReports';
 
 const CivicMap = dynamic(() => import('./AuthorityMap'), { 
   ssr: false,
@@ -30,11 +31,16 @@ interface MapWrapperProps {
 
 const CATEGORIES = ['POTHOLES', 'DRAINAGE', 'STREETLIGHTS', 'SIDEWALKS', 'TRAFFIC_SIGNS', 'GRAFFITI', 'TRASH', 'OTHER'];
 
-export function MapDashboardWrapper({ reports, showReportButton = false }: MapWrapperProps) {
+export function MapDashboardWrapper({ reports: initialReports, showReportButton = false }: MapWrapperProps) {
   const router = useRouter();
   const [reportModal, setReportModal] = useState<{ lat: number; lng: number } | null>(null);
   const [formData, setFormData] = useState({ title: '', description: '', category: 'POTHOLES' });
   const [submitting, setSubmitting] = useState(false);
+  const { reports } = useReports({
+    endpoint: '/api/reports/authority',
+    initialData: initialReports as any,
+    autoRefresh: 30000,
+  });
 
   const handleReportLocation = (lat: number, lng: number) => {
     setReportModal({ lat, lng });

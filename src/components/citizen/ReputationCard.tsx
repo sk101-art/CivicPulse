@@ -24,17 +24,16 @@ export function ReputationCard({ tier, points }: ReputationCardProps) {
   const progress = cfg.next === Infinity ? 100 : Math.min(100, (points / cfg.next) * 100);
 
   const [burst, setBurst] = useState(false);
-  const confetti = useMemo(
-    () =>
-      Array.from({ length: 18 }).map((_, i) => ({
-        id: i,
-        x: Math.random() * 100,
-        delay: Math.random() * 0.12,
-        rot: (Math.random() * 140 - 70).toFixed(2),
-        s: (Math.random() * 0.6 + 0.4).toFixed(2),
-      })),
-    []
-  );
+  const [confetti, setConfetti] = useState<any[]>([]);
+  useEffect(() => {
+    setConfetti(Array.from({ length: 18 }).map((_, i) => ({
+      id: i,
+      x: Math.random() * 100,
+      delay: Math.random() * 0.12,
+      rot: (Math.random() * 140 - 70).toFixed(2),
+      s: (Math.random() * 0.6 + 0.4).toFixed(2),
+    })));
+  }, []);
 
   useEffect(() => {
     try {

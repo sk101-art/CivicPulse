@@ -15,12 +15,15 @@ async function main() {
   await prisma.pointLog.deleteMany();
   await prisma.comment.deleteMany();
   await prisma.vote.deleteMany();
+  await prisma.assignment.deleteMany();
+  await prisma.personnel.deleteMany();
   await prisma.report.deleteMany();
   await prisma.citizenProfile.deleteMany();
   await prisma.user.deleteMany();
   await prisma.department.deleteMany();
 
   const hashedPassword = await bcrypt.hash('demo123', 10);
+  const authorityPassword = await bcrypt.hash('demo123', 10);
 
   const pwd = await prisma.department.create({
     data: { name: 'Public Works Department', code: 'PWD', slaHours: 48 }
@@ -50,7 +53,7 @@ async function main() {
     data: {
       name: 'Chief Inspector',
       email: 'authority@civicpulse.gov',
-      passwordHash: hashedPassword,
+      passwordHash: authorityPassword,
       role: Role.AUTHORITY,
       departmentId: pwd.id
     }

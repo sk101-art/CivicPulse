@@ -22,6 +22,7 @@ export default async function CitizenLayout({ children }: { children: React.Reac
     { href: '/citizen/profile', icon: 'User', label: 'Profile' },
     { href: '/citizen/report', icon: 'FileText', label: 'Report' },
     { href: '/citizen/map', icon: 'Map', label: 'Map View' },
+    { href: '/citizen/extra', icon: 'Crosshair', label: 'Extra Feature' },
   ];
 
   return (

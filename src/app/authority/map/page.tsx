@@ -5,26 +5,30 @@ import { MapDashboardWrapper } from "@/components/authority/MapDashboardWrapper"
 import { AppHeader } from "@/components/layout/AppHeader";
 
 
+import { redirect } from "next/navigation";
+
 export const revalidate = 0;
 
 export default async function AuthorityMapPage() {
   const session = await getServerSession(authOptions);
+  
+  if (!session || (session.user as any).role !== 'AUTHORITY') {
+    redirect('/login');
+  }
+
   const userId = (session?.user as any)?.id;
   const userWithDept = await prisma.user.findUnique({
     where: { id: userId },
     select: { departmentId: true },
   });
 
-  const deptId = userWithDept!.departmentId!;
+  // Removed department restriction block to allow all authority users to see map
 
-  // Fetch all department reports, then filter in JS to avoid PrismaPg enum adapter issues
   const rawReports = await prisma.report.findMany({
-    where: { departmentId: deptId },
     orderBy: { priorityScore: 'desc' },
   });
 
-  const OPERATIONAL_STATUSES = ['CONFIRMED', 'ASSIGNED', 'IN_PROGRESS'];
-  const allReports = rawReports.filter(r => OPERATIONAL_STATUSES.includes(r.status));
+  const allReports = rawReports;
 
   return (
     <main className="flex-1 overflow-y-auto w-full h-full pb-24 lg:pb-0 bg-primary flex flex-col">

@@ -91,11 +91,11 @@ export default function LoginPage() {
     setError('');
 
     try {
-      if (isSignUp && isCitizen) {
+      if (isSignUp) {
         const regRes = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password }),
+          body: JSON.stringify({ name, email, password, role: role.toUpperCase() }),
         });
 
         if (!regRes.ok) {
@@ -151,7 +151,7 @@ export default function LoginPage() {
           <motion.div 
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center gap-6"
+            className="flex flex-col items-center gap-2"
           >
             {/* Glowing Icon */}
             <div
@@ -161,10 +161,9 @@ export default function LoginPage() {
               CP
             </div>
             
-            <div className="space-y-1.5">
-              <h1 className="text-2xl font-bold tracking-tighter text-white flex items-center justify-center gap-2">
+            <div className="space-y-1">
+              <h1 className="text-2xl font-bold tracking-tighter text-white text-center">
                 CIVIC PULSE
-                <span className="text-[10px] border border-white/20 px-2 py-0.5 rounded text-white/60 tracking-widest bg-white/5">V2.4</span>
               </h1>
               <div className="flex items-center justify-center gap-2 text-[10px] text-white/40 tracking-[0.4em] font-black">
                 <span>METROPOLITAN SECURITY GRID</span>
@@ -212,14 +211,12 @@ export default function LoginPage() {
               >
                 LOGIN
               </button>
-              {isCitizen && (
-                <button 
-                  onClick={() => setIsSignUp(true)}
-                  className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/30 hover:text-white/50'}`}
-                >
-                  CREATE ACCOUNT
-                </button>
-              )}
+              <button 
+                onClick={() => setIsSignUp(true)}
+                className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/30 hover:text-white/50'}`}
+              >
+                CREATE ACCOUNT
+              </button>
             </div>
           </div>
 

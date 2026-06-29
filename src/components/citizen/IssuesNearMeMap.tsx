@@ -1,9 +1,12 @@
 'use client';
 
+import React from 'react';
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Circle, CircleMarker, MapContainer, Marker, Popup, TileLayer, useMapEvents, Polyline, useMap } from 'react-leaflet';
+import { Circle, CircleMarker, MapContainer, Marker, Popup, TileLayer, useMapEvents, Polyline, useMap, FeatureGroup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { useReports } from '@/hooks/useReports';
 
 type NearbyReport = {
   id: string;
@@ -56,24 +59,7 @@ function destIcon() {
   });
 }
 
-function clusterIcon(count: number) {
-  return L.divIcon({
-    className: '',
-    html: `
-      <div style="
-        width:34px;height:34px;border-radius:9999px;
-        background:rgba(0,212,255,0.16);
-        border:1px solid rgba(0,212,255,0.35);
-        box-shadow:0 0 26px rgba(0,212,255,0.18);
-        display:flex;align-items:center;justify-content:center;
-        color:#FFFFFF;font-weight:900;font-family:ui-monospace, monospace;
-        font-size:12px;
-      ">${count}</div>
-    `,
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
-  });
-}
+// Cluster icon removed
 
 function haversineMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3;
@@ -97,7 +83,7 @@ function pointToPolyDist(pt: [number, number], poly: [number, number][]): number
   return min;
 }
 
-const HAZARD_RADIUS = 150;
+const HAZARD_RADIUS = 15;
 
 interface RouteOption {
   coords: [number, number][];
@@ -127,12 +113,13 @@ function buildDetourWaypoints(
   src: [number, number],
   dst: [number, number],
   routeCoords: [number, number][],
-  hazards: { lat: number; lng: number }[]
+  hazards: { latitude: number; longitude: number }[],
+  offsetMeters: number
 ): [number, number][] {
   const positioned = hazards.map(h => {
     let bestIdx = 0, bestDist = Infinity;
     routeCoords.forEach((c, i) => {
-      const d = haversineMeters(h.lat, h.lng, c[0], c[1]);
+      const d = haversineMeters(h.latitude, h.longitude, c[0], c[1]);
       if (d < bestDist) { bestDist = d; bestIdx = i; }
     });
     return { ...h, idx: bestIdx };
@@ -150,12 +137,12 @@ function buildDetourWaypoints(
 
     const perpLat = -dLng / len;
     const perpLng = dLat / len;
-    const offsetDeg = 500 / 111000; 
+    const offsetDeg = offsetMeters / 111000; 
 
-    const optA: [number, number] = [hz.lat + perpLat * offsetDeg, hz.lng + perpLng * offsetDeg];
-    const optB: [number, number] = [hz.lat - perpLat * offsetDeg, hz.lng - perpLng * offsetDeg];
-    const dA = haversineMeters(optA[0], optA[1], hz.lat, hz.lng);
-    const dB = haversineMeters(optB[0], optB[1], hz.lat, hz.lng);
+    const optA: [number, number] = [hz.latitude + perpLat * offsetDeg, hz.longitude + perpLng * offsetDeg];
+    const optB: [number, number] = [hz.latitude - perpLat * offsetDeg, hz.longitude - perpLng * offsetDeg];
+    const dA = haversineMeters(optA[0], optA[1], hz.latitude, hz.longitude);
+    const dB = haversineMeters(optB[0], optB[1], hz.latitude, hz.longitude);
     waypoints.push(dA >= dB ? optA : optB);
   }
   waypoints.push(dst);
@@ -187,13 +174,16 @@ function CustomZoomControls() {
 
 function clamp(n: number, min: number, max: number) { return Math.max(min, Math.min(max, n)); }
 
-export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showReportButton?: boolean; onReportLocation?: (lat: number, lng: number) => void }) {
-  const [reports, setReports] = useState<NearbyReport[]>([]);
+export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { showReportButton?: boolean; onReportLocationAction?: (lat: number, lng: number) => void }) {
+  const { reports: rawReports, loading } = useReports({
+    endpoint: '/api/reports',
+    autoRefresh: 30000,
+  });
+  const reports = rawReports as NearbyReport[];
   const [filtered, setFiltered] = useState<NearbyReport[]>([]);
-  const [loading, setLoading] = useState(true);
   const [userPos, setUserPos] = useState<[number, number] | null>(null);
   const [geoError, setGeoError] = useState('');
-  const [radius] = useState(500);
+  const [radius] = useState(10000);
   const [mapCenter, setMapCenter] = useState<[number, number]>([12.9716, 77.5946]);
   const [zoom, setZoom] = useState(16);
 
@@ -207,6 +197,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [hazards, setHazards] = useState<NearbyReport[]>([]);
   const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [pulse, setPulse] = useState(0);
 
   useEffect(() => {
@@ -240,23 +231,6 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
   }, []);
 
   useEffect(() => {
-    async function fetchReports() {
-      setLoading(true);
-      try {
-        const res = await fetch('/api/reports');
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
-        setReports(data.reports || []);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchReports();
-  }, []);
-
-  useEffect(() => {
     if (!userPos) { setFiltered(reports); return; }
     const withinRadius = reports.filter(r => haversineMeters(userPos[0], userPos[1], r.latitude, r.longitude) <= radius);
     let f = withinRadius;
@@ -265,31 +239,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
     setFiltered(f);
   }, [reports, userPos, radius, categoryFilter, statusFilter]);
 
-  const renderPoints = useMemo(() => {
-    if (zoom >= 17) return filtered.map(r => ({ type: 'single' as const, lat: r.latitude, lng: r.longitude, reports: [r] }));
-    const clusters: { type: 'cluster'; lat: number; lng: number; reports: NearbyReport[] }[] = [];
-    const threshold = zoom < 15 ? 100 : 40;
-    const used = new Set<string>();
-    for (const r of filtered) {
-      if (used.has(r.id)) continue;
-      const cluster = [r];
-      used.add(r.id);
-      for (const other of filtered) {
-        if (!used.has(other.id) && haversineMeters(r.latitude, r.longitude, other.latitude, other.longitude) < threshold) {
-          cluster.push(other);
-          used.add(other.id);
-        }
-      }
-      if (cluster.length > 1) {
-        const avgLat = cluster.reduce((sum, item) => sum + item.latitude, 0) / cluster.length;
-        const avgLng = cluster.reduce((sum, item) => sum + item.longitude, 0) / cluster.length;
-        clusters.push({ type: 'cluster', lat: avgLat, lng: avgLng, reports: cluster });
-      } else {
-        clusters.push({ type: 'cluster', lat: r.latitude, lng: r.longitude, reports: [r] });
-      }
-    }
-    return clusters;
-  }, [filtered, zoom]);
+  // Removed renderPoints clustering
 
   useEffect(() => {
     if (allRoutes.length > 0 && allRoutes[selectedRouteIndex]) {
@@ -305,6 +255,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
     setAllRoutes([]);
     setSelectedRouteIndex(0);
     setHazards([]);
+    setRouteError(null);
   }, []);
 
   const clearAll = useCallback(() => {
@@ -317,9 +268,9 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
   const handlePlace = useCallback((latlng: L.LatLng) => {
     if (mode === 'source') { setSource([latlng.lat, latlng.lng]); clearRoutes(); }
     else if (mode === 'destination') { setDestination([latlng.lat, latlng.lng]); clearRoutes(); }
-    else if (mode === 'report' && onReportLocation) { onReportLocation(latlng.lat, latlng.lng); }
+    else if (mode === 'report' && onReportLocationAction) { onReportLocationAction(latlng.lat, latlng.lng); }
     setMode(null);
-  }, [mode, onReportLocation, clearRoutes]);
+  }, [mode, onReportLocationAction, clearRoutes]);
 
   const optimize = useCallback(async () => {
     if (!source || !destination) return;
@@ -331,45 +282,83 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
       const getHazards = (coords: [number, number][]) => 
         openIssues.filter(issue => pointToPolyDist([issue.latitude, issue.longitude], coords) < HAZARD_RADIUS);
 
-      const routes = await fetchAllRoutes([source, destination], 3);
-      if (!routes.length) { alert('No route found between those points.'); return; }
+      const MAX_ITERATIONS = 6;
+      const OFFSETS = [0, 50, 200, 500, 1500, 3000];
 
-      const processedRoutes: RouteOption[] = [];
+      // Fetch base routes ONCE — all alternatives from OSRM
+      const baseRoutes = await fetchAllRoutes([source, destination], 3);
+      if (!baseRoutes.length) return;
 
-      for (const r of routes) {
-        const routeHazards = getHazards(r.coords);
-        if (routeHazards.length === 0) {
-          processedRoutes.push({ coords: r.coords, distance: r.distance, duration: r.duration, hazards: 0, status: 'safe' });
-        } else {
-          const hazardPts = routeHazards.map(h => ({ lat: h.latitude, lng: h.longitude }));
-          const detourWps = buildDetourWaypoints(source, destination, r.coords, hazardPts);
-          const rerouted = await fetchAllRoutes(detourWps, false);
-          
-          if (rerouted.length > 0) {
-            const detourHazards = getHazards(rerouted[0].coords);
-            if (detourHazards.length === 0) {
-              processedRoutes.push({ coords: rerouted[0].coords, distance: rerouted[0].distance, duration: rerouted[0].duration, hazards: routeHazards.length, status: 'rerouted', isDetour: true });
-            } else {
-              processedRoutes.push({ coords: r.coords, distance: r.distance, duration: r.duration, hazards: routeHazards.length, status: 'warn' });
-            }
-          } else {
-            processedRoutes.push({ coords: r.coords, distance: r.distance, duration: r.duration, hazards: routeHazards.length, status: 'warn' });
-          }
+      // Check if any base route is already hazard-free
+      for (const r of baseRoutes) {
+        const hz = getHazards(r.coords);
+        if (hz.length === 0) {
+          setAllRoutes([{ ...r, hazards: 0, status: 'safe' }]);
+          setSelectedRouteIndex(0);
+          setHazards([]);
+          setRouteLoading(false);
+          return;
         }
       }
 
-      processedRoutes.sort((a, b) => a.distance - b.distance);
-      setAllRoutes(processedRoutes);
-      setSelectedRouteIndex(0);
-      setHazards(getHazards(processedRoutes[0].coords));
+      // No base route is safe — try escalating detour offsets
+      const allTestedRoutes: RouteOption[] = [];
+
+      for (let iter = 1; iter < MAX_ITERATIONS; iter++) {
+        const offset = OFFSETS[iter];
+
+        const detourResults = await Promise.all(baseRoutes.map(async (r) => {
+          const hz = getHazards(r.coords);
+          if (hz.length === 0) return r;
+          const detourWps = buildDetourWaypoints(source, destination, r.coords, hz, offset);
+          const dr = await fetchAllRoutes(detourWps, false);
+          return dr.length > 0 ? dr[0] : r;
+        }));
+
+        for (const r of detourResults) {
+          const hz = getHazards(r.coords);
+          allTestedRoutes.push({
+            coords: r.coords,
+            distance: r.distance,
+            duration: r.duration,
+            hazards: hz.length,
+            status: hz.length === 0 ? 'safe' : 'warn',
+            isDetour: true
+          });
+        }
+
+        const safeRoutes = allTestedRoutes.filter(r => r.hazards === 0);
+        if (safeRoutes.length > 0) {
+          // Safety-first: pick first hazard-free route, ignore distance
+          setAllRoutes([safeRoutes[0]]);
+          setSelectedRouteIndex(0);
+          setHazards([]);
+          setRouteLoading(false);
+          return;
+        }
+      }
+
+      // If we reach here, no safe route was found — do NOT render a hazardous route
+      setAllRoutes([]);
+      setHazards([]);
+      setRouteError(
+        'No safe vehicle route found. All computed paths pass within 15m of a reported hazard. ' +
+        'Try adjusting your source or destination to avoid the hazard area.'
+      );
+
     } catch (e) {
       console.error('Route optimization failed:', e);
+      setRouteError('Route computation failed. Please try again.');
     } finally {
       setRouteLoading(false);
     }
   }, [source, destination, reports, clearRoutes]);
 
-  const nowMs = Date.now();
+  const [nowMs, setNowMs] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNowMs(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, []);
   const pulseFactor = 0.85 + 0.15 * Math.sin(pulse / 6);
 
   return (
@@ -423,33 +412,76 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
         )}
       </div>
 
-      {allRoutes.length > 0 && (
-        <div className="absolute top-24 left-4 z-[1000] flex gap-2 overflow-x-auto max-w-[80vw]">
-          {allRoutes.map((route, idx) => (
-            <button
-              key={idx}
-              onClick={() => setSelectedRouteIndex(idx)}
-              className={`p-3 rounded-xl border text-left flex flex-col gap-1 transition-all shadow-lg backdrop-blur-md whitespace-nowrap ${
-                selectedRouteIndex === idx
-                  ? 'bg-cyan-500/20 border-cyan-500/50 text-cyan-400'
-                  : 'bg-black/60 border-white/10 text-white/50 hover:border-white/30'
-              }`}
-            >
-              <div className="text-[10px] font-mono font-black uppercase tracking-widest flex items-center gap-2">
-                Route {idx + 1} {selectedRouteIndex === idx && '✓'}
-              </div>
-              <div className="text-xs font-bold">
-                {fmt(route.distance)} • {fmtTime(route.duration)}
-              </div>
-              <div className="text-[9px] font-mono uppercase">
-                {route.status === 'safe' && 'Optimal Path Clear'}
-                {route.status === 'rerouted' && `Avoided ${route.hazards} Hazard${route.hazards > 1 ? 's' : ''}`}
-                {route.status === 'warn' && `⚠ ${route.hazards} Hazard${route.hazards > 1 ? 's' : ''} on path`}
-              </div>
-            </button>
-          ))}
+      {routeError && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[1000] w-[440px] max-w-[92vw] rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden"
+          style={{ background: 'rgba(20,8,8,0.96)', border: '1px solid rgba(255,46,99,0.45)' }}>
+          <div className="flex items-center gap-3 px-5 py-3" style={{ borderBottom: '1px solid rgba(255,46,99,0.25)', background: 'rgba(255,46,99,0.12)' }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+              style={{ background: 'rgba(255,46,99,0.2)', border: '1px solid rgba(255,46,99,0.4)' }}>🚫</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-black uppercase tracking-[0.25em]" style={{ color: 'rgba(255,46,99,1)' }}>No Safe Vehicle Route</p>
+              <p className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.4)' }}>All paths intersect a hazard zone within 15m</p>
+            </div>
+          </div>
+          <div className="px-5 py-4">
+            <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.55)' }}>{routeError}</p>
+          </div>
+          <div className="px-5 py-2.5" style={{ borderTop: '1px solid rgba(255,46,99,0.15)', background: 'rgba(255,46,99,0.05)' }}>
+            <span className="text-[9px] font-mono uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              Adjust source / destination and try again
+            </span>
+          </div>
         </div>
       )}
+
+      {allRoutes.length > 0 && hazards.length > 0 && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[1000] w-[420px] max-w-[92vw] rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden"
+          style={{ background: 'rgba(20,8,8,0.96)', border: '1px solid rgba(255,46,99,0.45)' }}>
+          {/* Header */}
+          <div className="flex items-center gap-3 px-5 py-3" style={{ borderBottom: '1px solid rgba(255,46,99,0.25)', background: 'rgba(255,46,99,0.12)' }}>
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-base flex-shrink-0"
+              style={{ background: 'rgba(255,46,99,0.2)', border: '1px solid rgba(255,46,99,0.4)' }}>⚠</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-black uppercase tracking-[0.25em]" style={{ color: 'rgba(255,46,99,1)' }}>Hazard Alert — Route Unsafe</p>
+              <p className="text-[10px] font-mono" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                {hazards.length} active hazard{hazards.length > 1 ? 's' : ''} within 15m of your path
+              </p>
+            </div>
+            <div className="text-[10px] font-mono px-2 py-1 rounded-lg flex-shrink-0"
+              style={{ background: 'rgba(255,46,99,0.15)', color: 'rgba(255,46,99,0.9)', border: '1px solid rgba(255,46,99,0.3)' }}>
+              {hazards.length} RISK{hazards.length > 1 ? 'S' : ''}
+            </div>
+          </div>
+          {/* Hazard list */}
+          <div className="px-5 py-3 space-y-2 max-h-44 overflow-y-auto">
+            {hazards.map((h, i) => (
+              <div key={h.id} className="flex items-start gap-3 py-2 px-3 rounded-xl"
+                style={{ background: 'rgba(255,46,99,0.07)', border: '1px solid rgba(255,46,99,0.15)' }}>
+                <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 mt-0.5"
+                  style={{ background: 'rgba(255,46,99,0.25)', color: 'rgba(255,46,99,1)' }}>{i + 1}</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-bold text-white truncate">{h.title}</p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded"
+                      style={{ background: 'rgba(255,46,99,0.15)', color: 'rgba(255,46,99,0.85)' }}>{h.category}</span>
+                    <span className="text-[9px] font-mono" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                      {Math.round(pointToPolyDist([h.latitude, h.longitude], allRoutes[selectedRouteIndex]?.coords ?? []))}m from path
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Footer advice */}
+          <div className="px-5 py-2.5 flex items-center gap-2" style={{ borderTop: '1px solid rgba(255,46,99,0.15)', background: 'rgba(255,46,99,0.05)' }}>
+            <span className="text-[9px] font-mono uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.35)' }}>
+              No fully safe route found. Proceed with extreme caution or choose a different path.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Route selector UI removed in favor of auto-selection */}
 
       {mode && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000] px-5 py-2.5 rounded-xl bg-slate-900/95 backdrop-blur-xl border border-white/10 text-sm font-bold text-white shadow-2xl">
@@ -486,7 +518,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
           {statusOptions.map((s) => (<option key={s} value={s}>{s}</option>))}
         </select>
         <div className="rounded-xl px-3 py-2 text-[10px] font-mono uppercase tracking-widest" style={{ background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.18)', color: 'var(--accent-electric-blue)' }}>
-          {loading ? 'Scanning…' : `${filtered.length} within 500m`}
+          {loading ? 'Scanning…' : `${filtered.length} within 50km`}
         </div>
         {geoError && (
           <div className="rounded-xl px-3 py-2 text-[10px] font-mono uppercase tracking-widest" style={{ background: 'rgba(255,46,99,0.10)', border: '1px solid rgba(255,46,99,0.22)', color: 'var(--accent-magenta)' }}>
@@ -508,25 +540,39 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
           </>
         )}
 
-        {allRoutes.map((route, idx) => (
-          <Polyline
-            key={`route-${idx}`}
-            positions={route.coords}
-            eventHandlers={{ click: () => setSelectedRouteIndex(idx) }}
-            pathOptions={{
-              color: idx === selectedRouteIndex ? 'var(--accent-cyan)' :
-                     idx === 1 ? 'var(--accent-magenta)' : 'var(--text-muted)',
-              weight: idx === selectedRouteIndex ? 5 : 3,
-              opacity: idx === selectedRouteIndex ? 1 : 0.5,
-              dashArray: idx === selectedRouteIndex ? undefined : '8, 12',
-            }}
-          />
-        ))}
+        {allRoutes.map((route, idx) => {
+          const isSelected = idx === selectedRouteIndex;
+          const hasHazard = isSelected && hazards.length > 0;
+          return (
+            <React.Fragment key={`route-group-${idx}`}>
+              {/* Glow underlay for hazardous route */}
+              {hasHazard && (
+                <Polyline
+                  positions={route.coords}
+                  pathOptions={{ color: 'rgba(255,46,99,0.25)', weight: 14, opacity: 1 }}
+                />
+              )}
+              <Polyline
+                positions={route.coords}
+                eventHandlers={{ click: () => setSelectedRouteIndex(idx) }}
+                pathOptions={{
+                  color: hasHazard ? '#FF2E63' : isSelected ? 'var(--accent-cyan)' :
+                        idx === 1 ? 'var(--accent-magenta)' : 'var(--text-muted)',
+                  weight: isSelected ? 5 : 3,
+                  opacity: isSelected ? 1 : 0.5,
+                  dashArray: hasHazard ? '10, 6' : isSelected ? undefined : '8, 12',
+                }}
+              />
+            </React.Fragment>
+          );
+        })}
 
-        {hazards.flatMap((h) => [
-          <Circle key={`hz-pulse-${h.id}`} center={[h.latitude, h.longitude]} radius={HAZARD_RADIUS * (1 + 0.18 * pulseFactor)} pathOptions={{ fillColor: 'var(--accent-magenta)', fillOpacity: 0.06, color: 'var(--accent-magenta)', weight: 1, dashArray: '4, 10', opacity: 0.55 }} />,
-          <Circle key={`hz-${h.id}`} center={[h.latitude, h.longitude]} radius={HAZARD_RADIUS} pathOptions={{ fillColor: 'var(--accent-magenta)', fillOpacity: 0.12, color: 'var(--accent-magenta)', weight: 2, opacity: 0.85 }} />
-        ])}
+        {hazards.map((h) => (
+          <FeatureGroup key={`hz-group-${h.id}`}>
+            <Circle key={`hz-pulse-${h.id}`} center={[h.latitude, h.longitude]} radius={HAZARD_RADIUS * (1 + 0.18 * pulseFactor)} pathOptions={{ fillColor: 'var(--accent-magenta)', fillOpacity: 0.06, color: 'var(--accent-magenta)', weight: 1, dashArray: '4, 10', opacity: 0.55 }} />
+            <Circle key={`hz-${h.id}`} center={[h.latitude, h.longitude]} radius={HAZARD_RADIUS} pathOptions={{ fillColor: 'var(--accent-magenta)', fillOpacity: 0.12, color: 'var(--accent-magenta)', weight: 2, opacity: 0.85 }} />
+          </FeatureGroup>
+        ))}
 
         {source && (
           <Marker position={source} icon={sourceIcon()}><Popup><b>Source</b></Popup></Marker>
@@ -535,11 +581,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
           <Marker position={destination} icon={destIcon()}><Popup><b>Destination</b></Popup></Marker>
         )}
 
-        {renderPoints.map((item) => {
-          if (item.type === 'cluster') {
-             return (<Marker key={`cl-${item.lat.toFixed(6)}-${item.lng.toFixed(6)}-${item.reports.length}`} position={[item.lat, item.lng]} icon={clusterIcon(item.reports.length)}><Popup><b>{item.reports.length} issues</b></Popup></Marker>);
-          }
-          const r = item.reports[0];
+        {filtered.map((r) => {
           const isHz = hazards.some(h => h.id === r.id);
           const color = r.status === 'RESOLVED' ? 'var(--accent-lime)' : catColor(r.category);
           const pr = r.priorityScore == null ? 0.5 : Number(r.priorityScore);
@@ -547,7 +589,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocation }: { showRe
           const createdAt = r.createdAt ? new Date(r.createdAt).getTime() : null;
           const isNew = createdAt != null && nowMs - createdAt < 60 * 60 * 1000;
           return (
-            <CircleMarker key={r.id} center={[r.latitude, r.longitude]} radius={radiusPx * (isNew ? (1 + 0.12 * pulseFactor) : 1)} pathOptions={{ color: 'transparent', fillColor: isHz ? 'var(--accent-magenta)' : color, fillOpacity: isHz ? 0.85 : (isNew ? 0.55 + 0.25 * pulseFactor : 0.72) }}>
+            <CircleMarker key={r.id} center={[r.latitude, r.longitude]} radius={radiusPx * (isNew ? (1 + 0.12 * pulseFactor) : 1)} pathOptions={{ color: r.status === 'OPEN' ? color : 'transparent', fillColor: isHz ? 'var(--accent-magenta)' : color, fillOpacity: isHz ? 0.85 : (isNew ? 0.55 + 0.25 * pulseFactor : (r.status === 'OPEN' ? 0.2 : 0.72)), weight: r.status === 'OPEN' ? 2 : 0 }}>
               <Popup>
                 <div className="min-w-[160px]">
                   <b className="text-sm">{r.title}</b>

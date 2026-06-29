@@ -5,8 +5,10 @@ import { MapPin } from 'lucide-react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { staggerContainer, fadeUp } from '@/lib/framer';
+import { RefreshButton } from '@/components/ui/RefreshButton';
+import { useReports, Report as HookReport } from '@/hooks/useReports';
 
-interface ReportItem {
+interface ReportItem extends Omit<HookReport, 'priorityScore' | 'voteCount' | 'commentCount'> {
   id: string;
   title: string;
   category: Category;
@@ -19,7 +21,7 @@ interface ReportItem {
 }
 
 interface ActiveReportsProps {
-  reports: ReportItem[];
+  initialReports: ReportItem[];
 }
 
 const statusConfig: Record<Status, { color: string; bg: string; label: string; dot: string }> = {
@@ -42,7 +44,13 @@ const categoryIcons: Record<Category, { emoji: string; color: string }> = {
   OTHER:         { emoji: '❓', color: 'var(--cat-other)' },
 };
 
-export function ActiveReports({ reports }: ActiveReportsProps) {
+export function ActiveReports({ initialReports }: ActiveReportsProps) {
+  const { reports, invalidate } = useReports({
+    endpoint: '/api/reports',
+    initialData: initialReports,
+    autoRefresh: 30000,
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between px-2">
@@ -50,13 +58,16 @@ export function ActiveReports({ reports }: ActiveReportsProps) {
           <h3 className="font-display font-bold text-xl text-white uppercase tracking-tight">Operational Records</h3>
           <p className="text-[10px] font-mono uppercase tracking-widest text-white/30">Intelligence Data Feed</p>
         </div>
-        <Link
-          href="/citizen/profile"
-          className="text-xs font-mono uppercase tracking-widest transition-colors"
-          style={{ color: 'var(--accent-cyan)' }}
-        >
-          View All →
-        </Link>
+        <div className="flex items-center gap-4">
+          <RefreshButton onRefresh={invalidate} />
+          <Link
+            href="/citizen/profile"
+            className="text-xs font-mono uppercase tracking-widest transition-colors"
+            style={{ color: 'var(--accent-cyan)' }}
+          >
+            View All →
+          </Link>
+        </div>
       </div>
 
       {reports.length === 0 ? (
@@ -89,8 +100,8 @@ export function ActiveReports({ reports }: ActiveReportsProps) {
           className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
         >
           {reports.map((report) => {
-            const sc = statusConfig[report.status];
-            const ci = categoryIcons[report.category];
+            const sc = statusConfig[report.status as Status] || statusConfig.OPEN;
+            const ci = categoryIcons[report.category as Category] || categoryIcons.OTHER;
             const priorityPct = Math.round((report.priorityScore || 0) * 100);
             return (
               <motion.div key={report.id} variants={fadeUp}>

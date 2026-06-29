@@ -6,6 +6,7 @@ import { TicketFilters } from "@/components/authority/TicketFilters";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Suspense } from "react";
 import { Loader2, Search, ShieldAlert } from "lucide-react";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 
 export const revalidate = 0;
 
@@ -28,6 +29,12 @@ export default async function AuthorityTicketsPage({
     include: { department: true },
   });
 
+  // Redirect non-authority users to login immediately
+  if (!session || (session.user as any)?.role !== 'AUTHORITY') {
+    const { redirect } = await import('next/navigation');
+    redirect('/login');
+  }
+
   if (!userWithDept?.departmentId) {
     return (
       <main className="flex items-center justify-center min-h-screen bg-primary text-white p-6">
@@ -43,15 +50,15 @@ export default async function AuthorityTicketsPage({
             </p>
           </div>
           <p className="text-sm text-white/60 leading-relaxed">
-            This administrative terminal is restricted to departmental personnel. 
+            This administrative terminal is restricted to departmental personnel.
             Your account is currently not indexed within any active municipal department.
           </p>
           <div className="pt-4">
-             <a 
-               href="/"
+             <a
+               href="/login"
                className="block text-center w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-mono font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-all"
              >
-               Return to Entry Point
+               Return to Login
              </a>
           </div>
         </div>
@@ -103,6 +110,7 @@ export default async function AuthorityTicketsPage({
         title="Active Tickets"
         subtitle="Inquiry Management"
         accentColor="var(--accent-electric-blue)"
+        actionButton={<RefreshButton />}
       />
 
       <div className="p-6 md:p-8 space-y-10 max-w-7xl mx-auto">

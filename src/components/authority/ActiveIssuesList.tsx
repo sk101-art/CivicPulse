@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   CheckCircle, X, Camera, Send, Loader2,
   ClipboardCheck, UserPlus, MapPin, ShieldCheck, Hash
@@ -33,9 +33,14 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
   // Track loading per item ID to accommodate multiple simultaneous actions
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
   const [resolveData, setResolveData] = useState({ desc: '', photo: '' });
+  const [localIssues, setLocalIssues] = useState<IssueItem[]>(issues);
   const router = useRouter();
 
-  const activeIssues = issues.filter(i => i.status !== 'RESOLVED');
+  useEffect(() => {
+    setLocalIssues(issues);
+  }, [issues]);
+
+  const activeIssues = localIssues.filter(i => i.status !== 'RESOLVED');
   const currentIssue = issues.find(i => i.id === selectedId);
 
   const setItemLoading = (id: string, loading: boolean) => {
@@ -52,6 +57,7 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
         body: JSON.stringify(resolveData)
       });
       if (res.ok) {
+        setLocalIssues(prev => prev.filter(i => i.id !== selectedId));
         setIsResolving(false);
         setSelectedId(null);
         setResolveData({ desc: '', photo: '' });
@@ -74,6 +80,7 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
     try {
       const res = await fetch(`/api/reports/${id}/confirm`, { method: 'POST' });
       if (res.ok) {
+        setLocalIssues(prev => prev.map(i => i.id === id ? { ...i, status: 'CONFIRMED' } : i));
         toast({ title: 'Verified', description: 'Issue has been confirmed.', variant: 'success' });
         router.refresh();
       } else {
@@ -98,6 +105,7 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
         body: JSON.stringify({ personnelId })
       });
       if (res.ok) {
+        setLocalIssues(prev => prev.map(i => i.id === selectedId ? { ...i, status: 'ASSIGNED' } : i));
         setIsAssigning(false);
         setSelectedId(null);
         toast({ title: 'Assigned', description: 'Personnel deployed successfully.', variant: 'success' });
@@ -261,7 +269,11 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
       {/* Resolution Modal */}
       <AnimatePresence>
         {isResolving && (
-          <div 
+          <motion.div 
+            key="resolve-modal"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-6"
             onClick={() => { setIsResolving(false); setSelectedId(null); }}
           >
@@ -353,20 +365,17 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
                    </div>
                 </div>
              </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
       {/* Assignment Modal */}
-      <AnimatePresence>
-        {isAssigning && currentIssue && (
-          <AssignModal 
-            issue={currentIssue} 
-            onClose={() => { setIsAssigning(false); setSelectedId(null); }}
-            onAssign={handleAssignConfirm}
-          />
-        )}
-      </AnimatePresence>
+      <AssignModal 
+        isOpen={isAssigning && !!currentIssue}
+        issue={currentIssue || undefined} 
+        onClose={() => { setIsAssigning(false); setSelectedId(null); }}
+        onAssign={handleAssignConfirm}
+      />
     </div>
   );
 }
