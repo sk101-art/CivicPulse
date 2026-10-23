@@ -87,8 +87,8 @@ export default function ReportPickerMap({ latitude, longitude, onChange }: Repor
       style={{ height: '100%', minHeight: '100%', width: '100%', zIndex: 10, background: '#0A0A0B' }}
     >
       <TileLayer
-        attribution="&copy; OpenStreetMap contributors &copy; CARTO"
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <MapInvalidator />
       <MapController lat={latitude} lng={longitude} />
