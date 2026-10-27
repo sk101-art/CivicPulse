@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T12 · Track A · started 2026-10-27
+Current task: T13 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,32 @@ Current task: T12 · Track A · started 2026-10-27
 - None
 
 ## Done
+
+### T12 · Validation layer and API error contract · 2026-10-27
+- Changed: `src/lib/api/errors.ts`, `src/lib/api/validate.ts`, `src/lib/api/auth.ts`, `src/types/next-auth.d.ts`, `src/lib/auth.ts`, `src/app/api/reports/authority/route.ts`, `tests/unit/api-validation.test.ts`, `docs/plan/PLAN.md`
+- Verified against docs: NextAuth 4 module augmentation types, Zod 4.6.7 validation schemas and error reporting, PLAN.md Section 6/7 pilot coordinate boundaries (lat 11.5–14.5, lng 76.5–78.5, gpsAccuracyM <= 30m)
+- Checks run:
+  ```
+  [npm test]
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+  ✓ tests/unit/api-validation.test.ts (7 tests)
+    ✓ missing lat → 400 with fields.lat
+    ✓ lat 0 → 400 (outside pilot bounds)
+    ✓ accuracy 80 m → 400 (exceeds max allowable GPS accuracy for evidence)
+    ✓ valid coordinates and accuracy within pilot region succeed
+    ✓ citizen calling a desk route → 403 FORBIDDEN
+    ✓ unauthenticated request to protected route → 401 UNAUTHORIZED
+    ✓ authorized user with matching role succeeds with typed user
+  Test Files: 4 passed (4)
+  Tests: 17 passed (17)
+
+  [npx eslint src/lib/api/ src/types/ tests/unit/api-validation.test.ts src/app/api/reports/authority/route.ts]
+  Clean exit code 0
+  ```
+- Feature rows ticked: F2 (`tests/unit/api-validation.test.ts`)
+- Notes for the next task: Proceeding to T13 (Photo storage adapter and contract test).
 
 ### T11 · Data migration and seed v2 · 2026-10-27
 - Changed: `scripts/migrate-v1-to-v2.ts`, `prisma/seed.ts`, `src/app/api/reports/authority/route.ts`, `tests/contract/seed-auth.test.ts`, `package.json`, `eslint.config.mjs`

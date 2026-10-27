@@ -1087,7 +1087,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | Done | Feature | Name | Task(s) | Proof |
 | --- | --- | --- | --- | --- |
 | [ ] | F1 | Save report photos | T13, T23 | `tests/contract/storage.test.ts`; e2e photo visible on issue page |
-| [ ] | F2 | Input validation, no fake GPS | T12 | `tests/unit/api-validation.test.ts` |
+| [x] | F2 | Input validation, no fake GPS | T12 | `tests/unit/api-validation.test.ts` |
 | [ ] | F3 | Votes replaced by confirmations | T10, T15 | no `/vote` route; points tests |
 | [ ] | F5 | SLA breach job | T16 | `tests/unit/jobs-sla.test.ts` |
 | [ ] | F6 | Merge duplicates | T14 | `tests/unit/issues-merge.test.ts` |

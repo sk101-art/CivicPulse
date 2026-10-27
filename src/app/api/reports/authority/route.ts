@@ -1,39 +1,42 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
+import { withAuth } from "@/lib/api/auth";
+import { parseJson, coordinateSchema } from "@/lib/api/validate";
+import { apiError } from "@/lib/api/errors";
 import { prisma } from "@/lib/db/prisma";
 import { NextResponse } from "next/server";
-import { Category, Band, EvidenceRole, Status } from "@prisma/client";
+import { Category, Band, EvidenceRole, Status, Role } from "@prisma/client";
+import { z } from "zod";
+
+const authorityReportSchema = z.object({
+  title: z.string().optional(),
+  description: z.string().optional(),
+  category: z.nativeEnum(Category).default(Category.OTHER),
+  lat: coordinateSchema.shape.lat,
+  lng: coordinateSchema.shape.lng,
+  address: z.string().optional(),
+  agencyId: z.string().optional(),
+});
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    const sessionUser = session?.user as { id?: string; role?: string } | undefined;
-    if (!session || sessionUser?.role !== "AUTHORITY" || !sessionUser?.id) {
-      return NextResponse.json({ error: "Unauthorized: Authority role required" }, { status: 401 });
+    const auth = await withAuth(Role.AUTHORITY);
+    if (auth.error) {
+      return auth.error;
     }
 
-    const body = await req.json();
-    const { title, description, category, latitude, longitude, address, agencyId } = body;
-    const userId = sessionUser.id;
-
-    const lat = typeof latitude === "string" ? parseFloat(latitude) : latitude;
-    const lng = typeof longitude === "string" ? parseFloat(longitude) : longitude;
-
-    if (isNaN(lat) || isNaN(lng)) {
-      return NextResponse.json({ error: "Valid latitude and longitude are required" }, { status: 400 });
+    const parsed = await parseJson(req, authorityReportSchema);
+    if (parsed.error) {
+      return parsed.error;
     }
 
-    const rawCategory = (category || "OTHER").toUpperCase();
-    const validCategory: Category = Object.values(Category).includes(rawCategory as Category)
-      ? (rawCategory as Category)
-      : Category.OTHER;
+    const { title, description, category, lat, lng, address, agencyId } = parsed.data;
+    const userId = auth.user.id;
 
     // Default SLA is 72 hours from filing
     const slaDueAt = new Date(Date.now() + 72 * 3600 * 1000);
 
     const issue = await prisma.issue.create({
       data: {
-        category: validCategory,
+        category,
         status: Status.CONFIRMED,
         lat,
         lng,
@@ -77,6 +80,6 @@ export async function POST(req: Request) {
     return NextResponse.json(issue, { status: 201 });
   } catch (error: unknown) {
     console.error("Authority report filing failed:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return apiError(500, "INTERNAL_ERROR", "Internal server error occurred");
   }
 }
