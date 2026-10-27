@@ -1,5 +1,15 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import dotenv from 'dotenv';
+import fs from 'fs';
+
+const rootDir = __dirname;
+if (fs.existsSync(path.join(rootDir, '.env'))) {
+  dotenv.config({ path: path.join(rootDir, '.env') });
+}
+if (fs.existsSync(path.join(rootDir, '.env.local'))) {
+  dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
+}
 
 export default defineConfig({
   test: {

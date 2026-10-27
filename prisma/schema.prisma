@@ -6,131 +6,6 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id             String          @id @default(cuid())
-  email          String          @unique
-  role           Role            @default(CITIZEN)
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  departmentId   String?
-  passwordHash   String
-  name           String?
-  citizenProfile CitizenProfile?
-  comments       Comment[]
-  department     Department?     @relation(fields: [departmentId], references: [id])
-}
-
-model CitizenProfile {
-  id         String     @id @default(cuid())
-  userId     String     @unique
-  tier       Tier       @default(CITIZEN)
-  phone      String?
-  reputation Int        @default(0)
-  verified   Boolean    @default(false)
-  user       User       @relation(fields: [userId], references: [id])
-  pointLogs  PointLog[]
-  reports    Report[]
-  votes      Vote[]
-}
-
-model Department {
-  id         String      @id @default(cuid())
-  name       String
-  code       String      @unique
-  slaHours   Int         @default(72)
-  personnels Personnel[]
-  reports    Report[]
-  users      User[]
-}
-
-model Personnel {
-  id           String       @id @default(cuid())
-  name         String
-  role         String
-  contact      String
-  departmentId String
-  active       Boolean      @default(true)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  assignments  Assignment[]
-  department   Department   @relation(fields: [departmentId], references: [id])
-}
-
-model Report {
-  id              String         @id @default(cuid())
-  title           String
-  description     String
-  latitude        Float
-  longitude       Float
-  departmentId    String
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  address         String?
-  category        Category
-  citizenId       String
-  photoUrl        String?
-  priorityScore   Float          @default(0)
-  resolvedAt      DateTime?
-  slaBreached     Boolean        @default(false)
-  status          Status         @default(OPEN)
-  resolutionDesc  String?
-  resolutionPhoto String?
-  assignedAt      DateTime?
-  confirmedAt     DateTime?
-  confirmedBy     String?
-  rejectedAt      DateTime?
-  startedAt       DateTime?
-  assignments     Assignment[]
-  comments        Comment[]
-  pointLogs       PointLog[]
-  citizen         CitizenProfile @relation(fields: [citizenId], references: [id])
-  department      Department     @relation(fields: [departmentId], references: [id])
-  votes           Vote[]
-}
-
-model Comment {
-  id        String   @id @default(cuid())
-  text      String
-  userId    String
-  reportId  String
-  createdAt DateTime @default(now())
-  report    Report   @relation(fields: [reportId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
-}
-
-model PointLog {
-  id        String         @id @default(cuid())
-  points    Int
-  reason    String
-  citizenId String
-  reportId  String?
-  createdAt DateTime       @default(now())
-  citizen   CitizenProfile @relation(fields: [citizenId], references: [id])
-  report    Report?        @relation(fields: [reportId], references: [id])
-}
-
-model Vote {
-  id        String         @id @default(cuid())
-  value     Int
-  reportId  String
-  citizenId String
-  citizen   CitizenProfile @relation(fields: [citizenId], references: [id])
-  report    Report         @relation(fields: [reportId], references: [id])
-
-  @@unique([reportId, citizenId])
-}
-
-model Assignment {
-  id          String           @id @default(cuid())
-  reportId    String
-  completedAt DateTime?
-  createdAt   DateTime         @default(now())
-  status      AssignmentStatus @default(PENDING)
-  personnelId String
-  personnel   Personnel        @relation(fields: [personnelId], references: [id])
-  report      Report           @relation(fields: [reportId], references: [id])
-}
-
 enum Role {
   CITIZEN
   AUTHORITY
@@ -146,9 +21,13 @@ enum Tier {
 enum Category {
   POTHOLES
   DRAINAGE
+  WATERLOGGING
   STREETLIGHTS
   SIDEWALKS
+  FOOTPATH
   TRAFFIC_SIGNS
+  ROAD_CUT
+  TREE_FALL
   GRAFFITI
   TRASH
   OTHER
@@ -159,7 +38,9 @@ enum Status {
   CONFIRMED
   ASSIGNED
   IN_PROGRESS
-  RESOLVED
+  CLAIMED_FIXED
+  VERIFIED_FIXED
+  DISPUTED
   REJECTED
 }
 
@@ -167,4 +48,326 @@ enum AssignmentStatus {
   PENDING
   IN_PROGRESS
   COMPLETED
+}
+
+enum Band {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum EvidenceRole {
+  REPORT
+  CONFIRM
+  CLAIM_FIX
+  VERIFY
+}
+
+enum SegmentEventType {
+  REPORTED
+  VERIFIED_FIX
+  RESURFACED
+  ROAD_CUT
+  WATERLOGGED
+  RECURRENCE
+}
+
+model User {
+  id             String          @id @default(cuid())
+  email          String          @unique
+  role           Role            @default(CITIZEN)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  passwordHash   String
+  name           String?
+  citizenProfile CitizenProfile?
+  comments       Comment[]
+}
+
+model CitizenProfile {
+  id         String     @id @default(cuid())
+  userId     String     @unique
+  tier       Tier       @default(CITIZEN)
+  phone      String?
+  reputation Int        @default(0)
+  verified   Boolean    @default(false)
+  user       User       @relation(fields: [userId], references: [id])
+  pointLogs  PointLog[]
+}
+
+model Agency {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  slaHours Int     @default(72)
+  issues   Issue[]
+}
+
+model Ward {
+  id   String                                      @id @default(cuid())
+  code String                                      @unique
+  name String
+  geom Unsupported("geography(MultiPolygon,4326)")?
+}
+
+model RoadSegment {
+  id                   String                                    @id @default(cuid())
+  osmWayId             BigInt
+  name                 String?
+  roadClass            String
+  lanes                Int?
+  busesPerHour         Float                                     @default(0)
+  pedestrianEstimate   Float                                     @default(0)
+  nearSchoolOrHospital Boolean                                   @default(false)
+  soleAccess           Boolean                                   @default(false)
+  wardId               String?
+  tracked              Boolean                                   @default(false)
+  geom                 Unsupported("geography(LineString,4326)")?
+  issues               Issue[]
+  events               SegmentEvent[]
+  samples              TrafficSample[]
+}
+
+model Issue {
+  id                   String                              @id @default(cuid())
+  category             Category
+  status               Status                              @default(OPEN)
+  lat                  Float
+  lng                  Float
+  geom                 Unsupported("geography(Point,4326)")?
+  address              String?
+  wardId               String?
+  segmentId            String?
+  agencyId             String?
+  handoffCount         Int                                 @default(0)
+  sizeClass            String?
+  lanePosition         String?
+  blockedShare         String                              @default("none")
+  hazardFlag           String?
+  priority             Float                               @default(0)
+  band                 Band                                @default(LOW)
+  piBreakdown          Json?
+  piText               String?
+  bandOverride         Band?
+  bandOverrideNote     String?
+  recurrenceOf         String?
+  needsDuplicateReview Boolean                             @default(false)
+  slaDueAt             DateTime
+  slaBreached          Boolean                             @default(false)
+  isSeed               Boolean                             @default(false)
+  createdAt            DateTime                            @default(now())
+  updatedAt            DateTime                            @updatedAt
+  reports              Report[]
+  verifications        Verification[]
+  actions              ActionLog[]
+  comments             Comment[]
+  assignments          Assignment[]
+  segment              RoadSegment?                        @relation(fields: [segmentId], references: [id])
+  agency               Agency?                             @relation(fields: [agencyId], references: [id])
+}
+
+model Report {
+  id           String       @id @default(cuid())
+  issueId      String
+  userId       String
+  role         EvidenceRole
+  photoUrl     String
+  photoSha256  String
+  signature    String
+  deviceKeyId  String?
+  nonce        String?      @unique
+  offline      Boolean      @default(false)
+  legacy       Boolean      @default(false)
+  lat          Float
+  lng          Float
+  gpsAccuracyM Float
+  capturedAt   DateTime
+  note         String?
+  noteLang     String?
+  noteEnglish  String?
+  aiTriage     Json?
+  isSeed       Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  issue        Issue        @relation(fields: [issueId], references: [id])
+}
+
+model DeviceKey {
+  id        String    @id @default(cuid())
+  userId    String
+  publicJwk Json
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+}
+
+model EvidenceNonce {
+  id        String    @id @default(cuid())
+  userId    String
+  value     String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+}
+
+model ActionLog {
+  id         String   @id @default(cuid())
+  issueId    String
+  actorId    String
+  action     String
+  note       String?
+  reportId   String?
+  fromStatus Status?
+  toStatus   Status?
+  createdAt  DateTime @default(now())
+  issue      Issue    @relation(fields: [issueId], references: [id])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  issueId    String
+  verifierId String
+  reportId   String
+  verdict    String
+  weight     Float
+  createdAt  DateTime @default(now())
+  issue      Issue    @relation(fields: [issueId], references: [id])
+
+  @@unique([issueId, verifierId])
+}
+
+model SegmentEvent {
+  id         String           @id @default(cuid())
+  segmentId  String
+  type       SegmentEventType
+  agency     String?
+  contractor String?
+  workOrder  String?
+  source     String
+  sourceId   String?
+  occurredAt DateTime
+  isSeed     Boolean          @default(false)
+  segment    RoadSegment      @relation(fields: [segmentId], references: [id])
+}
+
+model TrafficSample {
+  id            String      @id @default(cuid())
+  segmentId     String
+  sampledAt     DateTime
+  currentSpeed  Float
+  freeFlowSpeed Float
+  confidence    Float?
+  isSeed        Boolean     @default(false)
+  segment       RoadSegment @relation(fields: [segmentId], references: [id])
+
+  @@index([segmentId, sampledAt])
+}
+
+model WeatherForecast {
+  id         String   @id @default(cuid())
+  pointKey   String
+  hour       DateTime
+  precipMm   Float
+  precipProb Float
+  tempC      Float
+  fetchedAt  DateTime @default(now())
+
+  @@unique([pointKey, hour])
+}
+
+model Signal {
+  id         String                                @id @default(cuid())
+  source     String
+  sourceUrl  String                                @unique
+  sourceText String
+  placeText  String
+  category   Category
+  lat        Float?
+  lng        Float?
+  geom       Unsupported("geography(Point,4326)")?
+  expiresAt  DateTime
+  issueId    String?
+  createdAt  DateTime                              @default(now())
+}
+
+model AiJob {
+  id        String   @id @default(cuid())
+  feature   String
+  targetId  String
+  status    String   @default("queued")
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([status, feature])
+}
+
+model AiRun {
+  id         String   @id @default(cuid())
+  feature    String
+  model      String
+  promptVer  String
+  inputHash  String
+  output     Json
+  valid      Boolean
+  failReason String?
+  costUsd    Float    @default(0)
+  createdAt  DateTime @default(now())
+
+  @@index([feature, inputHash])
+}
+
+model SavedRoute {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  vehicle   String
+  geomJson  Json
+  createdAt DateTime @default(now())
+}
+
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  keys      Json
+  createdAt DateTime @default(now())
+}
+
+model Personnel {
+  id          String       @id @default(cuid())
+  name        String
+  role        String
+  contact     String
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  assignments Assignment[]
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  text      String
+  userId    String
+  issueId   String
+  createdAt DateTime @default(now())
+  issue     Issue    @relation(fields: [issueId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model PointLog {
+  id        String         @id @default(cuid())
+  points    Int
+  reason    String
+  citizenId String
+  createdAt DateTime       @default(now())
+  citizen   CitizenProfile @relation(fields: [citizenId], references: [id])
+}
+
+model Assignment {
+  id          String           @id @default(cuid())
+  issueId     String
+  completedAt DateTime?
+  createdAt   DateTime         @default(now())
+  status      AssignmentStatus @default(PENDING)
+  personnelId String
+  personnel   Personnel        @relation(fields: [personnelId], references: [id])
+  issue       Issue            @relation(fields: [issueId], references: [id])
 }

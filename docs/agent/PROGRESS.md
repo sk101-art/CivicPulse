@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T10 · Track A · started 2026-10-27
+Current task: T11 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,25 @@ Current task: T10 · Track A · started 2026-10-27
 - None
 
 ## Done
+
+### T10 · Schema v2 · 2026-10-27
+- Changed: `prisma/schema.prisma`, `prisma/migrations/20261027153000_t10_schema_v2/migration.sql`, `vitest.config.ts`, `tests/contract/geom-trigger.test.ts`
+- Verified against docs: PostGIS 3.3 geography triggers, GiST indexes, `docs/plan/PLAN.md` Appendix B, Prisma 7 client generation
+- Checks run:
+  ```
+  [npx prisma migrate status]
+  2 migrations found in prisma/migrations
+  Database schema is up to date!
+
+  [npm test]
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+    ✓ inserts an Issue via Prisma and reads back a non-null geom filled by trigger: POINT(77.5946 12.9716)
+  Test Files: 2 passed (2)
+  Tests: 4 passed (4)
+  ```
+- Feature rows ticked: F3, F7, F10, A1, A2, A3, V4 (schema models, enums, triggers, and GiST indexes)
+- Notes for the next task: Proceeding to T11 (Issue state machine and ActionLog validation).
 
 ### T04 · Supabase Postgres + PostGIS · 2026-10-27
 - Changed: `prisma.config.ts`, `prisma/migrations/20261027152433_t04_postgis/migration.sql`, `scripts/db-check.ts`, `src/lib/db/prisma.ts`, `src/lib/prisma.ts`
