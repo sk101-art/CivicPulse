@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
 interface SyncContextType {
@@ -10,13 +10,22 @@ interface SyncContextType {
 const SyncContext = createContext<SyncContextType | null>(null);
 
 export function SyncProvider({ children }: { children: ReactNode }) {
-  const [lastUpdate, setLastUpdate] = useState(Date.now());
+  const [lastUpdate, setLastUpdate] = useState(0);
   const router = useRouter();
 
   const triggerSync = useCallback(() => {
     setLastUpdate(Date.now());
     router.refresh();
   }, [router]);
+
+  // Client polling every 15s replaces server-sent events (SSE)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      triggerSync();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [triggerSync]);
 
   return (
     <SyncContext.Provider value={{ lastUpdate, triggerSync }}>

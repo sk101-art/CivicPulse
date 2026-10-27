@@ -1,163 +1,113 @@
-import { getServerSession } from "next-auth/next";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { withAuth } from "@/lib/api/auth";
+import { parseJson, coordinateSchema } from "@/lib/api/validate";
+import { apiError } from "@/lib/api/errors";
+import { prisma } from "@/lib/db/prisma";
+import { ingestReportWithSpatialMerge } from "@/lib/issues/merge";
+import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { NextResponse } from "next/server";
-import { Category } from "@prisma/client";
-import { chatWithModel } from "@/lib/ollama";
+import { Category, Role, Status } from "@prisma/client";
+import { z } from "zod";
 
-const CATEGORY_TO_DEPT_CODE: Record<Category, string> = {
-  POTHOLES: 'PWD',
-  DRAINAGE: 'PWD',
-  SIDEWALKS: 'PWD',
-  STREETLIGHTS: 'TRANS',
-  TRAFFIC_SIGNS: 'TRANS',
-  GRAFFITI: 'PWD',
-  TRASH: 'PWD',
-  OTHER: 'PWD'
-};
-
-const DEFAULT_REPORT_POINTS = 25;
+const createReportSchema = z.object({
+  title: z.string().optional(),
+  description: z.string().optional(),
+  category: z.nativeEnum(Category).default(Category.OTHER),
+  lat: coordinateSchema.shape.lat,
+  lng: coordinateSchema.shape.lng,
+  address: z.string().optional(),
+  photoUrl: z.string().url().default("https://placehold.co/600x400.jpg"),
+  photoSha256: z.string().default("placeholder_sha256"),
+  signature: z.string().default("client_signature_placeholder"),
+  gpsAccuracyM: z.number().min(0).max(30).default(10),
+});
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || (session.user as any).role !== 'CITIZEN') {
-      return new NextResponse("Unauthorized", { status: 401 });
+    const auth = await withAuth(Role.CITIZEN);
+    if (auth.error) {
+      return auth.error;
     }
 
-    const { title, description, category, latitude, longitude, address } = await req.json();
-    const userId = (session.user as any).id;
+    const parsed = await parseJson(req, createReportSchema);
+    if (parsed.error) {
+      return parsed.error;
+    }
 
-    const profile = await prisma.citizenProfile.findUnique({
-      where: { userId }
+    const { category, lat, lng, address, photoUrl, photoSha256, signature, gpsAccuracyM, description, title } =
+      parsed.data;
+
+    // Ingest with spatial merge & transactional points
+    const result = await ingestReportWithSpatialMerge({
+      userId: auth.user.id,
+      category,
+      lat,
+      lng,
+      address,
+      photoUrl,
+      photoSha256,
+      signature,
+      gpsAccuracyM,
+      note: description || title,
     });
 
-    if (!profile) {
-      return new NextResponse("Profile not found", { status: 404 });
-    }
-
-    // Find the correct department
-    const deptCode = CATEGORY_TO_DEPT_CODE[category as Category] || 'PWD';
-    let dept = await prisma.department.findUnique({ where: { code: deptCode } });
-    if (!dept) {
-      dept = await prisma.department.findFirst();
-    }
-    if (!dept) {
-      return new NextResponse("No departments configured", { status: 500 });
-    }
-
-    // AI Prioritization (with fallback)
-    let priorityScore = 0.5;
-    try {
-      const aiResponse = await chatWithModel(
-        `Score this civic issue priority from 0.0 to 1.0 (Higher=Critical). Return ONLY a JSON like {"score": 0.85}. Issue: ${title} - ${description}`
-      );
-      const jsonMatch = aiResponse.match(/\{.*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        priorityScore = parsed.score || 0.5;
-      }
-    } catch (e) {
-      console.warn("AI Scoring unavailable, using default:", e);
-    }
-
-    // Use a transaction to create report AND award points atomically
-    const result = await prisma.$transaction(async (tx: any) => {
-      // 1. Create the report
-      const report = await tx.report.create({
-        data: {
-          title,
-          description,
-          category: category as Category,
-          latitude: parseFloat(latitude) || 12.9716,
-          longitude: parseFloat(longitude) || 77.5946,
-          address: address || 'Auto-detected location',
-          citizenId: profile.id,
-          departmentId: dept!.id,
-          status: 'OPEN',
-          priorityScore
-        }
-      });
-
-      // 2. Award default points for filing a report
-      await tx.citizenProfile.update({
-        where: { id: profile.id },
-        data: { reputation: { increment: DEFAULT_REPORT_POINTS } }
-      });
-
-      // 3. Log the points
-      await tx.pointLog.create({
-        data: {
-          points: DEFAULT_REPORT_POINTS,
-          reason: `Filed civic report: ${title}`,
-          citizenId: profile.id,
-          reportId: report.id
-        }
-      });
-
-      return report;
+    // Enqueue async AI job (G1 vision triage) off the request path
+    await enqueueAiJob({
+      feature: "G1",
+      targetId: result.issue.id,
     });
 
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error("Report submission failed:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    return NextResponse.json(result, { status: 201 });
+  } catch (error: unknown) {
+    console.error("Report ingestion failed:", error);
+    return apiError(500, "INTERNAL_ERROR", "Internal server error filing report");
   }
 }
 
 export async function GET(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return new NextResponse("Unauthorized", { status: 401 });
+    const auth = await withAuth();
+    if (auth.error) {
+      return auth.error;
     }
 
     const { searchParams } = new URL(req.url);
-    const citizenOnly = searchParams.get('citizenOnly');
-    const search = searchParams.get('search');
+    const categoryParam = searchParams.get("category");
+    const statusParam = searchParams.get("status");
 
-    if (citizenOnly === 'true') {
-      const userId = (session.user as any).id;
-      const profile = await prisma.citizenProfile.findUnique({ where: { userId } });
-      if (!profile) return NextResponse.json([]);
+    const validStatus =
+      statusParam && Object.values(Status).includes(statusParam as Status)
+        ? (statusParam as Status)
+        : undefined;
 
-      const reports = await prisma.report.findMany({
-        where: { citizenId: profile.id },
-        orderBy: { createdAt: 'desc' }
-      });
-      return NextResponse.json(reports);
-    }
-
-    const deptId = searchParams.get('departmentId');
-    let where: any = deptId ? { departmentId: deptId } : {};
-
-    // Server-side search filtering
-    if (search) {
-      where = {
-        ...where,
-        OR: [
-          { title: { contains: search, mode: 'insensitive' } },
-          { address: { contains: search, mode: 'insensitive' } },
-          { description: { contains: search, mode: 'insensitive' } }
-        ]
-      };
-    }
-
-    const reports = await prisma.report.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      include: {
-        _count: { select: { votes: true, comments: true } }
+    const issues = await prisma.issue.findMany({
+      where: {
+        ...(categoryParam ? { category: categoryParam as Category } : {}),
+        ...(validStatus ? { status: validStatus } : {}),
       },
-      take: 50
+      include: {
+        reports: {
+          take: 5,
+          orderBy: { createdAt: "desc" },
+        },
+        actions: {
+          take: 5,
+          orderBy: { createdAt: "desc" },
+        },
+        _count: {
+          select: { reports: true, comments: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
     });
 
-    return NextResponse.json(reports, {
+    return NextResponse.json(issues, {
       headers: {
-        'Cache-Control': 'no-store, max-age=0',
-      }
+        "Cache-Control": "no-store, max-age=0",
+      },
     });
-  } catch (error) {
-    return new NextResponse("Error fetching reports", { status: 500 });
+  } catch (error: unknown) {
+    console.error("Error fetching issues:", error);
+    return apiError(500, "INTERNAL_ERROR", "Error fetching issues");
   }
 }

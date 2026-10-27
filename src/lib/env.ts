@@ -17,7 +17,6 @@ const serverSchema = z.object({
   GROQ_API_KEY: z.string().optional(),
   GROQ_MODEL_VISION: z.string().default("qwen/qwen3.8-27b"),
   GROQ_MODEL_TEXT: z.string().default("openai/gpt-oss-120b"),
-  OLLAMA_URL: z.string().optional(),
   AI_DAILY_CALL_CAP: z.coerce.number().default(400),
   AI_FEATURES: z.string().default("G1,G2,G7"),
   REDDIT_CLIENT_ID: z.string().optional(),

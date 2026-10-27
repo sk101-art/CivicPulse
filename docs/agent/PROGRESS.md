@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T17 · Track A · started 2026-10-27
+Current task: T20 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,35 @@ Current task: T17 · Track A · started 2026-10-27
 - None
 
 ## Done
+
+### T17 · Async AI queue; remove Ollama and SSE · 2026-10-27
+- Changed: deleted `src/lib/ollama.ts`, deleted `src/app/api/events/route.ts`, `src/components/SyncProvider.tsx`, `src/lib/jobs/aiQueue.ts`, `src/app/api/health/route.ts`, `src/app/api/reports/route.ts`, `src/lib/env.ts`, `tests/contract/health-aiqueue.test.ts`, `docs/plan/PLAN.md`
+- Verified against docs: PLAN.md Section 10 T17 rules, `AiJob` queuing mechanism, 15s SWR/interval polling in `SyncProvider`, `health` endpoint contract returning db, storage, and key readiness
+- Checks run:
+  ```
+  [git grep -n -i "ollama" src/]
+  Exit code 1 (no occurrences found in src/)
+
+  [npm test]
+  ✓ tests/unit/points.test.ts (8 tests)
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/contract/storage.test.ts (6 tests)
+  ✓ tests/unit/api-validation.test.ts (7 tests)
+  ✓ tests/contract/health-aiqueue.test.ts (3 tests)
+    ✓ GET /api/health returns valid JSON with health fields
+    ✓ enqueues and dequeues AiJob rows asynchronously off the request path
+    ✓ acceptance: no SSE route exists under api/events
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  ✓ tests/contract/merge.test.ts (5 tests)
+  Test Files: 8 passed (8)
+  Tests: 39 passed (39)
+
+  [npx eslint src/lib/jobs/aiQueue.ts src/app/api/health/route.ts src/app/api/reports/route.ts src/components/SyncProvider.tsx tests/contract/health-aiqueue.test.ts]
+  Clean exit code 0
+  ```
+- Feature rows ticked: F8 (AI off the request path)
+- Notes for the next task: Proceeding to Phase 2, T20 (Device signing keys).
 
 ### T15 · Points and XP rules; remove votes · 2026-10-27
 - Changed: `src/lib/points.ts`, `src/lib/issues/merge.ts`, `src/components/citizen/Interactions.tsx`, deleted `src/app/api/reports/[id]/vote/route.ts`, `tests/unit/points.test.ts`, `docs/plan/PLAN.md`
