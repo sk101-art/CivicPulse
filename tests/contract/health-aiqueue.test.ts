@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
 import fs from "fs";
 import path from "path";
 import { GET as healthHandler } from "@/app/api/health/route";
@@ -20,12 +20,25 @@ describe("T17 Contract Test: Async AI Queue & Health Check", () => {
     expect(data.timestamp).toBeDefined();
   });
 
+  let createdJobId: string | null = null;
+
+  afterAll(async () => {
+    if (createdJobId) {
+      try {
+        await prisma.aiJob.delete({ where: { id: createdJobId } });
+      } catch {
+        // ignore cleanup error
+      }
+    }
+  });
+
   it("enqueues and dequeues AiJob rows asynchronously off the request path", async () => {
     const targetId = `test_target_${Date.now()}`;
     const job = await enqueueAiJob({
       feature: "G1",
       targetId,
     });
+    createdJobId = job.id;
 
     expect(job.id).toBeDefined();
     expect(job.feature).toBe("G1");

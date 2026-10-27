@@ -25,6 +25,7 @@ describe('T10 PostGIS Trigger Acceptance Test', () => {
         status: 'OPEN',
         lat,
         lng,
+        isSeed: true,
         slaDueAt: new Date(Date.now() + 72 * 3600 * 1000),
       },
     });
