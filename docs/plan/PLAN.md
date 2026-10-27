@@ -1090,7 +1090,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [x] | F2 | Input validation, no fake GPS | T12 | `tests/unit/api-validation.test.ts` |
 | [ ] | F3 | Votes replaced by confirmations | T10, T15 | no `/vote` route; points tests |
 | [ ] | F5 | SLA breach job | T16 | `tests/unit/jobs-sla.test.ts` |
-| [ ] | F6 | Merge duplicates | T14 | `tests/unit/issues-merge.test.ts` |
+| [x] | F6 | Merge duplicates | T14 | `tests/contract/merge.test.ts` |
 | [ ] | F7 | PostGIS database | T04, T10 | `scripts/db-check.ts` output; geom trigger test |
 | [ ] | F8 | AI off the request path | T17 | `git grep -i ollama src` empty; AiJob tests |
 | [ ] | F9 | XP for verifying | T15 | `tests/unit/points.test.ts` |

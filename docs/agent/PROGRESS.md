@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T14 · Track A · started 2026-10-27
+Current task: T15 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,32 @@ Current task: T14 · Track A · started 2026-10-27
 - None
 
 ## Done
+
+### T14 · Duplicate merge · 2026-10-27
+- Changed: `src/lib/issues/merge.ts`, `tests/contract/merge.test.ts`, `docs/plan/PLAN.md`
+- Verified against docs: PostGIS `ST_DWithin` and `ST_Distance` on geography, cast to geography explicitly, PLAN.md Section 6 & 10 duplicate merge thresholds (25m auto-merge, 25-40m or different category within 25m duplicate review flag)
+- Checks run:
+  ```
+  [npm test]
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/contract/storage.test.ts (6 tests)
+  ✓ tests/unit/api-validation.test.ts (7 tests)
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+  ✓ tests/contract/merge.test.ts (5 tests)
+    ✓ creates base issue at reference point
+    ✓ 10 m apart, same category → merges into existing Issue with CONFIRM role
+    ✓ 30 m apart, same category → creates new Issue with needsDuplicateReview = true
+    ✓ 70 m apart, same category → creates independent Issue with needsDuplicateReview = false
+    ✓ 10 m apart, different category → creates new Issue with needsDuplicateReview = true
+  Test Files: 6 passed (6)
+  Tests: 28 passed (28)
+
+  [npx eslint src/lib/issues/merge.ts tests/contract/merge.test.ts]
+  Clean exit code 0
+  ```
+- Feature rows ticked: F6 (`tests/contract/merge.test.ts`)
+- Notes for the next task: Proceeding to T15 (Points and XP rules; remove votes).
 
 ### T13 · Photo storage · 2026-10-27
 - Changed: `src/lib/external/storage.ts`, `tests/contract/storage.test.ts`, `tests/fixtures/storage/synthetic-upload-response.json`, `docs/agent/ASSUMPTIONS.md`, `docs/agent/DECISIONS.md`, `package.json`, `package-lock.json`
