@@ -12,14 +12,33 @@ const createReportSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   category: z.nativeEnum(Category).default(Category.OTHER),
-  lat: coordinateSchema.shape.lat,
-  lng: coordinateSchema.shape.lng,
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
   address: z.string().optional(),
   photoUrl: z.string().url().default("https://placehold.co/600x400.jpg"),
   photoSha256: z.string().default("placeholder_sha256"),
   signature: z.string().default("client_signature_placeholder"),
   gpsAccuracyM: z.number().min(0).max(30).default(10),
-});
+}).transform((data) => ({
+  ...data,
+  lat: data.lat ?? data.latitude,
+  lng: data.lng ?? data.longitude,
+})).pipe(
+  z.object({
+    title: z.string().optional(),
+    description: z.string().optional(),
+    category: z.nativeEnum(Category),
+    lat: coordinateSchema.shape.lat,
+    lng: coordinateSchema.shape.lng,
+    address: z.string().optional(),
+    photoUrl: z.string().url(),
+    photoSha256: z.string(),
+    signature: z.string(),
+    gpsAccuracyM: z.number().min(0).max(30),
+  })
+);
 
 export async function POST(req: Request) {
   try {

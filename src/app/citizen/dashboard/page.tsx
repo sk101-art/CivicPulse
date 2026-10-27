@@ -122,7 +122,7 @@ export default async function CitizenDashboard() {
 
         {/* Active Reports */}
         <ActiveReports initialReports={userReports.map(r => ({
-          id: r.issueId,
+          id: r.id,
           title: `${r.issue.category.replace(/_/g, ' ')} at ${r.issue.address || 'Bengaluru'}`,
           category: r.issue.category,
           status: r.issue.status,

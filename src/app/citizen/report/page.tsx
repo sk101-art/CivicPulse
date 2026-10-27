@@ -44,8 +44,8 @@ function FileReportContent() {
     title: '',
     description: '',
     category: 'POTHOLES' as Category,
-    latitude: searchParams.get('lat') ? parseFloat(searchParams.get('lat') as string) : 0,
-    longitude: searchParams.get('lng') ? parseFloat(searchParams.get('lng') as string) : 0,
+    latitude: searchParams.get('lat') ? parseFloat(searchParams.get('lat') as string) : 12.9716,
+    longitude: searchParams.get('lng') ? parseFloat(searchParams.get('lng') as string) : 77.5946,
     address: ''
   });
 
@@ -72,7 +72,14 @@ function FileReportContent() {
       const res = await fetch('/api/reports', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+          lat: formData.latitude || 12.9716,
+          lng: formData.longitude || 77.5946,
+          address: formData.address || 'Bengaluru',
+        })
       });
 
       if (res.ok) {

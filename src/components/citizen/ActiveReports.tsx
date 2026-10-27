@@ -105,12 +105,12 @@ export function ActiveReports({ initialReports }: ActiveReportsProps) {
           animate="show"
           className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"
         >
-          {reports.map((report) => {
+          {reports.map((report, idx) => {
             const sc = statusConfig[report.status as Status] || statusConfig.OPEN;
             const ci = categoryIcons[report.category as Category] || categoryIcons.OTHER;
             const priorityPct = Math.round((report.priorityScore || 0) * 100);
             return (
-              <motion.div key={report.id} variants={fadeUp}>
+              <motion.div key={report.id ? `${report.id}-${idx}` : `report-${idx}`} variants={fadeUp}>
                 <Link
                   href={`/citizen/report/${report.id}`}
                   className="group block rounded-2xl transition-all duration-300 overflow-hidden bg-card border border-white/5 hover:bg-white/[0.04] flex flex-col h-full"

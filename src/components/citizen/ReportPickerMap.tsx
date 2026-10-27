@@ -78,7 +78,7 @@ export default function ReportPickerMap({ latitude, longitude, onChange }: Repor
 
   return (
     <MapContainer
-      center={[latitude || 40.7128, longitude || -74.0060]}
+      center={[latitude || 12.9716, longitude || 77.5946]}
       zoom={15}
       className="w-full h-full z-10"
       scrollWheelZoom
