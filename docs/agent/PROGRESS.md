@@ -1,12 +1,37 @@
 # Progress ledger
-Current task: T04 · Track A · started 2026-10-27
+Current task: T10 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
 ## Blocked (needs Sujay)
-- [U1 / T04] Need Supabase database connection strings: pooled `APP_DATABASE_URL` (port 6543) and direct `DIRECT_DATABASE_URL` (port 5432). Sujay pastes these into `.env.local` directly and replies "keys added".
+- None
 
 ## Done
+
+### T04 · Supabase Postgres + PostGIS · 2026-10-27
+- Changed: `prisma.config.ts`, `prisma/migrations/20261027152433_t04_postgis/migration.sql`, `scripts/db-check.ts`, `src/lib/db/prisma.ts`, `src/lib/prisma.ts`
+- Verified against docs: Prisma 7 `@prisma/config` types, Supabase session pooler on port 5432 for DIRECT_DATABASE_URL, PostGIS 3.3 extension syntax
+- Checks run:
+  ```
+  [prisma migrate dev]
+  Applying migration 20261027152433_t04_postgis
+  The following migration(s) have been applied:
+    migrations/
+      └─ 20261027152433_t04_postgis/
+        └─ migration.sql
+  Your database is now in sync with your schema.
+
+  [npx tsx scripts/db-check.ts]
+  PostGIS version: 3.3 USE_GEOS=1 USE_PROJ=1 USE_STATS=1
+
+  [npm test]
+  ✓ tests/unit/config.test.ts (3 tests) passed
+
+  [npm run typecheck]
+  Clean exit code 0 (43 baseline errors resolved via client generation)
+  ```
+- Feature rows ticked: F7 (part)
+- Notes for the next task: Proceeding to T10 (Prisma schema v2 and migrations).
 
 ### T03 · Test and CI harness · 2026-10-27
 - Changed: `vitest.config.ts`, `playwright.config.ts`, `package.json`, `package-lock.json`, `tests/unit/config.test.ts`, `tests/e2e/legacy/test-login.spec.js`, `tests/e2e/legacy/sync.spec.ts`, `.github/workflows/ci.yml`
