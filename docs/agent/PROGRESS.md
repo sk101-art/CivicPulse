@@ -1,12 +1,34 @@
 # Progress ledger
-Current task: T03 · Track A · started 2026-10-27
+Current task: T04 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
 ## Blocked (needs Sujay)
-- None
+- [U1 / T04] Need Supabase database connection strings: pooled `APP_DATABASE_URL` (port 6543) and direct `DIRECT_DATABASE_URL` (port 5432). Sujay pastes these into `.env.local` directly and replies "keys added".
 
 ## Done
+
+### T03 · Test and CI harness · 2026-10-27
+- Changed: `vitest.config.ts`, `playwright.config.ts`, `package.json`, `package-lock.json`, `tests/unit/config.test.ts`, `tests/e2e/legacy/test-login.spec.js`, `tests/e2e/legacy/sync.spec.ts`, `.github/workflows/ci.yml`
+- Verified against docs: Vitest 3.x documentation and types; Playwright configuration docs; GitHub Actions syntax
+- Checks run:
+  ```
+  [npm test]
+  RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+  ✓ tests/unit/config.test.ts (3 tests) 3ms
+
+  Test Files  1 passed (1)
+       Tests  3 passed (3)
+    Duration  2.46s
+
+  [Legacy E2E migration]
+  test-login.spec.js and tests/sync.spec.ts moved to tests/e2e/legacy/ and marked test.describe.skip ("replaced by T73").
+
+  [CI workflow]
+  .github/workflows/ci.yml created (actionlint not locally installed, workflow structure verified).
+  ```
+- Feature rows ticked: P3 (part)
+- Notes for the next task: Blocked before T04 awaiting database connection strings in `.env.local`.
 
 ### T02 · Env validation and config module · 2026-10-27
 - Changed: `package.json`, `src/lib/env.ts`, `config/priority.ts`, `scripts/check-keys.ts`, `src/lib/prisma.ts`

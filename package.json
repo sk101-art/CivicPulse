@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "check:keys": "tsx scripts/check-keys.ts"
+    "check:keys": "tsx scripts/check-keys.ts",
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -45,6 +47,7 @@
     "prisma": "^7.8.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }
