@@ -22,20 +22,12 @@ export async function POST(req: Request) {
     const userRole = role === 'AUTHORITY' ? 'AUTHORITY' : 'CITIZEN';
 
     const user = await prisma.$transaction(async (tx) => {
-      let departmentId = undefined;
-      if (userRole === 'AUTHORITY') {
-        let dept = await tx.department.findUnique({ where: { code: 'PWD' } });
-        if (!dept) dept = await tx.department.findFirst();
-        if (dept) departmentId = dept.id;
-      }
-
       const newUser = await tx.user.create({
         data: {
           name,
           email,
           passwordHash,
           role: userRole,
-          departmentId,
         },
       });
 

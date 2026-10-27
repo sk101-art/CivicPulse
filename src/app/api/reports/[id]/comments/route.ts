@@ -3,26 +3,31 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
-type SessionUser = { id?: string; role?: string };
-
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id: reportId } = await params;
+    const { id } = await params;
     const session = await getServerSession(authOptions);
-    if (!session) return new NextResponse("Unauthorized", { status: 401 });
+    if (!session?.user?.id) return new NextResponse("Unauthorized", { status: 401 });
 
     const body = (await req.json()) as { text?: string };
     const text = typeof body.text === 'string' ? body.text : '';
-    const sessionUser = session.user as SessionUser;
-    const userId = sessionUser?.id;
-    if (!userId) return new NextResponse("Unauthorized", { status: 401 });
+    const userId = session.user.id;
     if (!text.trim()) return new NextResponse("Invalid comment", { status: 400 });
+
+    let issueId = id;
+    const report = await prisma.report.findUnique({
+      where: { id },
+      select: { issueId: true }
+    });
+    if (report) {
+      issueId = report.issueId;
+    }
 
     const comment = await prisma.comment.create({
       data: {
         text,
         userId,
-        reportId
+        issueId,
       }
     });
 
@@ -35,10 +40,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id: reportId } = await params;
+    const { id } = await params;
+
+    let issueId = id;
+    const report = await prisma.report.findUnique({
+      where: { id },
+      select: { issueId: true }
+    });
+    if (report) {
+      issueId = report.issueId;
+    }
 
     const comments = await prisma.comment.findMany({
-      where: { reportId },
+      where: { issueId },
       include: { user: { select: { email: true, name: true } } },
       orderBy: { createdAt: 'desc' }
     });

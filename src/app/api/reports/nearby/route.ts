@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
+import { Prisma, Status, Category } from "@prisma/client";
 
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const role = (session.user as any)?.role as string | undefined;
+  const role = session.user.role;
   if (role !== "CITIZEN" && role !== "AUTHORITY") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -54,35 +55,49 @@ export async function GET(req: Request) {
   const latDelta = radius / 111_320;
   const lngDelta = radius / (111_320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)));
 
-  const where: any = {
-    latitude: { gte: lat - latDelta, lte: lat + latDelta },
-    longitude: { gte: lng - lngDelta, lte: lng + lngDelta },
+  const where: Prisma.IssueWhereInput = {
+    lat: { gte: lat - latDelta, lte: lat + latDelta },
+    lng: { gte: lng - lngDelta, lte: lng + lngDelta },
   };
 
   if (status && status !== "ALL") {
-    where.status = status;
+    where.status = status as Status;
   }
   if (category && category !== "ALL") {
-    where.category = category;
+    where.category = category as Category;
   }
 
-  const candidates = await prisma.report.findMany({
+  const candidates = await prisma.issue.findMany({
     where,
     select: {
       id: true,
-      latitude: true,
-      longitude: true,
-      title: true,
+      lat: true,
+      lng: true,
       status: true,
       category: true,
-      priorityScore: true,
+      priority: true,
+      address: true,
       createdAt: true,
     },
     orderBy: { createdAt: "desc" },
     take: 250,
   });
 
-  const reports = candidates.filter((r) => haversineMeters(lat, lng, r.latitude, r.longitude) <= radius);
+  const reports = candidates
+    .filter((r) => haversineMeters(lat, lng, r.lat, r.lng) <= radius)
+    .map((r) => ({
+      id: r.id,
+      latitude: r.lat,
+      longitude: r.lng,
+      lat: r.lat,
+      lng: r.lng,
+      title: `${r.category.replace(/_/g, " ")} at ${r.address || "Location"}`,
+      status: r.status,
+      category: r.category,
+      priorityScore: r.priority,
+      address: r.address,
+      createdAt: r.createdAt,
+    }));
 
   return NextResponse.json({
     radius,
