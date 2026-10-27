@@ -1,56 +1,29 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ThumbsUp, MessageSquare, Send, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle2, MessageSquare, Send, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-interface Props {
-  reportId: string;
-  initialVoteCount: number;
-  initialUserVote: number; // 1, -1, or 0
+interface ConfirmationProps {
+  reportId?: string;
+  initialVoteCount?: number;
+  initialUserVote?: number;
+  confirmationCount?: number;
 }
 
-export function VoteButton({ reportId, initialVoteCount, initialUserVote }: Props) {
-  const [voteCount, setVoteCount] = useState(initialVoteCount);
-  const [userVote, setUserVote] = useState(initialUserVote);
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
-  const handleVote = async () => {
-    setLoading(true);
-    const newValue = userVote === 1 ? 0 : 1;
-    try {
-      const res = await fetch(`/api/reports/${reportId}/vote`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ value: newValue === 0 ? -1 : 1 })
-      });
-      if (res.ok) {
-        setUserVote(newValue);
-        setVoteCount(prev => newValue === 1 ? prev + 1 : Math.max(0, prev - 1));
-        router.refresh();
-      }
-    } catch (e) {
-      console.error('Vote failed:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+export function ConfirmationsBadge({ confirmationCount = 0 }: { confirmationCount: number }) {
   return (
-    <button 
-      onClick={handleVote}
-      disabled={loading}
-      className={`w-full py-3.5 rounded-xl border font-display font-bold text-[11px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${
-        userVote === 1 
-          ? 'bg-cyan border-cyan text-black shadow-lg shadow-cyan/20' 
-          : 'bg-white/5 border-white/5 text-white/40 hover:bg-white/10 hover:text-white'
-      }`}
-    >
-      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ThumbsUp className="w-4 h-4" />}
-      {voteCount} Upvote{voteCount !== 1 ? 's' : ''}
-    </button>
+    <div className="w-full py-3.5 rounded-xl border border-white/10 bg-white/5 font-display font-bold text-[11px] uppercase tracking-widest text-cyan flex items-center justify-center gap-2">
+      <CheckCircle2 className="w-4 h-4 text-cyan" />
+      {confirmationCount} Confirmation{confirmationCount !== 1 ? 's' : ''}
+    </div>
   );
+}
+
+// Deprecated alias for backwards compatibility during migration; displays confirmations count without voting
+export function VoteButton({ initialVoteCount = 0, confirmationCount }: ConfirmationProps) {
+  const count = confirmationCount ?? initialVoteCount;
+  return <ConfirmationsBadge confirmationCount={count} />;
 }
 
 interface CommentItem {
@@ -79,9 +52,13 @@ export function CommentSection({ reportId }: { reportId: string }) {
     }
   };
 
-  useEffect(() => {
-    if (showComments) fetchComments();
-  }, [showComments]);
+  const handleToggleComments = () => {
+    const nextState = !showComments;
+    setShowComments(nextState);
+    if (nextState) {
+      void fetchComments();
+    }
+  };
 
   const handleSubmit = async () => {
     if (!text.trim()) return;
@@ -94,7 +71,7 @@ export function CommentSection({ reportId }: { reportId: string }) {
       });
       if (res.ok) {
         setText('');
-        fetchComments();
+        void fetchComments();
         router.refresh();
       }
     } catch (e) {
@@ -107,7 +84,7 @@ export function CommentSection({ reportId }: { reportId: string }) {
   return (
     <div className="space-y-6">
       <button 
-        onClick={() => setShowComments(!showComments)}
+        onClick={handleToggleComments}
         className="w-full py-3.5 rounded-xl bg-white/5 border border-white/5 text-[10px] font-mono uppercase tracking-widest font-bold text-white/40 hover:text-white hover:bg-white/10 transition-all flex items-center justify-center gap-2"
       >
         <MessageSquare className="w-3.5 h-3.5" />

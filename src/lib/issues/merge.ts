@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { Category, EvidenceRole, Issue, Report, Status } from "@prisma/client";
+import { awardPoints } from "@/lib/points";
 
 export interface IngestReportInput {
   userId: string;
@@ -22,6 +23,7 @@ export interface IngestReportResult {
   report: Report;
   isDuplicate: boolean;
   needsDuplicateReview: boolean;
+  pointsEarned: number;
 }
 
 interface NearbyIssueRaw {
@@ -33,9 +35,9 @@ interface NearbyIssueRaw {
 
 /**
  * Evaluates duplicate proximity rules and ingests a new report:
- * 1. Open issue of same category within 25 m -> attach evidence as CONFIRM to existing Issue.
- * 2. Ambiguous cases (within 25 m different category OR 25-40 m same category) -> create new Issue with needsDuplicateReview = true.
- * 3. Otherwise -> create new Issue with needsDuplicateReview = false.
+ * 1. Open issue of same category within 25 m -> attach evidence as CONFIRM to existing Issue (0 points for merged duplicate).
+ * 2. Ambiguous cases (within 25 m different category OR 25-40 m same category) -> create new Issue with needsDuplicateReview = true (+10 points).
+ * 3. Otherwise -> create new Issue with needsDuplicateReview = false (+10 points).
  */
 export async function ingestReportWithSpatialMerge(
   input: IngestReportInput
@@ -76,43 +78,53 @@ export async function ingestReportWithSpatialMerge(
   );
 
   if (duplicateMatch) {
-    const existingIssue = await prisma.issue.findUniqueOrThrow({
-      where: { id: duplicateMatch.id },
-    });
+    return await prisma.$transaction(async (tx) => {
+      const existingIssue = await tx.issue.findUniqueOrThrow({
+        where: { id: duplicateMatch.id },
+      });
 
-    const report = await prisma.report.create({
-      data: {
-        issueId: existingIssue.id,
+      const report = await tx.report.create({
+        data: {
+          issueId: existingIssue.id,
+          userId,
+          role: EvidenceRole.CONFIRM,
+          photoUrl,
+          photoSha256,
+          signature,
+          lat,
+          lng,
+          gpsAccuracyM,
+          capturedAt,
+          note,
+          isSeed,
+        },
+      });
+
+      await tx.actionLog.create({
+        data: {
+          issueId: existingIssue.id,
+          actorId: userId,
+          action: "CONFIRMED",
+          reportId: report.id,
+          note: `Merged duplicate report within ${Math.round(duplicateMatch.distance_m)}m`,
+        },
+      });
+
+      // Merged duplicate earns 0 points
+      await awardPoints(tx, {
         userId,
-        role: EvidenceRole.CONFIRM,
-        photoUrl,
-        photoSha256,
-        signature,
-        lat,
-        lng,
-        gpsAccuracyM,
-        capturedAt,
-        note,
-        isSeed,
-      },
-    });
+        event: "DUPLICATE_MERGE",
+        reason: "Merged duplicate report (0 points)",
+      });
 
-    await prisma.actionLog.create({
-      data: {
-        issueId: existingIssue.id,
-        actorId: userId,
-        action: "CONFIRMED",
-        reportId: report.id,
-        note: `Merged duplicate report within ${Math.round(duplicateMatch.distance_m)}m`,
-      },
+      return {
+        issue: existingIssue,
+        report,
+        isDuplicate: true,
+        needsDuplicateReview: false,
+        pointsEarned: 0,
+      };
     });
-
-    return {
-      issue: existingIssue,
-      report,
-      isDuplicate: true,
-      needsDuplicateReview: false,
-    };
   }
 
   // 2. Ambiguous proximity:
@@ -127,56 +139,65 @@ export async function ingestReportWithSpatialMerge(
   );
 
   const needsDuplicateReview = Boolean(diffCategoryWithin25m || sameCategoryBetween25And40m);
-
   const slaDueAt = new Date(Date.now() + 72 * 3600 * 1000);
 
-  const newIssue = await prisma.issue.create({
-    data: {
-      category,
-      status: Status.OPEN,
-      lat,
-      lng,
-      address: address || `Report Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
-      slaDueAt,
-      needsDuplicateReview,
-      isSeed,
-    },
-  });
+  return await prisma.$transaction(async (tx) => {
+    const newIssue = await tx.issue.create({
+      data: {
+        category,
+        status: Status.OPEN,
+        lat,
+        lng,
+        address: address || `Report Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+        slaDueAt,
+        needsDuplicateReview,
+        isSeed,
+      },
+    });
 
-  const report = await prisma.report.create({
-    data: {
-      issueId: newIssue.id,
+    const report = await tx.report.create({
+      data: {
+        issueId: newIssue.id,
+        userId,
+        role: EvidenceRole.REPORT,
+        photoUrl,
+        photoSha256,
+        signature,
+        lat,
+        lng,
+        gpsAccuracyM,
+        capturedAt,
+        note,
+        isSeed,
+      },
+    });
+
+    await tx.actionLog.create({
+      data: {
+        issueId: newIssue.id,
+        actorId: userId,
+        action: "CREATED",
+        toStatus: Status.OPEN,
+        reportId: report.id,
+        note: needsDuplicateReview
+          ? "Created new issue with duplicate review flag set"
+          : "Created new issue report",
+      },
+    });
+
+    // New Issue earns +10 points
+    const pointResult = await awardPoints(tx, {
       userId,
-      role: EvidenceRole.REPORT,
-      photoUrl,
-      photoSha256,
-      signature,
-      lat,
-      lng,
-      gpsAccuracyM,
-      capturedAt,
-      note,
-      isSeed,
-    },
-  });
+      event: "NEW_ISSUE",
+      reason: "Filed new civic issue (+10 points)",
+    });
 
-  await prisma.actionLog.create({
-    data: {
-      issueId: newIssue.id,
-      actorId: userId,
-      action: "CREATED",
-      toStatus: Status.OPEN,
-      reportId: report.id,
-      note: needsDuplicateReview
-        ? "Created new issue with duplicate review flag set"
-        : "Created new issue report",
-    },
+    return {
+      issue: newIssue,
+      report,
+      isDuplicate: false,
+      needsDuplicateReview,
+      pointsEarned: pointResult?.points ?? 10,
+    };
   });
-
-  return {
-    issue: newIssue,
-    report,
-    isDuplicate: false,
-    needsDuplicateReview,
-  };
 }

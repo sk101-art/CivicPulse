@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T15 · Track A · started 2026-10-27
+Current task: T17 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,36 @@ Current task: T15 · Track A · started 2026-10-27
 - None
 
 ## Done
+
+### T15 · Points and XP rules; remove votes · 2026-10-27
+- Changed: `src/lib/points.ts`, `src/lib/issues/merge.ts`, `src/components/citizen/Interactions.tsx`, deleted `src/app/api/reports/[id]/vote/route.ts`, `tests/unit/points.test.ts`, `docs/plan/PLAN.md`
+- Verified against docs: PLAN.md Section 6 & 10 point calculation rules (new issue +10, confirmation of someone else +5, accepted verification +20, wrong verification -20, merged duplicate 0), transactional reputation updates on `CitizenProfile`
+- Checks run:
+  ```
+  [npm test]
+  ✓ tests/unit/points.test.ts (8 tests)
+    ✓ rule: new Issue +10 points
+    ✓ rule: confirmation of someone else's issue +5 points
+    ✓ rule: confirmation of own issue earns 0 points
+    ✓ rule: accepted verification +20 points
+    ✓ rule: verification that later proves wrong −20 points
+    ✓ rule: merged duplicate earns 0 points
+    ✓ calculates tiers correctly based on reputation thresholds
+    ✓ acceptance: no route exists under /vote
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/contract/storage.test.ts (6 tests)
+  ✓ tests/unit/api-validation.test.ts (7 tests)
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+  ✓ tests/contract/merge.test.ts (5 tests)
+  Test Files: 7 passed (7)
+  Tests: 36 passed (36)
+
+  [npx eslint src/lib/points.ts src/components/citizen/Interactions.tsx tests/unit/points.test.ts]
+  Clean exit code 0
+  ```
+- Feature rows ticked: F3 (votes replaced by confirmations), F9 (XP for verifying)
+- Notes for the next task: Proceeding to T17 (Async AI queue; remove Ollama and SSE).
 
 ### T14 · Duplicate merge · 2026-10-27
 - Changed: `src/lib/issues/merge.ts`, `tests/contract/merge.test.ts`, `docs/plan/PLAN.md`
