@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, Navigation, LogOut, Radio } from 'lucide-react';
 
-export function AuthoritySidebarNav({ departmentName }: { departmentName: string }) {
+export function AuthoritySidebarNav() {
   const pathname = usePathname();
 
   const links = [

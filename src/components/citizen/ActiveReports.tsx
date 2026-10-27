@@ -8,7 +8,7 @@ import { staggerContainer, fadeUp } from '@/lib/framer';
 import { RefreshButton } from '@/components/ui/RefreshButton';
 import { useReports, Report as HookReport } from '@/hooks/useReports';
 
-interface ReportItem extends Omit<HookReport, 'priorityScore' | 'voteCount' | 'commentCount'> {
+interface ReportItem extends Omit<HookReport, 'priorityScore' | 'voteCount' | 'commentCount' | 'createdAt'> {
   id: string;
   title: string;
   category: Category;
@@ -162,7 +162,7 @@ export function ActiveReports({ initialReports }: ActiveReportsProps) {
                       {sc.label}
                     </span>
                     <span className="text-[10px] font-mono uppercase tracking-widest text-white/20 font-bold">
-                      {new Date(report.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      {report.createdAt ? new Date(report.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                     </span>
                   </div>
                 </Link>

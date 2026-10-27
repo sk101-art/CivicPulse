@@ -11,7 +11,7 @@ export interface Report {
   latitude: number;
   longitude: number;
   address?: string | null;
-  createdAt: string | Date;
+  createdAt?: string | Date;
   voteCount?: number;
   commentCount?: number;
 }
@@ -21,26 +21,24 @@ export function useReports(options: {
   autoRefresh?: number;
   initialData?: Report[];
 } = { endpoint: '/api/reports' }) {
-  const [reports, setReports] = useState<Report[]>(options.initialData || []);
-  const [loading, setLoading] = useState(true);
+  const [reports, setReports] = useState<Report[]>(() => options.initialData || []);
+  const [loading, setLoading] = useState(() => !options.initialData);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const fetchReports = useCallback(async (showLoading = true) => {
+  const fetchReports = useCallback(async () => {
     try {
-      if (showLoading) setLoading(true);
       const res = await fetch(options.endpoint);
       if (res.ok) {
         const data = await res.json();
-        // Handle case where endpoint returns { reports: [] } or just []
         setReports(Array.isArray(data) ? data : data.reports || []);
       } else {
         setError('Failed to fetch reports');
       }
-    } catch (e) {
+    } catch {
       setError('Failed to fetch reports');
     } finally {
-      if (showLoading) setLoading(false);
+      setLoading(false);
     }
   }, [options.endpoint]);
 
@@ -50,13 +48,36 @@ export function useReports(options: {
   }, [fetchReports, router]);
 
   useEffect(() => {
-    fetchReports();
-  }, [fetchReports]);
+    let ignore = false;
+    async function load() {
+      try {
+        const res = await fetch(options.endpoint);
+        if (res.ok) {
+          const data = await res.json();
+          if (!ignore) {
+            setReports(Array.isArray(data) ? data : data.reports || []);
+          }
+        } else {
+          if (!ignore) setError('Failed to fetch reports');
+        }
+      } catch {
+        if (!ignore) setError('Failed to fetch reports');
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+    load();
+    return () => {
+      ignore = true;
+    };
+  }, [options.endpoint]);
 
   // Auto-refresh interval
   useEffect(() => {
     if (options.autoRefresh && options.autoRefresh > 0) {
-      const interval = setInterval(() => fetchReports(false), options.autoRefresh);
+      const interval = setInterval(() => {
+        fetchReports();
+      }, options.autoRefresh);
       return () => clearInterval(interval);
     }
   }, [options.autoRefresh, fetchReports]);

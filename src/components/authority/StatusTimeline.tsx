@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
 import { Clock, MapPin, CheckCircle2, Circle, Settings2, Loader2, RefreshCw } from 'lucide-react';
@@ -76,15 +76,13 @@ function getElapsedTime(start: string | null, end: string | null): string {
 }
 
 function getTotalTime(report: ReportData): string {
-  const start = new Date(report.createdAt).getTime();
   const endDate = report.resolvedAt || report.rejectedAt;
-  const end = endDate ? new Date(endDate).getTime() : Date.now();
   return getElapsedTime(report.createdAt, endDate);
 }
 
 export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelineProps) {
   const router = useRouter();
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [updatingId] = useState<string | null>(null);
   const [showOverride, setShowOverride] = useState<string | null>(null);
 
   const handleFilterChange = (filter: string) => {
@@ -93,7 +91,7 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
     router.push(`/authority/status${params.toString() ? '?' + params.toString() : ''}`);
   };
 
-  const handleManualStatusUpdate = async (_reportId: string, _newStatus: string) => {
+  const handleManualStatusUpdate = async () => {
     setShowOverride(null);
     toast({
       title: 'Coming in T25',
@@ -285,7 +283,7 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
                           <button
                             key={s.key}
                             disabled={isUpdating || report.status === s.key}
-                            onClick={() => handleManualStatusUpdate(report.id, s.key)}
+                            onClick={() => handleManualStatusUpdate()}
                             className={`px-2 py-2 rounded-lg text-[8px] font-mono font-bold uppercase transition-all flex items-center justify-center gap-1.5 ${
                               report.status === s.key 
                                 ? 'bg-white/10 text-white opacity-40 cursor-default' 

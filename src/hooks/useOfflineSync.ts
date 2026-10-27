@@ -77,7 +77,6 @@ export function useOfflineSync() {
 
     const fullReport: QueuedReport = {
       ...report,
-      // eslint-disable-next-line react-hooks/purity
       createdAt: Date.now(),
       synced: false,
     };

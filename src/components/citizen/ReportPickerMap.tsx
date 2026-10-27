@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useMemo, useEffect, useSyncExternalStore } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
@@ -10,6 +10,8 @@ interface ReportPickerMapProps {
   longitude: number;
   onChange: (lat: number, lng: number) => void;
 }
+
+const emptySubscribe = () => () => {};
 
 function LocationPicker({ onChange }: { onChange: (lat: number, lng: number) => void }) {
   useMapEvents({
@@ -42,10 +44,10 @@ function MapController({ lat, lng }: { lat: number; lng: number }) {
 }
 
 export default function ReportPickerMap({ latitude, longitude, onChange }: ReportPickerMapProps) {
-  const [isMounted, setIsMounted] = useState(false);
+  const isMounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   const markerIcon = useMemo(() => {
-    if (typeof window === 'undefined') return null;
+    if (typeof window === 'undefined') return undefined;
     return L.divIcon({
       className: '',
       html: `
@@ -72,10 +74,6 @@ export default function ReportPickerMap({ latitude, longitude, onChange }: Repor
     });
   }, []);
 
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
   if (!isMounted) return <div className="w-full h-full bg-white/5 animate-pulse" />;
 
   return (
@@ -94,7 +92,7 @@ export default function ReportPickerMap({ latitude, longitude, onChange }: Repor
       <MapController lat={latitude} lng={longitude} />
       <LocationPicker onChange={onChange} />
       {latitude !== 0 && longitude !== 0 && (
-         <Marker position={[latitude, longitude]} icon={markerIcon as any} />
+         <Marker position={[latitude, longitude]} icon={markerIcon} />
       )}
     </MapContainer>
   );

@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { LucideIcon } from 'lucide-react';
-
 import { AlertTriangle, CheckCircle2, TrendingUp, BarChart3 } from 'lucide-react';
 
 interface KPICardProps {

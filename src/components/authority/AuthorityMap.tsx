@@ -162,8 +162,6 @@ function buildDetourWaypoints(
   return waypoints;
 }
 
-function fmt(m: number) { return m > 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`; }
-function fmtTime(s: number) { const m = Math.round(s / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`; }
 
 function CustomZoomControls() {
   const map = useMap();
@@ -188,8 +186,7 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
 
   const [allRoutes, setAllRoutes] = useState<RouteOption[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
-  const [hazards, setHazards] = useState<ReportPoint[]>([]);
-  const [pulse, setPulse] = useState(0);
+    const [pulse, setPulse] = useState(0);
   const [loading, setLoading] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
 
@@ -212,20 +209,18 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
     return (category: string) => map[category] ?? 'var(--cat-other)';
   }, []);
 
-  useEffect(() => {
+  const hazards = useMemo(() => {
     if (allRoutes.length > 0 && allRoutes[selectedRouteIndex]) {
-      const openIssues = reports.filter(r => r.status !== 'RESOLVED');
-      const onRoute = openIssues.filter(issue => pointToPolyDist([issue.latitude, issue.longitude], allRoutes[selectedRouteIndex].coords) < HAZARD_RADIUS);
-      setHazards(onRoute);
-    } else {
-      setHazards([]);
+      const openIssues = reports.filter(r => r.status !== 'VERIFIED_FIXED' && r.status !== 'REJECTED');
+      return openIssues.filter(issue => pointToPolyDist([issue.latitude, issue.longitude], allRoutes[selectedRouteIndex].coords) < HAZARD_RADIUS);
     }
+    return [];
   }, [selectedRouteIndex, allRoutes, reports]);
 
   const clearRoutes = useCallback(() => {
     setAllRoutes([]);
     setSelectedRouteIndex(0);
-    setHazards([]);
+    
     setRouteError(null);
   }, []);
 
@@ -290,7 +285,7 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
           // Safety-first: pick first hazard-free route found, ignore distance entirely
           setAllRoutes([safeRoutes[0]]);
           setSelectedRouteIndex(0);
-          setHazards([]);
+          
           setLoading(false);
           return;
         }
@@ -298,7 +293,7 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
 
       // If we reach here, no safe route was found — do NOT render a hazardous route
       setAllRoutes([]);
-      setHazards([]);
+      
       setRouteError(
         'No safe vehicle route found. All computed paths pass within 15m of a reported hazard. ' +
         'Try adjusting your source or destination to avoid the hazard area.'

@@ -1,45 +1,25 @@
 'use client';
 
 import { useState } from 'react';
-import { motion } from 'framer-motion';
 import { 
-  ShieldCheck, AlertTriangle, Send, Loader2, 
-  XCircle, CheckCircle2, UserPlus, PlayCircle 
+  ShieldCheck, AlertTriangle, Loader2, 
+  XCircle, PlayCircle 
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useRouter } from 'next/navigation';
 
 interface StatusTrackerProps {
-  reportId: string;
+  reportId?: string;
   status: string;
   onUpdate?: () => void;
 }
 
-export function AuthorityStatusTracker({ reportId, status, onUpdate }: StatusTrackerProps) {
+export function AuthorityStatusTracker({ status }: StatusTrackerProps) {
   const [loading, setLoading] = useState<string | null>(null);
-  const router = useRouter();
 
   const handleAction = async (action: 'confirm' | 'reject' | 'start') => {
     setLoading(action);
     try {
-      const endpoint = action === 'start' ? 'resolve' : action; // Simplified for now, user might want separate start
-      // Actually, user specified /confirm. For start, I'll use a new one if I create it, 
-      // but for now I'll implement confirm and reject.
-      
-      const res = await fetch(`/api/reports/${reportId}/${action}`, {
-        method: 'POST',
-      });
-
-      if (res.ok) {
-        toast.success(`Report ${action}ed successfully`);
-        router.refresh();
-        if (onUpdate) onUpdate();
-      } else {
-        toast.error(`Failed to ${action} report`);
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error('An error occurred');
+      toast.info(`Action ${action} will be available in T25 via state machine.`);
     } finally {
       setLoading(null);
     }

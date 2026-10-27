@@ -149,13 +149,6 @@ function buildDetourWaypoints(
   return waypoints;
 }
 
-function fmt(m: number) { return m > 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`; }
-function fmtTime(s: number) { const m = Math.round(s / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)}h ${m % 60}m`; }
-
-function ZoomTracker({ onZoom }: { onZoom: (z: number) => void }) {
-  useMapEvents({ zoomend(e) { onZoom(e.target.getZoom()); } });
-  return null;
-}
 
 function MapClickHandler({ mode, onPlace }: { mode: PlacementMode; onPlace: (latlng: L.LatLng) => void }) {
   useMapEvents({ click(e) { if (mode) onPlace(e.latlng); } });
@@ -180,14 +173,11 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
     autoRefresh: 30000,
   });
   const reports = rawReports as NearbyReport[];
-  const [filtered, setFiltered] = useState<NearbyReport[]>([]);
-  const [userPos, setUserPos] = useState<[number, number] | null>(null);
+    const [userPos, setUserPos] = useState<[number, number] | null>(null);
   const [geoError, setGeoError] = useState('');
   const [radius] = useState(10000);
   const [mapCenter, setMapCenter] = useState<[number, number]>([12.9716, 77.5946]);
-  const [zoom, setZoom] = useState(16);
-
-  const [categoryFilter, setCategoryFilter] = useState('ALL');
+    const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   const [mode, setMode] = useState<PlacementMode>(null);
@@ -195,8 +185,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
   const [destination, setDestination] = useState<[number, number] | null>(null);
   const [allRoutes, setAllRoutes] = useState<RouteOption[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
-  const [hazards, setHazards] = useState<NearbyReport[]>([]);
-  const [routeLoading, setRouteLoading] = useState(false);
+    const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [pulse, setPulse] = useState(0);
 
@@ -225,36 +214,34 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
         setMapCenter(coords);
         setGeoError('');
       },
-      (err) => { setGeoError('Location access denied. Showing default area.'); },
+      () => { setGeoError('Location access denied. Showing default area.'); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }, []);
 
-  useEffect(() => {
-    if (!userPos) { setFiltered(reports); return; }
+  const filtered = useMemo(() => {
+    if (!userPos) return reports;
     const withinRadius = reports.filter(r => haversineMeters(userPos[0], userPos[1], r.latitude, r.longitude) <= radius);
     let f = withinRadius;
     if (categoryFilter !== 'ALL') f = f.filter(r => r.category === categoryFilter);
     if (statusFilter !== 'ALL') f = f.filter(r => r.status === statusFilter);
-    setFiltered(f);
+    return f;
   }, [reports, userPos, radius, categoryFilter, statusFilter]);
 
   // Removed renderPoints clustering
 
-  useEffect(() => {
+  const hazards = useMemo(() => {
     if (allRoutes.length > 0 && allRoutes[selectedRouteIndex]) {
-      const openIssues = reports.filter(r => r.status !== 'RESOLVED');
-      const onRoute = openIssues.filter(issue => pointToPolyDist([issue.latitude, issue.longitude], allRoutes[selectedRouteIndex].coords) < HAZARD_RADIUS);
-      setHazards(onRoute);
-    } else {
-      setHazards([]);
+      const openIssues = reports.filter(r => r.status !== 'VERIFIED_FIXED' && r.status !== 'REJECTED');
+      return openIssues.filter(issue => pointToPolyDist([issue.latitude, issue.longitude], allRoutes[selectedRouteIndex].coords) < HAZARD_RADIUS);
     }
+    return [];
   }, [selectedRouteIndex, allRoutes, reports]);
 
   const clearRoutes = useCallback(() => {
     setAllRoutes([]);
     setSelectedRouteIndex(0);
-    setHazards([]);
+    
     setRouteError(null);
   }, []);
 
@@ -295,7 +282,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
         if (hz.length === 0) {
           setAllRoutes([{ ...r, hazards: 0, status: 'safe' }]);
           setSelectedRouteIndex(0);
-          setHazards([]);
+          
           setRouteLoading(false);
           return;
         }
@@ -332,7 +319,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
           // Safety-first: pick first hazard-free route, ignore distance
           setAllRoutes([safeRoutes[0]]);
           setSelectedRouteIndex(0);
-          setHazards([]);
+          
           setRouteLoading(false);
           return;
         }
@@ -340,7 +327,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
 
       // If we reach here, no safe route was found — do NOT render a hazardous route
       setAllRoutes([]);
-      setHazards([]);
+      
       setRouteError(
         'No safe vehicle route found. All computed paths pass within 15m of a reported hazard. ' +
         'Try adjusting your source or destination to avoid the hazard area.'
@@ -354,7 +341,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
     }
   }, [source, destination, reports, clearRoutes]);
 
-  const [nowMs, setNowMs] = useState(Date.now());
+  const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 60000);
     return () => clearInterval(timer);
@@ -529,8 +516,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
 
       <MapContainer center={mapCenter} zoom={16} className="w-full h-full" scrollWheelZoom zoomControl={false} style={{ background: 'var(--bg-primary)' }}>
         <CustomZoomControls />
-        <ZoomTracker onZoom={setZoom} />
-        <MapClickHandler mode={mode} onPlace={handlePlace} />
+                <MapClickHandler mode={mode} onPlace={handlePlace} />
         <TileLayer attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
 
         {userPos && (

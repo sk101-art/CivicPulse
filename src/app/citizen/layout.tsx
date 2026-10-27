@@ -7,9 +7,9 @@ import { MobileNav } from "@/components/layout/MobileNav";
 
 export default async function CitizenLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
-  if (!session || (session.user as any).role !== 'CITIZEN') redirect('/login');
+  if (!session || session.user.role !== 'CITIZEN') redirect('/login');
 
-  const userId = (session?.user as any)?.id;
+  const userId = session.user.id;
   if (!userId) { redirect('/login'); return null; }
 
   const user = await prisma.user.findUnique({
@@ -17,12 +17,16 @@ export default async function CitizenLayout({ children }: { children: React.Reac
     include: { citizenProfile: true }
   });
 
-  const links: any[] = [
+  const links: Array<{
+    href: string;
+    icon: 'TrendingUp' | 'User' | 'Map' | 'FileText' | 'LayoutDashboard';
+    label: string;
+  }> = [
     { href: '/citizen/dashboard', icon: 'TrendingUp', label: 'Dashboard' },
     { href: '/citizen/profile', icon: 'User', label: 'Profile' },
     { href: '/citizen/report', icon: 'FileText', label: 'Report' },
     { href: '/citizen/map', icon: 'Map', label: 'Map View' },
-    { href: '/citizen/extra', icon: 'Crosshair', label: 'Extra Feature' },
+    { href: '/citizen/extra', icon: 'LayoutDashboard', label: 'Extra Feature' },
   ];
 
   return (

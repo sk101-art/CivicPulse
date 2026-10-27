@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Eye, EyeOff, CheckCircle2, Shield, User, Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
-import { buttonTap, modalContent, SMOOTH } from '@/lib/framer';
+import { Eye, EyeOff, User, Mail, Lock, ArrowRight } from 'lucide-react';
+import { buttonTap, modalContent } from '@/lib/framer';
 
 function FloatingField({
   label,
@@ -26,7 +26,7 @@ function FloatingField({
   error?: boolean;
   right?: React.ReactNode;
   autoComplete?: string;
-  icon?: any;
+  icon?: React.ComponentType<{ className?: string }>;
 }) {
   const [focused, setFocused] = useState(false);
   const border = error ? 'rgba(255,46,99,0.55)' : focused ? 'rgba(0,245,212,0.4)' : 'rgba(255,255,255,0.08)';
@@ -83,8 +83,6 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [shake, setShake] = useState(false);
 
-  const isCitizen = role === 'citizen';
-
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -123,8 +121,8 @@ export default function LoginPage() {
           router.push(target);
         }, 800);
       }
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Authentication failed');
       setShake(true);
       setTimeout(() => setShake(false), 500);
     } finally {

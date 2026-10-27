@@ -23,7 +23,11 @@ const Map = dynamic(
 
 const CATEGORIES = ['POTHOLES', 'DRAINAGE', 'STREETLIGHTS', 'SIDEWALKS', 'TRAFFIC_SIGNS', 'GRAFFITI', 'TRASH', 'OTHER'];
 
-export function MapWrapper(props: any) {
+interface MapWrapperProps {
+  showReportButton?: boolean;
+}
+
+export function MapWrapper(props: MapWrapperProps) {
   const router = useRouter();
   const [reportModal, setReportModal] = useState<{ lat: number; lng: number } | null>(null);
   const [formData, setFormData] = useState({

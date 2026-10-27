@@ -231,7 +231,7 @@ export default async function ExtraFeaturePage() {
               }}
             >
               <div className="text-[9px] uppercase tracking-widest mb-3" style={{ color: 'rgba(0,245,212,0.5)' }}>
-                // FORMAT: [index] TITLE → LAT, LNG (STATUS)
+                {`// FORMAT: [index] TITLE → LAT, LNG (STATUS)`}
               </div>
               {reports.map((r, i) => (
                 <div key={r.id} className="flex gap-3 hover:text-white/80 transition-colors">

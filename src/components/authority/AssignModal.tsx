@@ -69,30 +69,7 @@ export function AssignModal({ issue, isOpen, onClose, onAssign }: AssignModalPro
     }
   };
 
-  const handleAddAndAssign = async () => {
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/personnels', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newStaff)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setDeployedName(newStaff.name);
-        await onAssign(data.id);
-        setShowSuccess(true);
-        setTimeout(() => {
-          onClose();
-        }, 1800);
-      }
-    } catch (e) {
-      console.error(e);
-      setSubmitting(false);
-    }
-  };
-
-  const handleAddStaff = async () => {
+    const handleAddStaff = async () => {
     if (!newStaff.name) return;
     try {
       const res = await fetch('/api/personnels', {

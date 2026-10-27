@@ -1,11 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { 
   CheckCircle, X, Camera, Send, Loader2,
   ClipboardCheck, UserPlus, MapPin, ShieldCheck, Hash
 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { modalBackdrop, modalContent, fadeUp, staggerContainer } from '@/lib/framer';
 import { toast } from '@/lib/toast';
@@ -33,14 +32,8 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
   // Track loading per item ID to accommodate multiple simultaneous actions
   const [loadingItems, setLoadingItems] = useState<Record<string, boolean>>({});
   const [resolveData, setResolveData] = useState({ desc: '', photo: '' });
-  const [localIssues, setLocalIssues] = useState<IssueItem[]>(issues);
-  const router = useRouter();
 
-  useEffect(() => {
-    setLocalIssues(issues);
-  }, [issues]);
-
-  const activeIssues = localIssues.filter(i => i.status !== 'RESOLVED' && i.status !== 'VERIFIED_FIXED');
+  const activeIssues = issues.filter(i => i.status !== 'VERIFIED_FIXED' && i.status !== 'REJECTED');
   const currentIssue = issues.find(i => i.id === selectedId);
 
   const setItemLoading = (id: string, loading: boolean) => {
@@ -72,7 +65,7 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
     }
   };
 
-  const handleAssignConfirm = async (_personnelId: string) => {
+  const handleAssignConfirm = async () => {
     if (!selectedId) return;
     setIsAssigning(false);
     setSelectedId(null);

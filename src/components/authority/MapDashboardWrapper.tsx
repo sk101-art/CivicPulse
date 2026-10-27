@@ -38,7 +38,7 @@ export function MapDashboardWrapper({ reports: initialReports, showReportButton 
   const [submitting, setSubmitting] = useState(false);
   const { reports } = useReports({
     endpoint: '/api/reports/authority',
-    initialData: initialReports as any,
+    initialData: initialReports.map(r => ({ ...r, priorityScore: r.priorityScore ?? 0 })),
     autoRefresh: 30000,
   });
 

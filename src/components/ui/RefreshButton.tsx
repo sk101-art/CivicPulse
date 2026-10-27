@@ -19,7 +19,7 @@ export function RefreshButton({ onRefresh, className = '' }: RefreshButtonProps)
       if (onRefresh) await onRefresh();
       router.refresh();
       toast({ title: 'Synced', description: 'Data refreshed successfully', variant: 'success' });
-    } catch (e) {
+    } catch {
       toast({ title: 'Sync Failed', description: 'Could not refresh data', variant: 'error' });
     } finally {
       setTimeout(() => setLoading(false), 500);

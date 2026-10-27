@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   User, Shield, HardHat, Truck, Trash2, Plus, 
-  Phone, Mail, X, Send, Loader2, Info
+  Phone, Send, Loader2
 } from 'lucide-react';
 import { fadeUp, staggerContainer, modalBackdrop, modalContent } from '@/lib/framer';
 import { useRouter } from 'next/navigation';

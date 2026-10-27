@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, Suspense } from 'react';
+import { useEffect, useRef, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Category } from '@prisma/client';
@@ -8,10 +8,9 @@ import {
   ChevronLeft, Camera, MapPin, Send, Loader2, 
   ArrowRight, Check, AlertCircle, Trash2, 
   Lightbulb, Droplets, Construction, Signpost,
-  Palette, Trash, HelpCircle, Zap
+  Palette, Trash, HelpCircle, Zap, type LucideIcon
 } from 'lucide-react';
-import Link from 'next/link';
-import { SMOOTH, fadeUp, staggerContainer } from '@/lib/framer';
+import { fadeUp, staggerContainer } from '@/lib/framer';
 import dynamic from 'next/dynamic';
 import { AppHeader } from "@/components/layout/AppHeader";
 
@@ -20,7 +19,7 @@ const ReportPickerMap = dynamic(() => import('@/components/citizen/ReportPickerM
   loading: () => <div className="w-full h-full bg-white/5 animate-pulse flex items-center justify-center font-mono text-[10px] uppercase tracking-widest text-white/20">Initializing Map Core...</div>
 });
 
-const categories: { id: Category; label: string; icon: any; color: string }[] = [
+const categories: { id: Category; label: string; icon: LucideIcon; color: string }[] = [
   { id: 'POTHOLES',      label: 'Potholes',      icon: Construction, color: 'var(--cat-potholes)' },
   { id: 'DRAINAGE',      label: 'Drainage',      icon: Droplets,     color: 'var(--cat-drainage)' },
   { id: 'STREETLIGHTS',  label: 'Streetlights',  icon: Lightbulb,    color: 'var(--cat-streetlights)' },
@@ -39,7 +38,6 @@ function FileReportContent() {
   const [step, setStep] = useState<Step>('CATEGORY');
   const [loading, setLoading] = useState(false);
   const [useMyLocation, setUseMyLocation] = useState(false);
-  const [photo, setPhoto] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const descRef = useRef<HTMLTextAreaElement | null>(null);
   const [formData, setFormData] = useState({
@@ -87,15 +85,12 @@ function FileReportContent() {
     }
   };
 
-  const stepLabels = useMemo(
-    () => ({
-      CATEGORY: 'Category',
-      DETAILS: 'Details',
-      LOCATION: 'Location',
-      SUBMIT: 'Submit',
-    }),
-    []
-  );
+  const handlePhotoChange = (file: File | null) => {
+    setPhotoPreviewUrl(prevUrl => {
+      if (prevUrl) URL.revokeObjectURL(prevUrl);
+      return file ? URL.createObjectURL(file) : null;
+    });
+  };
 
   useEffect(() => {
     if (!descRef.current) return;
@@ -116,14 +111,12 @@ function FileReportContent() {
   }, [useMyLocation]);
 
   useEffect(() => {
-    if (!photo) {
-      setPhotoPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(photo);
-    setPhotoPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [photo]);
+    return () => {
+      if (photoPreviewUrl) {
+        URL.revokeObjectURL(photoPreviewUrl);
+      }
+    };
+  }, [photoPreviewUrl]);
 
   return (
     <div className="flex-1 overflow-y-auto flex flex-col font-body bg-primary w-full pb-24 lg:pb-0">
@@ -254,7 +247,7 @@ function FileReportContent() {
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => setPhoto(e.target.files?.[0] || null)}
+                        onChange={(e) => handlePhotoChange(e.target.files?.[0] || null)}
                       />
 
                       {photoPreviewUrl ? (
@@ -263,7 +256,7 @@ function FileReportContent() {
                           <img src={photoPreviewUrl} alt="Selected report photo" className="w-full h-full object-cover" />
                           <button
                             type="button"
-                            onClick={(e) => { e.preventDefault(); setPhoto(null); }}
+                            onClick={(e) => { e.preventDefault(); handlePhotoChange(null); }}
                             className="absolute top-3 right-3 p-2 rounded-xl bg-black/50 border border-white/10 text-white/70 hover:text-white hover:bg-black/60 opacity-0 group-hover:opacity-100 transition-all"
                             aria-label="Remove photo"
                           >
