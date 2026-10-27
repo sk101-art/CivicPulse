@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T13 · Track A · started 2026-10-27
+Current task: T14 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,32 @@ Current task: T13 · Track A · started 2026-10-27
 - None
 
 ## Done
+
+### T13 · Photo storage · 2026-10-27
+- Changed: `src/lib/external/storage.ts`, `tests/contract/storage.test.ts`, `tests/fixtures/storage/synthetic-upload-response.json`, `docs/agent/ASSUMPTIONS.md`, `docs/agent/DECISIONS.md`, `package.json`, `package-lock.json`
+- Verified against docs: `@supabase/supabase-js` storage API (`upload`, `getPublicUrl`), Node.js `crypto` SHA-256 calculation, PLAN.md Section 10 T13 specifications (JPEG/WebP only, <= 2 MB, deterministic path structure)
+- Checks run:
+  ```
+  [npm test]
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/contract/storage.test.ts (6 tests)
+    ✓ validates fixture image and matches SHA-256 hash
+    ✓ rejects photos exceeding 2 MB limit
+    ✓ rejects unsupported MIME types (e.g., image/png or text/plain)
+    ✓ rejects empty buffer
+    ✓ uploads photo and generates path issues/<issueId>/<reportId>.jpg with matched hash
+    ✓ supports WebP extension in path issues/<issueId>/<reportId>.webp
+  ✓ tests/unit/api-validation.test.ts (7 tests)
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  Test Files: 5 passed (5)
+  Tests: 23 passed (23)
+
+  [npx eslint src/lib/external/storage.ts tests/contract/storage.test.ts]
+  Clean exit code 0
+  ```
+- Feature rows ticked: F1 (`tests/contract/storage.test.ts` passing)
+- Notes for the next task: Proceeding to T14 (Duplicate merge and spatial queries).
 
 ### T12 · Validation layer and API error contract · 2026-10-27
 - Changed: `src/lib/api/errors.ts`, `src/lib/api/validate.ts`, `src/lib/api/auth.ts`, `src/types/next-auth.d.ts`, `src/lib/auth.ts`, `src/app/api/reports/authority/route.ts`, `tests/unit/api-validation.test.ts`, `docs/plan/PLAN.md`
