@@ -23,8 +23,8 @@ async function main() {
   try {
     const res = await pool.query("SELECT postgis_version();");
     console.log("PostGIS version:", res.rows[0].postgis_version);
-  } catch (err: any) {
-    console.error("Database check failed:", err.message);
+  } catch (err: unknown) {
+    console.error("Database check failed:", err instanceof Error ? err.message : String(err));
     process.exit(1);
   } finally {
     await pool.end();
