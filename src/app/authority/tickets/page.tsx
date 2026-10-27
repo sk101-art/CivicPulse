@@ -5,8 +5,10 @@ import { ActiveIssuesList } from "@/components/authority/ActiveIssuesList";
 import { TicketFilters } from "@/components/authority/TicketFilters";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { Suspense } from "react";
-import { Loader2, Search, ShieldAlert } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { RefreshButton } from "@/components/ui/RefreshButton";
+import { Prisma } from "@prisma/client";
+import { redirect } from "next/navigation";
 
 export const revalidate = 0;
 
@@ -23,75 +25,31 @@ export default async function AuthorityTicketsPage({
   const { sort = 'latest', search = '', status = '', category = '' } = await searchParams;
   const session = await getServerSession(authOptions);
   
-  const userId = (session?.user as any)?.id;
-  const userWithDept = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { department: true },
-  });
-
-  // Redirect non-authority users to login immediately
-  if (!session || (session.user as any)?.role !== 'AUTHORITY') {
-    const { redirect } = await import('next/navigation');
+  if (!session || session.user.role !== 'AUTHORITY') {
     redirect('/login');
   }
 
-  if (!userWithDept?.departmentId) {
-    return (
-      <main className="flex items-center justify-center min-h-screen bg-primary text-white p-6">
-        <div className="max-w-md text-center space-y-6 p-10 rounded-[2.5rem] bg-card border border-white/5 shadow-2xl">
-          <div className="w-16 h-16 bg-magenta/10 text-magenta rounded-2xl flex items-center justify-center mx-auto">
-            <ShieldAlert className="w-8 h-8" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-2xl font-display font-bold uppercase tracking-tight">Access Restricted</h1>
-            <p className="text-xs font-mono uppercase tracking-widest text-white/40 leading-relaxed">
-              Account ID: {userId}<br/>
-              Status: UNASSIGNED_NODE
-            </p>
-          </div>
-          <p className="text-sm text-white/60 leading-relaxed">
-            This administrative terminal is restricted to departmental personnel.
-            Your account is currently not indexed within any active municipal department.
-          </p>
-          <div className="pt-4">
-             <a
-               href="/login"
-               className="block text-center w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-[10px] font-mono font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-all"
-             >
-               Return to Login
-             </a>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  const deptId = userWithDept.departmentId;
-
-  // Build where clause — keep search in Prisma, but filter enum fields in JS to avoid PrismaPg adapter issues
-  let where: any = { departmentId: deptId };
+  const where: Prisma.IssueWhereInput = {};
 
   if (search) {
     where.OR = [
-      { title: { contains: search, mode: 'insensitive' } },
       { address: { contains: search, mode: 'insensitive' } },
-      { description: { contains: search, mode: 'insensitive' } },
+      { piText: { contains: search, mode: 'insensitive' } },
     ];
   }
 
   // Sorting
-  let orderBy: any = { createdAt: 'desc' };
-  if (sort === 'priority') orderBy = { priorityScore: 'desc' };
-  if (sort === 'latest') orderBy = { createdAt: 'desc' };
+  const orderBy: Prisma.IssueOrderByWithRelationInput =
+    sort === 'priority' ? { priority: 'desc' } : { createdAt: 'desc' };
 
-  const rawReports = await prisma.report.findMany({
+  const rawIssues = await prisma.issue.findMany({
     where,
-    include: { _count: { select: { votes: true, comments: true } } },
+    include: { _count: { select: { reports: true, comments: true } }, agency: true },
     orderBy,
   });
 
   // Apply enum filters in JS
-  let displayReports = [...rawReports];
+  let displayReports = [...rawIssues];
   if (status) {
     displayReports = displayReports.filter(r => r.status === status);
   }
@@ -99,9 +57,9 @@ export default async function AuthorityTicketsPage({
     displayReports = displayReports.filter(r => r.category === category);
   }
   if (sort === 'votes') {
-    displayReports.sort((a: any, b: any) => (b._count?.votes || 0) - (a._count?.votes || 0));
+    displayReports.sort((a, b) => (b._count?.reports || 0) - (a._count?.reports || 0));
   } else if (sort === 'comments') {
-    displayReports.sort((a: any, b: any) => (b._count?.comments || 0) - (a._count?.comments || 0));
+    displayReports.sort((a, b) => (b._count?.comments || 0) - (a._count?.comments || 0));
   }
 
   return (
@@ -136,15 +94,15 @@ export default async function AuthorityTicketsPage({
           }>
             <ActiveIssuesList issues={displayReports.map(r => ({
               id: r.id,
-              title: r.title,
+              title: `${r.category.replace(/_/g, ' ')} at ${r.address || 'Bengaluru'}`,
               category: r.category,
               status: r.status,
-              priorityScore: r.priorityScore,
+              priorityScore: r.priority,
               slaBreached: r.slaBreached,
-              voteCount: r._count?.votes || 0,
+              voteCount: r._count?.reports || 0,
               commentCount: r._count?.comments || 0,
               createdAt: r.createdAt,
-              slaHours: userWithDept!.department!.slaHours,
+              slaHours: r.agency?.slaHours ?? 72,
               address: r.address || ''
             }))} />
 

@@ -12,36 +12,42 @@ export const revalidate = 0;
 
 export default async function CitizenDashboard() {
   const session = await getServerSession(authOptions);
-  if (!session || (session.user as any).role !== 'CITIZEN') {
+  if (!session || session.user.role !== 'CITIZEN') {
     redirect('/login');
   }
 
-  const userId = (session?.user as any)?.id;
+  const userId = session.user.id;
   if (!userId) { redirect('/login'); return null; }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
-      citizenProfile: {
-        include: {
-          reports: {
-            orderBy: { createdAt: 'desc' },
-            take: 10,
-            include: { _count: { select: { votes: true, comments: true } } }
-          },
-          _count: { select: { votes: true } }
-        }
-      }
+      citizenProfile: true,
     }
   });
 
   const profile = user?.citizenProfile;
   if (!profile) { redirect('/login'); return null; }
 
+  const userReports = await prisma.report.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+    include: {
+      issue: {
+        include: { _count: { select: { reports: true, comments: true } } }
+      }
+    }
+  });
+
+  const totalReportsCount = await prisma.report.count({ where: { userId, role: 'REPORT' } });
+  const confirmationsCount = await prisma.report.count({ where: { userId, role: 'CONFIRM' } });
+  const resolvedCount = userReports.filter(r => ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(r.issue.status)).length;
+
   const stats = {
-    reported: profile.reports.length,
-    resolved: profile.reports.filter((r: any) => r.status === 'RESOLVED').length,
-    votes: profile._count?.votes || 0,
+    reported: totalReportsCount,
+    resolved: resolvedCount,
+    votes: confirmationsCount,
     tier: profile.tier,
     xp: profile.reputation,
   };
@@ -98,7 +104,7 @@ export default async function CitizenDashboard() {
                     { label: 'Resolved', value: stats.resolved, color: 'var(--accent-lime)' },
                     { label: 'Votes', value: stats.votes, color: 'var(--accent-amber)' },
                     { label: 'Tier Status', value: profile.tier, color: 'var(--tier-contributor)' },
-                  ].map((s, i) => (
+                  ].map((s) => (
                     <div key={s.label} className="space-y-1 min-w-[80px]">
                       <div className="text-xl md:text-2xl font-display font-black tracking-tighter" style={{ color: s.color }}>
                         {s.value}
@@ -115,18 +121,18 @@ export default async function CitizenDashboard() {
         </div>
 
         {/* Active Reports */}
-        <ActiveReports initialReports={profile.reports.map((r: any) => ({
-          id: r.id,
-          title: r.title,
-          category: r.category,
-          status: r.status,
+        <ActiveReports initialReports={userReports.map(r => ({
+          id: r.issueId,
+          title: `${r.issue.category.replace(/_/g, ' ')} at ${r.issue.address || 'Bengaluru'}`,
+          category: r.issue.category,
+          status: r.issue.status,
           createdAt: r.createdAt,
-          address: r.address,
-          latitude: r.latitude,
-          longitude: r.longitude,
-          priorityScore: r.priorityScore,
-          voteCount: r._count?.votes || 0,
-          commentCount: r._count?.comments || 0,
+          address: r.issue.address,
+          latitude: r.lat,
+          longitude: r.lng,
+          priorityScore: r.issue.priority,
+          voteCount: r.issue._count?.reports || 0,
+          commentCount: r.issue._count?.comments || 0,
         }))} />
       </div>
     </main>

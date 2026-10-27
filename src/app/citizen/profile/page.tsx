@@ -15,23 +15,12 @@ export default async function CitizenProfile() {
   const session = await getServerSession(authOptions);
   if (!session) redirect('/login');
 
-  const userId = (session.user as any).id;
+  const userId = session.user.id;
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
-      citizenProfile: {
-        include: {
-          reports: {
-            orderBy: { createdAt: 'desc' },
-            take: 10,
-            include: {
-              _count: { select: { votes: true, comments: true } }
-            }
-          },
-          _count: { select: { reports: true, votes: true } }
-        }
-      }
+      citizenProfile: true,
     }
   });
 
@@ -39,11 +28,26 @@ export default async function CitizenProfile() {
 
   const profile = user.citizenProfile;
 
+  const userReports = await prisma.report.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+    include: {
+      issue: {
+        include: {
+          _count: { select: { reports: true, comments: true } }
+        }
+      }
+    }
+  });
+
+  const reportsCount = await prisma.report.count({ where: { userId, role: 'REPORT' } });
+  const votesCount = await prisma.report.count({ where: { userId, role: 'CONFIRM' } });
+
   const pointLogs = await prisma.pointLog.findMany({
     where: { citizenId: profile.id },
     orderBy: { createdAt: 'desc' },
     take: 15,
-    include: { report: true }
   });
 
   const tierColors = {
@@ -119,8 +123,8 @@ export default async function CitizenProfile() {
 
            <div className="flex flex-wrap items-center gap-12 mt-4 px-8 pb-10 md:px-12 md:pb-14 border-t border-white/5 pt-10">
               {[
-                { label: 'Reports Filed', value: profile._count.reports, color: 'var(--accent-cyan)', icon: FileText },
-                { label: 'Votes Cast', value: profile._count.votes, color: 'var(--accent-amber)', icon: TrendingUp },
+                { label: 'Reports Filed', value: reportsCount, color: 'var(--accent-cyan)', icon: FileText },
+                { label: 'Votes Cast', value: votesCount, color: 'var(--accent-amber)', icon: TrendingUp },
                 { label: 'Impact Score', value: `${Math.round(profile.reputation / 10)}%`, color: 'var(--accent-lime)', icon: Zap },
                 { label: 'Identity', value: profile.verified ? 'Verified' : 'Active', color: 'var(--accent-electric-blue)', icon: Shield },
               ].map(s => (
@@ -146,16 +150,16 @@ export default async function CitizenProfile() {
             </div>
 
             <div>
-               {profile.reports.length === 0 ? (
+               {userReports.length === 0 ? (
                  <div className="p-12 rounded-2xl border-2 border-dashed border-white/5 text-center text-white/30 text-sm">
                     No activity recorded yet.
                  </div>
                ) : (
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                   {profile.reports.map((report: any) => (
+                   {userReports.map((report) => (
                     <Link 
                       key={report.id} 
-                      href={`/citizen/report/${report.id}`}
+                      href={`/citizen/report/${report.issueId}`}
                       className="group block rounded-2xl bg-card border border-white/5 hover:bg-white/[0.04] transition-all overflow-hidden"
                     >
                       <div className="p-5 space-y-3">
@@ -163,22 +167,22 @@ export default async function CitizenProfile() {
                           <span 
                             className="px-2.5 py-1 rounded-md text-[8px] font-mono font-black uppercase tracking-widest"
                             style={{ 
-                              background: report.status === 'RESOLVED' ? 'rgba(196,254,0,0.1)' : 'rgba(255,184,0,0.1)',
-                              color: report.status === 'RESOLVED' ? 'var(--accent-lime)' : 'var(--accent-amber)',
+                              background: ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(report.issue.status) ? 'rgba(196,254,0,0.1)' : 'rgba(255,184,0,0.1)',
+                              color: ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(report.issue.status) ? 'var(--accent-lime)' : 'var(--accent-amber)',
                             }}
                           >
-                            {report.status}
+                            {report.issue.status}
                           </span>
                           <span className="text-[8px] font-mono uppercase tracking-widest text-white/20">
-                            {report.category}
+                            {report.issue.category}
                           </span>
                         </div>
                         <h4 className="font-display font-bold text-base text-white group-hover:text-cyan transition-colors line-clamp-2 uppercase tracking-tight">
-                          {report.title}
+                          {`${report.issue.category.replace(/_/g, ' ')} at ${report.issue.address || 'Bengaluru'}`}
                         </h4>
                         <div className="flex items-center gap-2 text-[9px] font-mono text-secondary uppercase tracking-widest">
                           <MapPin className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{report.address ? report.address.split(',')[0] : 'GPS Tagged'}</span>
+                          <span className="truncate">{report.issue.address ? report.issue.address.split(',')[0] : 'GPS Tagged'}</span>
                         </div>
                       </div>
                       <div className="px-5 py-3 border-t border-white/5 flex items-center justify-between">
@@ -186,7 +190,7 @@ export default async function CitizenProfile() {
                           {new Date(report.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                         </span>
                         <div className="flex items-center gap-3">
-                          <span className="text-[9px] font-mono text-white/30">+{report._count.votes} votes</span>
+                          <span className="text-[9px] font-mono text-white/30">+{report.issue._count.reports} votes</span>
                           <span className="text-xs font-display font-bold text-cyan">+25 XP</span>
                         </div>
                       </div>
@@ -214,7 +218,7 @@ export default async function CitizenProfile() {
                        Earn XP by reporting city hazards.
                     </div>
                   ) : (
-                    pointLogs.map((log: any) => (
+                    pointLogs.map((log) => (
                       <div key={log.id} className="relative grid grid-cols-[48px_1fr_auto] items-center gap-6 group">
                          {/* Bullet Container */}
                          <div className="w-12 h-12 flex items-center justify-center relative z-10">
@@ -227,7 +231,7 @@ export default async function CitizenProfile() {
                          <div className="space-y-1">
                             <h4 className="font-bold text-sm text-white/90 leading-tight">{log.reason}</h4>
                             <p className="text-[10px] font-mono uppercase tracking-widest text-secondary">
-                               {new Date(log.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} • {log.report?.category || 'SYSTEM'}
+                               {new Date(log.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} • REWARD
                             </p>
                          </div>
 

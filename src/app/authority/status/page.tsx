@@ -16,59 +16,44 @@ export default async function AuthorityStatusPage({
   const { filter = '' } = await searchParams;
   const session = await getServerSession(authOptions);
   
-  if (!session || (session.user as any).role !== 'AUTHORITY') {
+  if (!session || session.user.role !== 'AUTHORITY') {
     redirect('/login');
   }
 
-  const userId = (session?.user as any)?.id;
-  const userWithDept = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { departmentId: true },
-  });
-
-  if (!userWithDept?.departmentId) {
-    return (
-      <main className="flex-1 p-10 bg-primary text-white">
-        <h1 className="text-2xl font-display mb-4">Access Restricted</h1>
-        <p className="text-text-secondary font-body">Your account is not assigned to any department.</p>
-      </main>
-    );
-  }
-
-  const deptId = userWithDept.departmentId;
-
-  // Fetch all reports (removed department filter for global sync)
-  const allReports = await prisma.report.findMany({
+  // Fetch all issues
+  const allIssues = await prisma.issue.findMany({
     orderBy: { updatedAt: 'desc' },
   });
 
   // Apply filter in JS
-  const reports = (filter && filter !== 'ALL')
-    ? allReports.filter(r => r.status === filter)
-    : allReports;
+  const issues = (filter && filter !== 'ALL')
+    ? (filter === 'RESOLVED' 
+        ? allIssues.filter(r => ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(r.status))
+        : allIssues.filter(r => r.status === filter))
+    : allIssues;
 
   // Compute counts in JS
-  const total = allReports.length;
-  const open = allReports.filter(r => r.status === 'OPEN').length;
-  const confirmed = allReports.filter(r => r.status === 'CONFIRMED').length;
-  const assigned = allReports.filter(r => r.status === 'ASSIGNED').length;
-  const inProgress = allReports.filter(r => r.status === 'IN_PROGRESS').length;
-  const resolved = allReports.filter(r => r.status === 'RESOLVED').length;
+  const total = allIssues.length;
+  const open = allIssues.filter(r => r.status === 'OPEN').length;
+  const confirmed = allIssues.filter(r => r.status === 'CONFIRMED').length;
+  const assigned = allIssues.filter(r => r.status === 'ASSIGNED').length;
+  const inProgress = allIssues.filter(r => r.status === 'IN_PROGRESS').length;
+  const resolved = allIssues.filter(r => ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(r.status)).length;
 
-  const serializedReports = reports.slice(0, 50).map(r => ({
+  const serializedReports = issues.slice(0, 50).map(r => ({
     id: r.id,
-    title: r.title,
+    title: `${r.category.replace(/_/g, ' ')} at ${r.address || 'Bengaluru'}`,
     category: r.category,
     status: r.status,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
-    confirmedAt: r.confirmedAt?.toISOString() || null,
-    assignedAt: r.assignedAt?.toISOString() || null,
-    startedAt: r.startedAt?.toISOString() || null,
-    resolvedAt: r.resolvedAt?.toISOString() || null,
-    rejectedAt: r.rejectedAt?.toISOString() || null,
+    confirmedAt: null,
+    assignedAt: null,
+    startedAt: null,
+    resolvedAt: ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(r.status) ? r.updatedAt.toISOString() : null,
+    rejectedAt: r.status === 'REJECTED' ? r.updatedAt.toISOString() : null,
     address: r.address || '',
-    priorityScore: r.priorityScore,
+    priorityScore: r.priority,
   }));
 
   return (

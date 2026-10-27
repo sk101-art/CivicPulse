@@ -98,7 +98,7 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
     toast({
       title: 'Coming in T25',
       description: 'Status transitions will be managed via the v2 state machine in T25.',
-      variant: 'default',
+      variant: 'info',
     });
   };
 

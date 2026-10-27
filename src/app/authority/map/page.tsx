@@ -3,8 +3,6 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { MapDashboardWrapper } from "@/components/authority/MapDashboardWrapper";
 import { AppHeader } from "@/components/layout/AppHeader";
-
-
 import { redirect } from "next/navigation";
 
 export const revalidate = 0;
@@ -12,23 +10,13 @@ export const revalidate = 0;
 export default async function AuthorityMapPage() {
   const session = await getServerSession(authOptions);
   
-  if (!session || (session.user as any).role !== 'AUTHORITY') {
+  if (!session || session.user.role !== 'AUTHORITY') {
     redirect('/login');
   }
 
-  const userId = (session?.user as any)?.id;
-  const userWithDept = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { departmentId: true },
+  const issues = await prisma.issue.findMany({
+    orderBy: { priority: 'desc' },
   });
-
-  // Removed department restriction block to allow all authority users to see map
-
-  const rawReports = await prisma.report.findMany({
-    orderBy: { priorityScore: 'desc' },
-  });
-
-  const allReports = rawReports;
 
   return (
     <main className="flex-1 overflow-y-auto w-full h-full pb-24 lg:pb-0 bg-primary flex flex-col">
@@ -80,14 +68,14 @@ export default async function AuthorityMapPage() {
 
           <div className="flex-1 rounded-[3rem] overflow-hidden shadow-2xl border border-white/5" style={{ minHeight: '650px' }}>
             <MapDashboardWrapper
-              reports={allReports.map((i: any) => ({
+              reports={issues.map((i) => ({
                 id: i.id,
-                latitude: i.latitude,
-                longitude: i.longitude,
-                title: i.title,
+                latitude: i.lat,
+                longitude: i.lng,
+                title: `${i.category.replace(/_/g, ' ')} at ${i.address || 'Bengaluru'}`,
                 status: i.status,
                 category: i.category,
-                priorityScore: i.priorityScore,
+                priorityScore: i.priority,
               }))}
               showReportButton={true}
             />

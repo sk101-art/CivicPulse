@@ -3,12 +3,12 @@
 import { motion } from 'framer-motion';
 import { 
   CheckCircle2, Clock, ShieldCheck, UserCircle2, 
-  PlayCircle, CheckCircle, XCircle, ChevronRight,
-  TrendingUp, Calendar, MapPin, User
+  PlayCircle, CheckCircle, XCircle,
+  TrendingUp, Calendar, User
 } from 'lucide-react';
-import { format, differenceInMinutes, formatDistanceToNow } from 'date-fns';
+import { format, differenceInMinutes } from 'date-fns';
 
-type Status = 'OPEN' | 'CONFIRMED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'REJECTED';
+type Status = 'OPEN' | 'CONFIRMED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLAIMED_FIXED' | 'VERIFIED_FIXED' | 'DISPUTED' | 'REJECTED';
 
 interface StatusTrackerProps {
   status: Status;
@@ -47,6 +47,8 @@ export function StatusTracker({
   }
 
   const getStatusIndex = (s: string) => {
+    if (s === 'CLAIMED_FIXED' || s === 'VERIFIED_FIXED') return 4;
+    if (s === 'DISPUTED') return 3;
     const order = ['OPEN', 'CONFIRMED', 'ASSIGNED', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'];
     return order.indexOf(s);
   };
@@ -65,6 +67,8 @@ export function StatusTracker({
     const end = resolvedAt || rejectedAt || new Date();
     return calculateTimeDiff(createdAt, end);
   };
+
+  const isResolved = ['RESOLVED', 'CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(status);
 
   return (
     <div className="w-full bg-card/50 border border-white/5 rounded-[2.5rem] p-8 md:p-10 space-y-10 relative overflow-hidden backdrop-blur-xl">
@@ -86,9 +90,8 @@ export function StatusTracker({
       <div className="relative pt-10 pb-4">
         <div className="flex justify-between relative z-10">
           {stages.slice(0, 5).map((stage, idx) => {
-            const isCompleted = getStatusIndex(stage.key) < currentIndex || status === 'RESOLVED';
-            const isCurrent = stage.key === status;
-            const isUpcoming = getStatusIndex(stage.key) > currentIndex && status !== 'RESOLVED';
+            const isCompleted = getStatusIndex(stage.key) < currentIndex || isResolved;
+            const isCurrent = stage.key === status || (stage.key === 'RESOLVED' && isResolved);
             
             return (
               <div key={stage.key} className="flex flex-col items-center group">
@@ -96,7 +99,7 @@ export function StatusTracker({
                    {/* Connection Line */}
                    {idx < 4 && (
                      <div className={`absolute left-full top-1/2 -translate-y-1/2 w-[calc(100vw/5-40px)] md:w-[120px] h-[2px] z-0 transition-all duration-700 ${
-                       getStatusIndex(stages[idx+1].key) <= currentIndex || status === 'RESOLVED' ? 'bg-cyan' : 'bg-white/5'
+                       getStatusIndex(stages[idx+1].key) <= currentIndex || isResolved ? 'bg-cyan' : 'bg-white/5'
                      }`} />
                    )}
                    

@@ -25,20 +25,26 @@ interface ActiveReportsProps {
 }
 
 const statusConfig: Record<Status, { color: string; bg: string; label: string; dot: string }> = {
-  OPEN:        { color: 'var(--status-open)',          bg: 'rgba(0,212,255,0.1)',    label: 'Open',        dot: '#00D4FF' },
-  CONFIRMED:   { color: 'var(--accent-cyan)',          bg: 'rgba(0,245,212,0.1)',    label: 'Confirmed',   dot: '#00F5D4' },
-  ASSIGNED:    { color: 'var(--accent-electric-blue)', bg: 'rgba(0,119,255,0.1)',    label: 'Assigned',    dot: '#0077FF' },
-  IN_PROGRESS: { color: 'var(--status-progress)',      bg: 'rgba(255,184,0,0.1)',    label: 'In Progress', dot: '#FFB800' },
-  RESOLVED:    { color: 'var(--status-resolved)',      bg: 'rgba(196,254,0,0.1)',    label: 'Resolved',    dot: '#C4FE00' },
-  REJECTED:    { color: 'var(--accent-magenta)',       bg: 'rgba(255,46,99,0.1)',    label: 'Rejected',    dot: '#FF2E63' },
+  OPEN:           { color: 'var(--status-open)',          bg: 'rgba(0,212,255,0.1)',    label: 'Open',          dot: '#00D4FF' },
+  CONFIRMED:      { color: 'var(--accent-cyan)',          bg: 'rgba(0,245,212,0.1)',    label: 'Confirmed',     dot: '#00F5D4' },
+  ASSIGNED:       { color: 'var(--accent-electric-blue)', bg: 'rgba(0,119,255,0.1)',    label: 'Assigned',      dot: '#0077FF' },
+  IN_PROGRESS:    { color: 'var(--status-progress)',      bg: 'rgba(255,184,0,0.1)',    label: 'In Progress',   dot: '#FFB800' },
+  CLAIMED_FIXED:  { color: 'var(--status-resolved)',      bg: 'rgba(196,254,0,0.1)',    label: 'Claimed Fixed', dot: '#C4FE00' },
+  VERIFIED_FIXED: { color: 'var(--status-resolved)',      bg: 'rgba(196,254,0,0.1)',    label: 'Verified Fixed',dot: '#C4FE00' },
+  DISPUTED:       { color: 'var(--accent-magenta)',       bg: 'rgba(255,46,99,0.1)',    label: 'Disputed',      dot: '#FF2E63' },
+  REJECTED:       { color: 'var(--accent-magenta)',       bg: 'rgba(255,46,99,0.1)',    label: 'Rejected',      dot: '#FF2E63' },
 };
 
 const categoryIcons: Record<Category, { emoji: string; color: string }> = {
   POTHOLES:      { emoji: '🕳️', color: 'var(--cat-potholes)' },
   DRAINAGE:      { emoji: '🌊', color: 'var(--cat-drainage)' },
+  WATERLOGGING:  { emoji: '💧', color: 'var(--cat-drainage)' },
   STREETLIGHTS:  { emoji: '💡', color: 'var(--cat-streetlights)' },
   SIDEWALKS:     { emoji: '🚶', color: 'var(--cat-sidewalks)' },
+  FOOTPATH:      { emoji: '🚶', color: 'var(--cat-sidewalks)' },
   TRAFFIC_SIGNS: { emoji: '🚦', color: 'var(--cat-traffic-signs)' },
+  ROAD_CUT:      { emoji: '🚧', color: 'var(--cat-potholes)' },
+  TREE_FALL:     { emoji: '🌳', color: 'var(--accent-lime)' },
   GRAFFITI:      { emoji: '🎨', color: 'var(--cat-graffiti)' },
   TRASH:         { emoji: '🗑️', color: 'var(--cat-trash)' },
   OTHER:         { emoji: '❓', color: 'var(--cat-other)' },
@@ -133,7 +139,7 @@ export function ActiveReports({ initialReports }: ActiveReportsProps) {
                     </h4>
                     <div className="flex items-center gap-2">
                       <span className="inline-block px-3 py-1 rounded-md text-[9px] font-mono font-black uppercase tracking-widest bg-white/5 border border-white/5 text-cyan/70">
-                        {report.category === ('NIGGO' as any) ? 'ILLEGAL DUMPING' : report.category.replace(/_/g, ' ')}
+                        {report.category ? report.category.replace(/_/g, ' ') : 'OTHER'}
                       </span>
                     </div>
                     {report.address && (

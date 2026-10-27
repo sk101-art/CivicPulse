@@ -55,7 +55,7 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
     toast({
       title: 'Coming in T25',
       description: 'Resolution workflow will be available via /api/issues/[id]/actions in T25.',
-      variant: 'default',
+      variant: 'info',
     });
   };
 
@@ -65,7 +65,7 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
       toast({
         title: 'Coming in T25',
         description: 'Desk confirmation will be available via /api/issues/[id]/actions in T25.',
-        variant: 'default',
+        variant: 'info',
       });
     } finally {
       setItemLoading(id, false);
@@ -79,7 +79,7 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
     toast({
       title: 'Coming in T25',
       description: 'Personnel assignment will be available via /api/issues/[id]/actions in T25.',
-      variant: 'default',
+      variant: 'info',
     });
   };
 

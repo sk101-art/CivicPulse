@@ -11,28 +11,45 @@ export default async function ExtraFeaturePage() {
   const session = await getServerSession(authOptions);
   if (!session) redirect('/login');
 
-  const userId = (session.user as any).id;
+  const userId = session.user.id;
 
-  const reports = await prisma.report.findMany({
-    where: { citizen: { userId } },
+  const rawReports = await prisma.report.findMany({
+    where: { userId },
     select: {
       id: true,
-      title: true,
-      category: true,
-      status: true,
-      latitude: true,
-      longitude: true,
-      address: true,
+      lat: true,
+      lng: true,
       createdAt: true,
+      issue: {
+        select: {
+          category: true,
+          status: true,
+          address: true,
+        }
+      }
     },
     orderBy: { createdAt: 'desc' },
   });
+
+  const reports = rawReports.map(r => ({
+    id: r.id,
+    title: `${r.issue.category.replace(/_/g, ' ')} at ${r.issue.address || 'Bengaluru'}`,
+    category: r.issue.category,
+    status: r.issue.status,
+    latitude: r.lat,
+    longitude: r.lng,
+    address: r.issue.address,
+    createdAt: r.createdAt,
+  }));
 
   const statusColor: Record<string, string> = {
     OPEN: 'var(--accent-amber)',
     CONFIRMED: 'var(--accent-electric-blue)',
     ASSIGNED: 'var(--accent-cyan)',
     IN_PROGRESS: 'var(--accent-cyan)',
+    CLAIMED_FIXED: 'var(--accent-lime)',
+    VERIFIED_FIXED: 'var(--accent-lime)',
+    DISPUTED: 'var(--accent-magenta)',
     RESOLVED: 'var(--accent-lime)',
     REJECTED: 'var(--accent-magenta)',
   };
@@ -40,9 +57,13 @@ export default async function ExtraFeaturePage() {
   const categoryColors: Record<string, string> = {
     POTHOLES: '#f97316',
     DRAINAGE: '#3b82f6',
+    WATERLOGGING: '#0ea5e9',
     STREETLIGHTS: '#eab308',
     SIDEWALKS: '#8b5cf6',
+    FOOTPATH: '#a855f7',
     TRAFFIC_SIGNS: '#ef4444',
+    ROAD_CUT: '#f43f5e',
+    TREE_FALL: '#22c55e',
     GRAFFITI: '#ec4899',
     TRASH: '#14b8a6',
     OTHER: '#6b7280',

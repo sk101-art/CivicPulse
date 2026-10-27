@@ -4,52 +4,42 @@ import { prisma } from "@/lib/prisma";
 import { ActiveIssuesList } from "@/components/authority/ActiveIssuesList";
 import { KPICard } from "@/components/authority/KPICard";
 import { AppHeader } from "@/components/layout/AppHeader";
-import { ShieldAlert } from "lucide-react";
 import { RefreshButton } from "@/components/ui/RefreshButton";
 
 export const revalidate = 0;
 
 export default async function AuthorityDashboard() {
-  const session = await getServerSession(authOptions);
-  
-  const userId = (session?.user as any)?.id;
-  const userWithDept = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { department: true },
+  await getServerSession(authOptions);
+
+  const allIssues = await prisma.issue.findMany({
+    include: { _count: { select: { reports: true, comments: true } }, agency: true },
+    orderBy: { priority: 'desc' },
   });
 
-  // Removed department restriction block to allow all authority users to see dashboard
-
-  const allDeptReports = await prisma.report.findMany({
-    include: { _count: { select: { votes: true, comments: true } }, department: true },
-    orderBy: { priorityScore: 'desc' },
-  });
-
-  const reports = allDeptReports.filter(r => r.status !== 'RESOLVED');
-  const newReports = reports.filter(r => r.status === 'OPEN');
-  const operationalQueue = reports.filter(r => r.status !== 'OPEN');
+  const activeIssues = allIssues.filter(r => !['CLAIMED_FIXED', 'VERIFIED_FIXED', 'REJECTED'].includes(r.status));
+  const newReports = activeIssues.filter(r => r.status === 'OPEN');
+  const operationalQueue = activeIssues.filter(r => r.status !== 'OPEN');
 
   const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
-  const resolvedReports = allDeptReports.filter(r => r.status === 'RESOLVED');
+  const resolvedIssues = allIssues.filter(r => ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(r.status));
 
-  const activeCount = allDeptReports.filter(r => ['OPEN', 'CONFIRMED', 'ASSIGNED'].includes(r.status)).length;
-  const inProgressCount = allDeptReports.filter(r => r.status === 'IN_PROGRESS').length;
-  const resolvedToday = resolvedReports.filter(r => r.resolvedAt && new Date(r.resolvedAt) >= todayStart).length;
-  const totalResolved = resolvedReports.length;
+  const activeCount = allIssues.filter(r => ['OPEN', 'CONFIRMED', 'ASSIGNED'].includes(r.status)).length;
+  const inProgressCount = allIssues.filter(r => r.status === 'IN_PROGRESS').length;
+  const resolvedToday = resolvedIssues.filter(r => r.updatedAt && new Date(r.updatedAt) >= todayStart).length;
+  const totalResolved = resolvedIssues.length;
 
-  const mapToIssueItem = (r: any) => ({
-    id: r.id,
-    title: r.title,
-    category: r.category,
-    status: r.status,
-    priorityScore: r.priorityScore,
-    slaBreached: r.slaBreached,
-    voteCount: r._count?.votes || 0,
-    commentCount: r._count?.comments || 0,
-    createdAt: r.createdAt,
-    // Prefer the logged-in user's dept SLA → report's own dept SLA → safe default
-    slaHours: userWithDept?.department?.slaHours ?? r.department?.slaHours ?? 72,
-    address: r.address || ''
+  const mapToIssueItem = (issue: typeof allIssues[number]) => ({
+    id: issue.id,
+    title: `${issue.category.replace(/_/g, ' ')} at ${issue.address || 'Bengaluru'}`,
+    category: issue.category,
+    status: issue.status,
+    priorityScore: issue.priority,
+    slaBreached: issue.slaBreached,
+    voteCount: issue._count?.reports || 0,
+    commentCount: issue._count?.comments || 0,
+    createdAt: issue.createdAt,
+    slaHours: issue.agency?.slaHours ?? 72,
+    address: issue.address || ''
   });
 
   return (
