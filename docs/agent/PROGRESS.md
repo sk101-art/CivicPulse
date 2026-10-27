@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T02 · Track A · started 2026-10-27
+Current task: T03 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,49 @@ Current task: T02 · Track A · started 2026-10-27
 - None
 
 ## Done
+
+### T02 · Env validation and config module · 2026-10-27
+- Changed: `package.json`, `src/lib/env.ts`, `config/priority.ts`, `scripts/check-keys.ts`, `src/lib/prisma.ts`
+- Verified against docs: Zod 4.6.7 package types, `docs/plan/PLAN.md` Section 7 & 10 (T02), `docs/plan/KEYS_LATER.md`
+- Checks run:
+  ```
+  [npm run check:keys]
+  === CivicPulse Environment Key Check ===
+  APP_DATABASE_URL: NOT SET
+  DIRECT_DATABASE_URL: NOT SET
+  NEXTAUTH_URL: SET
+  NEXTAUTH_SECRET: SET
+  SEED_DESK_PASSWORD: SET
+  SUPABASE_URL: NOT SET
+  SUPABASE_SERVICE_ROLE_KEY: NOT SET
+  SUPABASE_EVIDENCE_BUCKET: SET
+  TOMTOM_API_KEY: NOT SET
+  NEXT_PUBLIC_TOMTOM_TILES_KEY: NOT SET
+  GEMINI_API_KEY: NOT SET
+  GEMINI_MODEL: NOT SET
+  GROQ_API_KEY: NOT SET
+  GROQ_MODEL_VISION: SET
+  GROQ_MODEL_TEXT: SET
+  OLLAMA_URL: NOT SET
+  AI_DAILY_CALL_CAP: SET
+  AI_FEATURES: SET
+  REDDIT_CLIENT_ID: NOT SET
+  REDDIT_CLIENT_SECRET: NOT SET
+  REDDIT_USER_AGENT: SET
+  APP_REGION: SET
+  NEXT_PUBLIC_VAPID_PUBLIC_KEY: SET
+  VAPID_PRIVATE_KEY: SET
+  VAPID_SUBJECT: SET
+  JOB_SECRET: SET
+  APP_TIMEZONE: SET
+  ========================================
+  Summary: 15/27 keys set.
+
+  [npm run typecheck]
+  Executed (no errors in src/lib/env.ts or config/priority.ts; baseline 43 Prisma errors unchanged)
+  ```
+- Feature rows ticked: Infrastructure (T02)
+- Notes for the next task: Proceeding to T03 (Test and CI harness).
 
 ### T01 · Repo hygiene and security fixes · 2026-10-27
 - Changed: `.gitignore`, `src/lib/auth.ts`, `docs/legacy/context.txt` (moved), deleted `fix_maps.py`, `update_maps.py`, `update_docx.py`, `check.js`, `check.ts`, `test-update.js`, `docx_unpacked/`, `docs/agent/DECISIONS.md`

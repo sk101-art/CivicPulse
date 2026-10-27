@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "check:keys": "tsx scripts/check-keys.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -24,7 +26,9 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-leaflet": "^5.0.0",
+    "server-only": "^0.0.1",
     "sonner": "^2.0.7",
+    "zod": "^4.6.7",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
