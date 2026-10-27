@@ -40,7 +40,7 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
     setLocalIssues(issues);
   }, [issues]);
 
-  const activeIssues = localIssues.filter(i => i.status !== 'RESOLVED');
+  const activeIssues = localIssues.filter(i => i.status !== 'RESOLVED' && i.status !== 'VERIFIED_FIXED');
   const currentIssue = issues.find(i => i.id === selectedId);
 
   const setItemLoading = (id: string, loading: boolean) => {
@@ -49,77 +49,38 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
 
   const handleResolve = async () => {
     if (!selectedId) return;
-    setItemLoading(selectedId, true);
-    try {
-      const res = await fetch(`/api/reports/${selectedId}/resolve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(resolveData)
-      });
-      if (res.ok) {
-        setLocalIssues(prev => prev.filter(i => i.id !== selectedId));
-        setIsResolving(false);
-        setSelectedId(null);
-        setResolveData({ desc: '', photo: '' });
-        toast({ title: 'Success', description: 'Resolution recorded.', variant: 'success' });
-        router.refresh();
-      } else {
-        const text = await res.text();
-        toast({ title: 'Error', description: text || 'Failed to resolve', variant: 'error' });
-      }
-    } catch (e: any) {
-      console.error(e);
-      toast({ title: 'Error', description: e.message, variant: 'error' });
-    } finally {
-      setItemLoading(selectedId, false);
-    }
+    setIsResolving(false);
+    setSelectedId(null);
+    setResolveData({ desc: '', photo: '' });
+    toast({
+      title: 'Coming in T25',
+      description: 'Resolution workflow will be available via /api/issues/[id]/actions in T25.',
+      variant: 'default',
+    });
   };
 
   const handleConfirm = async (id: string) => {
     setItemLoading(id, true);
     try {
-      const res = await fetch(`/api/reports/${id}/confirm`, { method: 'POST' });
-      if (res.ok) {
-        setLocalIssues(prev => prev.map(i => i.id === id ? { ...i, status: 'CONFIRMED' } : i));
-        toast({ title: 'Verified', description: 'Issue has been confirmed.', variant: 'success' });
-        router.refresh();
-      } else {
-        const text = await res.text();
-        toast({ title: 'Verification Failed', description: text || 'Server error', variant: 'error' });
-      }
-    } catch (e: any) {
-      console.error(e);
-      toast({ title: 'Verification Error', description: e.message, variant: 'error' });
+      toast({
+        title: 'Coming in T25',
+        description: 'Desk confirmation will be available via /api/issues/[id]/actions in T25.',
+        variant: 'default',
+      });
     } finally {
       setItemLoading(id, false);
     }
   };
 
-  const handleAssignConfirm = async (personnelId: string) => {
+  const handleAssignConfirm = async (_personnelId: string) => {
     if (!selectedId) return;
-    setItemLoading(selectedId, true);
-    try {
-      const res = await fetch(`/api/reports/${selectedId}/assign`, { 
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ personnelId })
-      });
-      if (res.ok) {
-        setLocalIssues(prev => prev.map(i => i.id === selectedId ? { ...i, status: 'ASSIGNED' } : i));
-        setIsAssigning(false);
-        setSelectedId(null);
-        toast({ title: 'Assigned', description: 'Personnel deployed successfully.', variant: 'success' });
-        router.refresh();
-      } else {
-        const text = await res.text();
-        toast({ title: 'Assignment Failed', description: text || 'Server error', variant: 'error' });
-      }
-    } catch (e: any) {
-      console.error(e);
-      toast({ title: 'Error', description: e.message, variant: 'error' });
-    } finally {
-      setItemLoading(selectedId, false);
-    }
+    setIsAssigning(false);
+    setSelectedId(null);
+    toast({
+      title: 'Coming in T25',
+      description: 'Personnel assignment will be available via /api/issues/[id]/actions in T25.',
+      variant: 'default',
+    });
   };
 
   const getSeverityColor = (score: number) => {
