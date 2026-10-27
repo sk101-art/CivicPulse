@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Unbounded, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -20,12 +20,17 @@ const jetbrainsMono = JetBrains_Mono({
   weight: ["400", "500", "700"],
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+};
+
 export const metadata: Metadata = {
   title: "CivicPulse | Premium Civic Intelligence Platform",
   description: "Advanced civic engagement and city infrastructure monitoring. Empowering citizens and authorities with AI-driven urban intelligence.",
   keywords: ["civic tech", "city management", "citizen reporting", "urban intelligence"],
   authors: [{ name: "CivicPulse Team" }],
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1",
 };
 
 import { Providers } from "@/components/providers";
