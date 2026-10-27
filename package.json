@@ -9,8 +9,13 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "check:keys": "tsx scripts/check-keys.ts",
+    "db:seed": "tsx prisma/seed.ts",
+    "migrate:v1": "tsx scripts/migrate-v1-to-v2.ts",
     "test": "vitest run",
     "e2e": "playwright test"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T11 · Track A · started 2026-10-27
+Current task: T12 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,44 @@ Current task: T11 · Track A · started 2026-10-27
 - None
 
 ## Done
+
+### T11 · Data migration and seed v2 · 2026-10-27
+- Changed: `scripts/migrate-v1-to-v2.ts`, `prisma/seed.ts`, `src/app/api/reports/authority/route.ts`, `tests/contract/seed-auth.test.ts`, `package.json`, `eslint.config.mjs`
+- Verified against docs: NextAuth 4 credentials provider authorize contract, bcrypt hashing, U7 agencies list, Prisma upsert idempotency
+- Checks run:
+  ```
+  [npm run migrate:v1 -- --dry-run]
+  [T11 Migrate] Starting legacy v1 to v2 migration... Mode: DRY-RUN
+  [T11 Migrate] Source detected: none. Found 0 legacy report(s).
+  --- [T11 Migrate Summary] ---
+  Total inspected: 0, Migrated: 0, Skipped: 0
+  Dry-run finished: 0 changes written to database.
+
+  [npm run db:seed (run 1 & run 2)]
+  [Seed] Database seed completed successfully!
+    - Agencies seeded: 7 (GBA, BWSSB, BESCOM, BTP, BMRCL, BDA, OTHER)
+    - Desk users seeded: 2 (desk-a@civicpulse.local, desk-b@civicpulse.local)
+    - Citizen users seeded: 3 (citizen@example.com, citizen-b@civicpulse.local, citizen-c@civicpulse.local)
+    - Sample seed issues created/upserted: 3
+
+  [npm test]
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+    ✓ environment contains SEED_DESK_PASSWORD
+    ✓ all 7 U7 agencies are present in the database
+    ✓ authenticates desk-a@civicpulse.local with AUTHORITY role
+    ✓ authenticates desk-b@civicpulse.local with AUTHORITY role
+    ✓ authenticates citizen@example.com with CITIZEN role
+    ✓ rejects invalid password for seeded user
+  Test Files: 3 passed (3)
+  Tests: 10 passed (10)
+
+  [npx eslint scripts/migrate-v1-to-v2.ts prisma/seed.ts tests/contract/seed-auth.test.ts src/app/api/reports/authority/route.ts]
+  Clean exit code 0
+  ```
+- Feature rows ticked: A1 (seed accounts)
+- Notes for the next task: Proceeding to T12 (Validation layer, API error contracts, and typed NextAuth session).
 
 ### T10 · Schema v2 · 2026-10-27
 - Changed: `prisma/schema.prisma`, `prisma/migrations/20261027153000_t10_schema_v2/migration.sql`, `vitest.config.ts`, `tests/contract/geom-trigger.test.ts`

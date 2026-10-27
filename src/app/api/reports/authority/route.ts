@@ -1,97 +1,82 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/db/prisma";
 import { NextResponse } from "next/server";
-import { Category } from "@prisma/client";
-import { chatWithModel } from "@/lib/ollama";
-
-const CATEGORY_TO_DEPT_CODE: Record<string, string> = {
-  POTHOLES: 'PWD', DRAINAGE: 'PWD', SIDEWALKS: 'PWD',
-  STREETLIGHTS: 'TRANS', TRAFFIC_SIGNS: 'TRANS',
-  GRAFFITI: 'PWD', TRASH: 'PWD', OTHER: 'PWD'
-};
+import { Category, Band, EvidenceRole, Status } from "@prisma/client";
 
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || (session.user as any).role !== 'AUTHORITY') {
-      return new NextResponse("Unauthorized", { status: 401 });
+    const sessionUser = session?.user as { id?: string; role?: string } | undefined;
+    if (!session || sessionUser?.role !== "AUTHORITY" || !sessionUser?.id) {
+      return NextResponse.json({ error: "Unauthorized: Authority role required" }, { status: 401 });
     }
 
-    const { title, description, category, latitude, longitude, address } = await req.json();
-    const userId = (session.user as any).id;
+    const body = await req.json();
+    const { title, description, category, latitude, longitude, address, agencyId } = body;
+    const userId = sessionUser.id;
 
-    // Authority files on behalf of the system — find or create a system citizen profile
-    // Use the authority's own department
-    const user = await prisma.user.findUnique({ where: { id: userId }, include: { department: true } });
-    if (!user || !user.departmentId) {
-      return new NextResponse("No department assigned", { status: 400 });
+    const lat = typeof latitude === "string" ? parseFloat(latitude) : latitude;
+    const lng = typeof longitude === "string" ? parseFloat(longitude) : longitude;
+
+    if (isNaN(lat) || isNaN(lng)) {
+      return NextResponse.json({ error: "Valid latitude and longitude are required" }, { status: 400 });
     }
 
-    // Find a system citizen profile for authority-filed reports
-    let systemProfile = await prisma.citizenProfile.findFirst({
-      where: { user: { email: 'system@civicpulse.gov' } }
-    });
+    const rawCategory = (category || "OTHER").toUpperCase();
+    const validCategory: Category = Object.values(Category).includes(rawCategory as Category)
+      ? (rawCategory as Category)
+      : Category.OTHER;
 
-    if (!systemProfile) {
-      // Create a system user + profile for authority-filed reports
-      const systemUser = await prisma.user.upsert({
-        where: { email: 'system@civicpulse.gov' },
-        update: {},
-        create: {
-          email: 'system@civicpulse.gov',
-          name: 'Authority Filed',
-          passwordHash: 'N/A',
-          role: 'CITIZEN'
-        }
-      });
-      systemProfile = await prisma.citizenProfile.upsert({
-        where: { userId: systemUser.id },
-        update: {},
-        create: { userId: systemUser.id, reputation: 0 }
-      });
-    }
+    // Default SLA is 72 hours from filing
+    const slaDueAt = new Date(Date.now() + 72 * 3600 * 1000);
 
-    // AI Priority scoring
-    let priorityScore = 0.5;
-    try {
-      const aiResponse = await chatWithModel(
-        `Score this civic issue priority from 0.0 to 1.0 (Higher=Critical). Return ONLY JSON like {"score": 0.85}. Issue: ${title} - ${description}`
-      );
-      if (aiResponse) {
-        const jsonMatch = aiResponse.match(/\{.*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          priorityScore = parsed.score || 0.5;
-        }
-      }
-    } catch (e) {
-      console.warn("AI Scoring unavailable:", e);
-    }
-
-    const deptCode = CATEGORY_TO_DEPT_CODE[category] || 'PWD';
-    let dept = await prisma.department.findUnique({ where: { code: deptCode } });
-    if (!dept) dept = await prisma.department.findFirst();
-    if (!dept) return new NextResponse("No departments configured", { status: 500 });
-
-    const report = await prisma.report.create({
+    const issue = await prisma.issue.create({
       data: {
-        title,
-        description,
-        category: category as Category,
-        latitude: parseFloat(latitude) || latitude,
-        longitude: parseFloat(longitude) || longitude,
-        address: address || `Map Pin (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`,
-        citizenId: systemProfile.id,
-        departmentId: dept.id,
-        status: 'CONFIRMED',
-        priorityScore
-      }
+        category: validCategory,
+        status: Status.CONFIRMED,
+        lat,
+        lng,
+        address: address || `Authority Pin (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+        agencyId: agencyId || null,
+        priority: 0.5,
+        band: Band.MEDIUM,
+        slaDueAt,
+        isSeed: false,
+        actions: {
+          create: {
+            actorId: userId,
+            action: "AUTHORITY_FILED",
+            fromStatus: null,
+            toStatus: Status.CONFIRMED,
+            note: description || title || "Direct authority filed issue",
+          },
+        },
+        reports: {
+          create: {
+            userId,
+            role: EvidenceRole.REPORT,
+            photoUrl: "https://placehold.co/600x400/png?text=Authority+Report",
+            photoSha256: "authority_filed_placeholder",
+            signature: "desk_signature",
+            lat,
+            lng,
+            gpsAccuracyM: 10.0,
+            capturedAt: new Date(),
+            note: description || title || "Authority observation",
+            isSeed: false,
+          },
+        },
+      },
+      include: {
+        reports: true,
+        actions: true,
+      },
     });
 
-    return NextResponse.json(report);
-  } catch (error) {
-    console.error("Authority report failed:", error);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    return NextResponse.json(issue, { status: 201 });
+  } catch (error: unknown) {
+    console.error("Authority report filing failed:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
