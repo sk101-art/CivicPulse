@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T01 · Track A · started 2026-10-27
+Current task: T02 · Track A · started 2026-10-27
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,23 @@ Current task: T01 · Track A · started 2026-10-27
 - None
 
 ## Done
+
+### T01 · Repo hygiene and security fixes · 2026-10-27
+- Changed: `.gitignore`, `src/lib/auth.ts`, `docs/legacy/context.txt` (moved), deleted `fix_maps.py`, `update_maps.py`, `update_docx.py`, `check.js`, `check.ts`, `test-update.js`, `docx_unpacked/`, `docs/agent/DECISIONS.md`
+- Verified against docs: `docs/plan/PLAN.md` Section 10 (T01); NextAuth session security rules
+- Checks run:
+  ```
+  [git check-ignore -v src/app/x/page.tsx]
+  (no output - exit code 1, not ignored)
+
+  [git grep "console.log" src/lib/auth.ts]
+  (no output - no console.log remaining in auth.ts)
+
+  [npx eslint src/lib/auth.ts]
+  (clean exit code 0)
+  ```
+- Feature rows ticked: P5 (part)
+- Notes for the next task: Proceeding to T02 (Env validation and config module).
 
 ### T00 · Baseline audit · 2026-10-27
 - Changed: `docs/agent/PROGRESS.md`

@@ -41,7 +41,6 @@ export const authOptions: NextAuthOptions = {
         token.role = (user as { id: string; role: string }).role;
         token.id = user.id;
       }
-      console.log("JWT Token:", token);
       return token;
     },
     async session({ session, token }) {
@@ -49,7 +48,6 @@ export const authOptions: NextAuthOptions = {
         (session.user as { id?: string; role?: string }).role = token.role as string;
         (session.user as { id?: string; role?: string }).id = token.id as string;
       }
-      console.log("Session Data:", session);
       return session;
     },
   },
