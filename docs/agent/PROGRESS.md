@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: Audit before Phase 2 · started 2026-10-27
+Current task: T19 Stabilisation complete · Phase 2 ready
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,195 @@ Current task: Audit before Phase 2 · started 2026-10-27
 - None
 
 ## Done
+
+### T19 · Stabilisation before Phase 2 · 2026-10-27
+- **Goal:** Green gate (`npm run lint && npm run typecheck && npm test && npm run build`), no disabled rules, no ts-ignore/eslint-disable, no skipped tests.
+- **Changed:**
+  - Deleted legacy scripts in `scripts/`: `assign-dept.js`, `assign-dept.ts`, `delete-report.mjs`.
+  - Deleted obsolete action routes in `src/app/api/reports/[id]/`: `confirm/route.ts`, `assign/route.ts`, `status/route.ts`, `resolve/route.ts` (replaced in T25; callers `ActiveIssuesList`, `StatusTimeline`, `StatusTracker` show "Coming in T25" toasts; recorded in `DECISIONS.md`).
+  - Adapted API routes and UI pages to v2 schema: `src/app/api/auth/register/route.ts`, `src/app/api/personnels/route.ts`, `src/app/api/personnels/[id]/route.ts`, `src/app/api/reports/[id]/comments/route.ts`, `src/app/api/reports/nearby/route.ts`, `src/app/api/stats/route.ts`, `src/app/authority/layout.tsx`, `src/app/authority/dashboard/page.tsx`, `src/app/authority/map/page.tsx`, `src/app/authority/personnels/page.tsx`, `src/app/authority/status/page.tsx`, `src/app/authority/tickets/page.tsx`, `src/app/citizen/dashboard/page.tsx`, `src/app/citizen/extra/page.tsx`, `src/app/citizen/profile/page.tsx`, `src/app/citizen/report/[id]/page.tsx`, `src/components/citizen/ActiveReports.tsx`, `src/components/citizen/StatusTracker.tsx`.
+  - Fixed lint errors, removed `any` casts, eliminated cascading `setState` effects and impure `Date.now` renders: `login/page.tsx`, `citizen/layout.tsx`, `citizen/map/page.tsx`, `citizen/report/page.tsx`, `AuthorityMap.tsx`, `MapDashboardWrapper.tsx`, `IssuesNearMeMap.tsx`, `MapWrapper.tsx`, `ReportPickerMap.tsx`, `ReputationCard.tsx`, `useOfflineSync.ts`, `useReports.ts`, `RefreshButton.tsx`, `CommandSearch.tsx`, `KPICard.tsx`, `PersonnelManager.tsx`.
+  - Tests database safety: ensured `tests/contract/geom-trigger.test.ts` marks created issue with `isSeed: true` and deletes in `afterAll`; ensured `tests/contract/health-aiqueue.test.ts` uses `test_target_*` prefix and deletes in `afterAll`.
+  - Warning count: 2 warnings (`@next/next/no-img-element` in `citizen/report/[id]/page.tsx` and `citizen/report/page.tsx` for dynamic user photo previews). 0 errors.
+  - Build configuration: configured `package.json` `"build": "next build --webpack"` and converted `src/app/layout.tsx` viewport to Next.js `Viewport` export.
+- **Full Gate Execution 1:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\page.tsx
+    469:29  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  ✖ 2 problems (0 errors, 2 warnings)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+
+   ✓ tests/unit/points.test.ts (8 tests) 11ms
+   ✓ tests/unit/config.test.ts (3 tests) 7ms
+   ✓ tests/contract/storage.test.ts (6 tests) 15ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 28ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 686ms
+     ✓ T10 PostGIS Trigger Acceptance Test > inserts an Issue via Prisma and reads back a non-null geom filled by trigger  633ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 838ms
+     ✓ T17 Contract Test: Async AI Queue & Health Check > GET /api/health returns valid JSON with health fields  581ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1400ms
+     ✓ T11 Acceptance: Seed and Authentication > all 7 U7 agencies are present in the database  661ms
+   ✓ tests/contract/merge.test.ts (5 tests) 1888ms
+
+   Test Files  8 passed (8)
+        Tests  39 passed (39)
+     Start at  23:30:35
+     Duration  3.77s (transform 1.22s, setup 0ms, collect 5.82s, tests 4.87s, environment 3ms, prepare 2.42s)
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+
+  ▲ Next.js 16.2.4 (webpack)
+  - Environments: .env.local, .env
+
+    Creating an optimized production build ...
+  ✓ Compiled successfully in 11.9s
+    Running TypeScript ...
+    Finished TypeScript in 15.0s ...
+    Collecting page data using 15 workers ...
+    Generating static pages using 15 workers (0/13) ...
+    Generating static pages using 15 workers (3/13) 
+    Generating static pages using 15 workers (6/13) 
+    Generating static pages using 15 workers (9/13) 
+  ✓ Generating static pages using 15 workers (13/13) in 1057ms
+    Finalizing page optimization ...
+    Collecting build traces ...
+
+  Route (app)
+  ┌ ○ /
+  ├ ○ /_not-found
+  ├ ƒ /api/auth/[...nextauth]
+  ├ ƒ /api/auth/register
+  ├ ƒ /api/health
+  ├ ƒ /api/personnels
+  ├ ƒ /api/personnels/[id]
+  ├ ƒ /api/reports
+  ├ ƒ /api/reports/[id]/comments
+  ├ ƒ /api/reports/authority
+  ├ ƒ /api/reports/nearby
+  ├ ƒ /api/stats
+  ├ ƒ /authority/dashboard
+  ├ ƒ /authority/map
+  ├ ƒ /authority/personnels
+  ├ ƒ /authority/status
+  ├ ƒ /authority/tickets
+  ├ ƒ /citizen/dashboard
+  ├ ƒ /citizen/extra
+  ├ ƒ /citizen/map
+  ├ ƒ /citizen/profile
+  ├ ƒ /citizen/report
+  ├ ƒ /citizen/report/[id]
+  └ ○ /login
+
+  ○  (Static)   prerendered as static content
+  ƒ  (Dynamic)  server-rendered on demand
+  ```
+
+- **Full Gate Execution 2:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\page.tsx
+    469:29  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  ✖ 2 problems (0 errors, 2 warnings)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+
+   ✓ tests/unit/points.test.ts (8 tests) 12ms
+   ✓ tests/unit/config.test.ts (3 tests) 8ms
+   ✓ tests/contract/storage.test.ts (6 tests) 15ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 35ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 519ms
+     ✓ T10 PostGIS Trigger Acceptance Test > inserts an Issue via Prisma and reads back a non-null geom filled by trigger  472ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 579ms
+     ✓ T17 Contract Test: Async AI Queue & Health Check > GET /api/health returns valid JSON with health fields  331ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1174ms
+     ✓ T11 Acceptance: Seed and Authentication > all 7 U7 agencies are present in the database  389ms
+   ✓ tests/contract/merge.test.ts (5 tests) 2261ms
+     ✓ T14 Contract Test: Spatial Deduplication & Merge > creates base issue at reference point  321ms
+
+   Test Files  8 passed (8)
+        Tests  39 passed (39)
+     Start at  23:32:15
+     Duration  4.11s (transform 1.05s, setup 0ms, collect 5.99s, tests 4.60s, environment 3ms, prepare 3.06s)
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+
+  ▲ Next.js 16.2.4 (webpack)
+  - Environments: .env.local, .env
+
+    Creating an optimized production build ...
+  ✓ Compiled successfully in 8.6s
+    Running TypeScript ...
+    Finished TypeScript in 15.0s ...
+    Collecting page data using 15 workers ...
+    Generating static pages using 15 workers (0/13) ...
+    Generating static pages using 15 workers (3/13) 
+    Generating static pages using 15 workers (6/13) 
+    Generating static pages using 15 workers (9/13) 
+  ✓ Generating static pages using 15 workers (13/13) in 763ms
+    Finalizing page optimization ...
+    Collecting build traces ...
+
+  Route (app)
+  ┌ ○ /
+  ├ ○ /_not-found
+  ├ ƒ /api/auth/[...nextauth]
+  ├ ƒ /api/auth/register
+  ├ ƒ /api/health
+  ├ ƒ /api/personnels
+  ├ ƒ /api/personnels/[id]
+  ├ ƒ /api/reports
+  ├ ƒ /api/reports/[id]/comments
+  ├ ƒ /api/reports/authority
+  ├ ƒ /api/reports/nearby
+  ├ ƒ /api/stats
+  ├ ƒ /authority/dashboard
+  ├ ƒ /authority/map
+  ├ ƒ /authority/personnels
+  ├ ƒ /authority/status
+  ├ ƒ /authority/tickets
+  ├ ƒ /citizen/dashboard
+  ├ ƒ /citizen/extra
+  ├ ƒ /citizen/map
+  ├ ƒ /citizen/profile
+  ├ ƒ /citizen/report
+  ├ ƒ /citizen/report/[id]
+  └ ○ /login
+
+  ○  (Static)   prerendered as static content
+  ƒ  (Dynamic)  server-rendered on demand
+  ```
 
 ### Audit after Phase 1 · 2026-10-27
 - **Full Gate Execution:**
