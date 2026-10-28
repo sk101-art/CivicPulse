@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Category, EvidenceRole, Issue, Report, Status } from "@prisma/client";
 import { awardPoints } from "@/lib/points";
 import { snapPointToSegment } from "@/lib/db/segments";
+import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 
 export interface IngestReportInput {
   userId: string;
@@ -79,7 +80,7 @@ export async function ingestReportWithSpatialMerge(
   );
 
   if (duplicateMatch) {
-    return await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const existingIssue = await tx.issue.findUniqueOrThrow({
         where: { id: duplicateMatch.id },
       });
@@ -126,6 +127,12 @@ export async function ingestReportWithSpatialMerge(
         pointsEarned: 0,
       };
     });
+
+    await recomputeIssuePriority(result.issue.id).catch((err) => {
+      console.error("Failed to recompute priority after duplicate merge:", err);
+    });
+
+    return result;
   }
 
   // 2. Ambiguous proximity:
@@ -144,7 +151,7 @@ export async function ingestReportWithSpatialMerge(
 
   const snapped = await snapPointToSegment(lat, lng, category, 20).catch(() => null);
 
-  return await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const newIssue = await tx.issue.create({
       data: {
         category,
@@ -204,4 +211,10 @@ export async function ingestReportWithSpatialMerge(
       pointsEarned: pointResult?.points ?? 10,
     };
   });
+
+  await recomputeIssuePriority(result.issue.id).catch((err) => {
+    console.error("Failed to recompute priority on new issue:", err);
+  });
+
+  return result;
 }

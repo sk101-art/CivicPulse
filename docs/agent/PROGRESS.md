@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T34(A) · Priority Index formula & weights
+Current task: T35 · Priority Index breakdown UI & audit log
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,60 @@ Current task: T34(A) · Priority Index formula & weights
 - None
 
 ## Done
+
+### T34 · Priority Index calculation and formula · 2026-10-28
+- **Goal:** Implement the full CivicPulse Priority Index (PI) engine in pure TypeScript based strictly on PLAN.md Appendix A specifications (factors S, E, V, U, P, C, and Σ season/rain multiplier), age floor rule (> 2x SLA enforces min PI of 60), sentence facts generator, and background recomputation on evidence/action changes.
+- **Implemented:**
+  - `config/priority.ts`: Factor weights (severity 0.30, exposure 0.20, vulnerability 0.15, usability 0.20, persistence 0.15), bands (CRITICAL >= 70, HIGH >= 50, MEDIUM >= 30, LOW < 30), baseline lookups, and seasonal matrices.
+  - `src/lib/priority/season.ts`: IST date-aware climatic season evaluator (Summer Mar–May, SW monsoon Jun–Sep, NE monsoon Oct–Dec, Winter Jan–Feb) with water-sensitive category rainfall multipliers (> 20mm forecast).
+  - `src/lib/priority/factors/`: Isolated pure factor modules:
+    - `severity.ts`: Category base (with domain overrides for open drain, signal down, lane blocked) × sizeClass × lanePosition.
+    - `exposure.ts`: Logarithmic volume curve `log10(1 + Q) / log10(1 + 12000)` combining lane volumes, lanes, congestion factor r, bus weight, and POI pedestrian traffic.
+    - `vulnerability.ts`: `min(1, max(roadClass, poi) + 0.2 * dark)`.
+    - `usability.ts`: `blocked[share] * (0.5 + 0.5 * access)`.
+    - `persistence.ts`: `min(1, 0.6 * ageHours / slaHours + 0.2 * recurrences)`.
+    - `confidence.ts`: `0.5 + 0.5 * min(1, n / 3)` discounting offline/recaptured evidence to 0.5.
+  - `src/lib/priority/index.ts`: Pure `computePriority(inputs, config, now)` returning `pi`, `band`, `breakdown`, and `sentenceFacts`. Never throws on missing inputs, logging to `breakdown.missing`.
+  - `src/lib/jobs/priorityRecompute.ts`: Database integration recomputing PI, Band, Breakdown, and Sentence Facts on report ingestion and desk status actions.
+  - `tests/unit/priority.test.ts`: Unit tests validating all three worked examples from Appendix A.4 within ±0.5, defensive missing input handling, and runtime configuration alteration.
+- **Full Gate Output:**
+  ```
+  $ npm run lint
+  ✔ 0 errors, 1 warning (img element in report page)
+
+  $ npm run typecheck
+  ✔ tsc --noEmit (0 errors)
+
+  $ npm test
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  ✓ tests/contract/weather.test.ts (4 tests)
+  ✓ tests/contract/health-aiqueue.test.ts (3 tests)
+  ✓ tests/unit/device-key.test.ts (6 tests)
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+  ✓ tests/unit/nonce.test.ts (7 tests)
+  ✓ tests/unit/state-machine.test.ts (29 tests)
+  ✓ tests/unit/priority.test.ts (5 tests)
+  ✓ tests/unit/points.test.ts (8 tests)
+  ✓ tests/contract/storage.test.ts (6 tests)
+  ✓ tests/unit/signing-verification.test.ts (8 tests)
+  ✓ tests/unit/api-validation.test.ts (7 tests)
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/unit/claim-gap.test.ts (4 tests)
+  ✓ tests/contract/osm-snap.test.ts (6 tests)
+  ✓ tests/unit/public-issue.test.ts (4 tests)
+  ✓ tests/unit/desk-queue.test.ts (5 tests)
+  ✓ tests/unit/desk-actions.test.ts (7 tests)
+  ✓ tests/unit/report-flow.test.ts (4 tests)
+  ✓ tests/contract/merge.test.ts (5 tests)
+  ✓ tests/unit/verification.test.ts (4 tests)
+  Test Files  21 passed (21)
+  Tests  132 passed (132)
+
+  $ npm run build
+  ✔ Compiled successfully in 7.0s
+  ✔ Finished TypeScript in 10.0s
+  ✔ Generating static pages (18/18) in 705ms
+  ```
 
 ### T33 · Open-Meteo weather adapter · 2026-10-28
 - **Goal:** Hourly precipitation, precipitation probability, and temperature for next 72 h via Open-Meteo API (`timezone=Asia/Kolkata`); cache in `WeatherForecast` table, support high-speed bulk upsert, calculate rain risk summary for next 24h, verify CC-BY attribution string "Weather data by Open-Meteo.com", and store real live Bengaluru fixture.

@@ -10,6 +10,7 @@ import {
 import { verifyEvidence } from "@/lib/evidence/verify";
 import { uploadEvidencePhoto } from "@/lib/external/storage";
 import { enqueueAiJob } from "@/lib/jobs/aiQueue";
+import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
 import { NextResponse } from "next/server";
 import { Role, EvidenceRole } from "@prisma/client";
@@ -186,6 +187,10 @@ export async function POST(
       });
 
       return { updatedIssue: updated, createdLog: log };
+    });
+
+    await recomputeIssuePriority(issue.id).catch((err) => {
+      console.error("Failed to recompute priority after desk action:", err);
     });
 
     return NextResponse.json(
