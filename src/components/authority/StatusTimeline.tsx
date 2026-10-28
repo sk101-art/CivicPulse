@@ -88,7 +88,7 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
   const handleFilterChange = (filter: string) => {
     const params = new URLSearchParams();
     if (filter !== 'ALL') params.set('filter', filter);
-    router.push(`/authority/status${params.toString() ? '?' + params.toString() : ''}`);
+    router.push(`/desk/status${params.toString() ? '?' + params.toString() : ''}`);
   };
 
   const handleManualStatusUpdate = async () => {

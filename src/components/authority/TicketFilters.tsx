@@ -138,7 +138,7 @@ export function TicketFilters() {
              );
            })}
            <button 
-             onClick={() => router.push('/authority/tickets')}
+             onClick={() => router.push('/desk/tickets')}
              className="text-[9px] font-mono uppercase tracking-widest font-bold text-white/30 hover:text-magenta transition-colors ml-2"
            >
              Clear All

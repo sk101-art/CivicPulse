@@ -54,7 +54,7 @@ export function AppSidebar({ role, links, userName, userSubtitle }: AppSidebarPr
       {/* Navigation Section */}
       <nav className="flex-1 px-4 py-10 space-y-3">
         {links.map((item) => {
-          const isActive = pathname === item.href || (item.href !== '/citizen/dashboard' && item.href !== '/authority/dashboard' && pathname.startsWith(item.href + '/'));
+          const isActive = pathname === item.href || (item.href !== '/citizen/dashboard' && item.href !== '/authority/dashboard' && item.href !== '/desk' && pathname.startsWith(item.href + '/'));
           const IconComponent = iconMap[item.icon] || LayoutDashboard;
 
           return (

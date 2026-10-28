@@ -305,3 +305,13 @@ export function transition(
     issueUpdateData,
   };
 }
+
+export function getAllowedActions(status: Status, role: ActorRole): IssueAction[] {
+  const allowed = new Set<IssueAction>();
+  for (const rule of TRANSITION_RULES) {
+    if (rule.from.includes(status) && rule.allowedRoles.includes(role)) {
+      allowed.add(rule.action);
+    }
+  }
+  return Array.from(allowed);
+}

@@ -32,7 +32,7 @@ export function MobileNav({ links, accentColor = 'var(--accent-cyan)' }: MobileN
       style={{ height: '72px', paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       {links.map((item) => {
-        const isActive = pathname === item.href || (item.href !== '/citizen/dashboard' && item.href !== '/authority/dashboard' && pathname.startsWith(item.href + '/'));
+        const isActive = pathname === item.href || (item.href !== '/citizen/dashboard' && item.href !== '/authority/dashboard' && item.href !== '/desk' && pathname.startsWith(item.href + '/'));
         const IconComponent = iconMap[item.icon] || LayoutDashboard;
 
         return (

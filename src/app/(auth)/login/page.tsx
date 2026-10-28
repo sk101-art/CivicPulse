@@ -115,7 +115,7 @@ export default function LoginPage() {
         const res = await fetch('/api/auth/session');
         const session = await res.json();
         const actualRole = session?.user?.role || 'CITIZEN';
-        const target = actualRole === 'AUTHORITY' ? '/authority/dashboard' : '/citizen/dashboard';
+        const target = actualRole === 'AUTHORITY' ? '/desk' : '/citizen/dashboard';
         
         setTimeout(() => {
           router.push(target);

@@ -8,7 +8,7 @@ import { RefreshButton } from "@/components/ui/RefreshButton";
 
 export const revalidate = 0;
 
-export default async function AuthorityStatusPage({
+export default async function DeskStatusPage({
   searchParams,
 }: {
   searchParams: Promise<{ filter?: string }>;
@@ -50,25 +50,25 @@ export default async function AuthorityStatusPage({
     confirmedAt: null,
     assignedAt: null,
     startedAt: null,
-    resolvedAt: ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(r.status) ? r.updatedAt.toISOString() : null,
-    rejectedAt: r.status === 'REJECTED' ? r.updatedAt.toISOString() : null,
+    resolvedAt: null,
+    rejectedAt: null,
     address: r.address || '',
     priorityScore: r.priority,
   }));
 
   return (
-    <main className="flex-1 overflow-y-auto w-full h-full pb-24 lg:pb-0 bg-primary flex flex-col">
+    <main className="flex-1 overflow-y-auto w-full h-full pb-24 lg:pb-0 bg-primary">
       <AppHeader 
         title="Operations Status"
-        subtitle="Live Lifecycle Monitoring"
+        subtitle="Shared Desk State Tracker"
         accentColor="var(--accent-electric-blue)"
         actionButton={<RefreshButton />}
       />
 
-      <div className="p-6 lg:p-8 space-y-10 max-w-7xl mx-auto w-full">
+      <div className="p-6 md:p-8 space-y-10 max-w-7xl mx-auto">
         <StatusTimeline 
-          reports={serializedReports}
-          currentFilter={filter || 'ALL'}
+          reports={serializedReports} 
+          currentFilter={filter}
           counts={{ total, open, confirmed, assigned, inProgress, resolved }}
         />
       </div>

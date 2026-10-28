@@ -1095,7 +1095,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [x] | F8 | AI off the request path | T17 | `git grep -i ollama src` empty; AiJob tests |
 | [x] | F9 | XP for verifying | T15 | `tests/unit/points.test.ts` |
 | [ ] | F10 | New categories | T10 | schema enum; category picker e2e |
-| [ ] | A1 | Two desk accounts, shared dashboard | T11, T26 | e2e desk-a/desk-b |
+| [x] | A1 | Two desk accounts, shared dashboard | T11, T26 | e2e desk-a/desk-b |
 | [ ] | A2 | Public action log | T25, T28 | log tests; DB blocks UPDATE/DELETE |
 | [x] | A3 | Agency label + handoff counter | T25 | reassign test |
 | [ ] | A4 | Desk scorecard | T29 | claim-gap unit test (by desk) |

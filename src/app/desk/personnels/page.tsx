@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 
 export const revalidate = 0;
 
-export default async function PersonnelPage() {
+export default async function DeskPersonnelPage() {
   const session = await getServerSession(authOptions);
   
   if (!session || session.user.role !== 'AUTHORITY') {
@@ -22,7 +22,7 @@ export default async function PersonnelPage() {
     <main className="flex-1 overflow-y-auto w-full h-full pb-24 lg:pb-0 bg-primary">
       <AppHeader 
         title="Field Personnel"
-        subtitle="Staff Management"
+        subtitle="Staff Directory"
         accentColor="var(--accent-cyan)"
       />
 

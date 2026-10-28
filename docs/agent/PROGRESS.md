@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T26 · Shared desk dashboard
+Current task: T27 · Claim fix and citizen verification
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,69 @@ Current task: T26 · Shared desk dashboard
 - None
 
 ## Done
+
+### T26 · Shared desk dashboard · 2026-10-28
+- **Goal:** Provide shared desk dashboard (`/desk`) with unified queue sorted by PI band (CRITICAL > HIGH > MEDIUM > LOW) then Priority index, filterable by status, category, agency, ward, and SLA breach, with slide-over Issue Drawer exposing state-machine allowed actions and inline audit trail ("Who did what") from `/api/issues/[id]/log`.
+- **Verified against docs/types:**
+  - PLAN.md Section 6 & 10 T26 card.
+  - Next.js permanent redirects (`/authority` and `/authority/:path*` -> `/desk` and `/desk/:path*`).
+  - NextAuth session handling for `Role.AUTHORITY` (`desk-a@civicpulse.local` and `desk-b@civicpulse.local` see identical data).
+- **Changed:**
+  - Modified `next.config.ts`: added permanent HTTP redirects from `/authority` and `/authority/:path*` to `/desk` and `/desk/:path*`.
+  - Modified `src/lib/issues/stateMachine.ts`: exported `getAllowedActions(status, role)` derived dynamically from `TRANSITION_RULES`.
+  - Created `src/app/api/desk/queue/route.ts`: authenticated desk queue endpoint supporting filters (`status`, `category`, `agencyId`, `wardId`, `slaBreached`, `search`), sorting strictly by PI band then Priority descending.
+  - Created `src/components/desk/IssueDrawer.tsx`: slide-over issue drawer with details, reports preview, inline action log timeline from `/api/issues/[id]/log`, and dynamic action forms for state-machine allowed transitions (`CONFIRM`, `REJECT`, `ASSIGN_AGENCY`, `REASSIGN_AGENCY`, `START_WORK`, `CLAIM_FIX`, `OVERRIDE_BAND`, `REOPEN`).
+  - Created `src/components/desk/DeskQueue.tsx`: interactive queue component with KPI stats, filter toolbar, issue rows with band styling and SLA counters, integrated with `IssueDrawer`.
+  - Created `src/app/desk/layout.tsx`: desk layout with navigation links (`/desk`, `/desk/status`, `/desk/tickets`, `/desk/map`, `/desk/personnels`) and user subtitle indicator.
+  - Created `src/app/desk/page.tsx`: server component loading initial queue sorted by PI band and U7 agencies.
+  - Created `src/app/desk/dashboard/page.tsx`, `src/app/desk/status/page.tsx`, `src/app/desk/tickets/page.tsx`, `src/app/desk/map/page.tsx`, `src/app/desk/personnels/page.tsx`: desk pages ported with updated paths.
+  - Removed deprecated `src/app/authority/**` directory.
+  - Modified `src/app/(auth)/login/page.tsx`, `src/components/layout/AppSidebar.tsx`, `src/components/layout/MobileNav.tsx`, `src/components/authority/StatusTimeline.tsx`, and `src/components/authority/TicketFilters.tsx`: updated authority routes to `/desk`.
+  - Created `tests/unit/desk-queue.test.ts`: acceptance tests verifying 403 authorization, PI band ordering, filter combinations, `getAllowedActions` consistency, and Desk A confirming an issue with Desk B seeing "Desk A" in the action log.
+  - Updated `docs/plan/PLAN.md`: ticked row A1 in Section 11 traceability matrix.
+- **Full Gate Execution:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  ✖ 1 problem (0 errors, 1 warning)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+   ✓ tests/unit/state-machine.test.ts (29 tests) 15ms
+   ✓ tests/unit/points.test.ts (8 tests) 8ms
+   ✓ tests/unit/config.test.ts (3 tests) 6ms
+   ✓ tests/contract/storage.test.ts (6 tests) 11ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 26ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 730ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 879ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 868ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1096ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 1117ms
+   ✓ tests/unit/signing-verification.test.ts (8 tests) 1505ms
+   ✓ tests/unit/desk-queue.test.ts (5 tests) 1665ms
+   ✓ tests/unit/report-flow.test.ts (4 tests) 1949ms
+   ✓ tests/unit/desk-actions.test.ts (7 tests) 1869ms
+   ✓ tests/contract/merge.test.ts (5 tests) 2500ms
+
+   Test Files  15 passed (15)
+        Tests  105 passed (105)
+     Duration  4.19s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 15.6s
+  ✓ Generating static pages using 15 workers (17/17) in 570ms
+  ```
+- **Notes for Next Task:** Next task is T27 (Claim fix and citizen verification). Will implement `src/app/api/issues/[id]/verify/route.ts` and `src/lib/issues/verification.ts`, verifying that verifier is not reporter or claimant, account is >24h old, GPS <= 30m and within 50m of issue, computing weight `0.5 + min(0.5, rep / 1000)`, and executing transitions to `VERIFIED_FIXED` (sum weights >= 1.0) or `DISPUTED` (weight >= 0.5).
 
 ### T25 · Desk actions endpoint, action log, agencies and handoffs · 2026-10-28
 - **Goal:** Provide authenticated desk actions endpoint (`/api/issues/[id]/actions`), public enriched action log endpoint (`/api/issues/[id]/log`), enforce append-only ActionLog integrity via DB trigger, support agency assignment, reassignment with handoffCount increment, and claim evidence handling.

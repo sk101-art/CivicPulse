@@ -5,12 +5,16 @@ import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
 
-export default async function AuthorityLayout({ children }: { children: React.ReactNode }) {
+export default async function DeskLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'AUTHORITY') redirect('/login');
+  if (!session || session.user.role !== 'AUTHORITY') {
+    redirect('/login');
+  }
 
   const userId = session.user.id;
-  if (!userId) { redirect('/login'); return null; }
+  if (!userId) {
+    redirect('/login');
+  }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -21,11 +25,11 @@ export default async function AuthorityLayout({ children }: { children: React.Re
     icon: 'TrendingUp' | 'User' | 'Map' | 'FileText' | 'LayoutDashboard';
     label: string;
   }> = [
-    { href: '/authority/dashboard', icon: 'LayoutDashboard', label: 'Dashboard' },
-    { href: '/authority/status', icon: 'TrendingUp', label: 'Operations Status' },
-    { href: '/authority/tickets', icon: 'FileText', label: 'Active Tickets' },
-    { href: '/authority/map', icon: 'Map', label: 'Route Optimizer' },
-    { href: '/authority/personnels', icon: 'User', label: 'Field Personnel' },
+    { href: '/desk', icon: 'LayoutDashboard', label: 'Operations Queue' },
+    { href: '/desk/status', icon: 'TrendingUp', label: 'Operations Status' },
+    { href: '/desk/tickets', icon: 'FileText', label: 'Active Tickets' },
+    { href: '/desk/map', icon: 'Map', label: 'Route Optimizer' },
+    { href: '/desk/personnels', icon: 'User', label: 'Field Personnel' },
   ];
 
   const userSubtitle = user?.email === 'desk-a@civicpulse.local'
@@ -49,7 +53,7 @@ export default async function AuthorityLayout({ children }: { children: React.Re
       <AppSidebar 
         role="AUTHORITY" 
         links={links} 
-        userName={user?.name || user?.email?.split('@')[0] || 'Authority'} 
+        userName={user?.name || user?.email?.split('@')[0] || 'Desk Officer'} 
         userSubtitle={userSubtitle} 
       />
       
@@ -57,7 +61,7 @@ export default async function AuthorityLayout({ children }: { children: React.Re
         {children}
       </div>
 
-      <MobileNav links={links} accentColor="var(--accent-electric-blue)" />
+      <MobileNav links={links} accentColor="var(--accent-cyan)" />
     </div>
   );
 }
