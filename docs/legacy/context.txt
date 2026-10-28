@@ -1,9 +1,9 @@
 # CivicPulse V2.4: Project Context Report
 # Date: 2026-05-05
-# Version: 2.4 (Metropolitan Security Grid)
+# Version: 2.4 (Municipal Road Truth Ledger)
 
 ## 1. Project Overview
-CivicPulse is a high-performance metropolitan security grid and infrastructure management platform. It serves as a bridge between citizens and urban authorities, utilizing AI-driven prioritization and advanced geospatial intelligence to streamline city maintenance and safety reporting.
+CivicPulse is a high-performance municipal road truth ledger and civic infrastructure management platform. It serves as a bridge between citizens and urban authorities, utilizing AI-driven prioritization and advanced geospatial intelligence to streamline city maintenance and safety reporting.
 
 ## 2. Tech Stack (The "Pulse" Engine)
 The project utilizes a modern, elite development stack designed for speed, visual excellence, and reliability.

@@ -164,7 +164,7 @@ export default function LoginPage() {
                 CIVIC PULSE
               </h1>
               <div className="flex items-center justify-center gap-2 text-[10px] text-white/40 tracking-[0.4em] font-black">
-                <span>METROPOLITAN SECURITY GRID</span>
+                <span>MUNICIPAL ROAD TRUTH LEDGER</span>
                 <span className="text-white/20">|</span>
                 <span>SYSTEM ACCESS</span>
               </div>

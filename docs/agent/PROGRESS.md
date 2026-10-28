@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T72 · Security and Framing Audit (Track A)
+Current task: T73 · Demo Story E2E (Track A)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,44 @@ Current task: T72 · Security and Framing Audit (Track A)
 - None
 
 ## Done
+
+### T72 · Security, README and municipal framing audit · 2026-10-28
+- **Goal:** Rewrite README around the municipal road truth ledger (what, why, how to run, environment variables table, Mermaid architecture diagram, data sources & attributions), and eliminate all "Metropolitan Security Grid" phrasing across the repository.
+- **Implemented:**
+  - `README.md`: Comprehensive rewrite covering:
+    - CivicPulse mission and elimination of the "claim gap".
+    - Full ASCII/Mermaid flowcharts depicting cryptographic device signing, PostGIS spatial deduplication, Priority Index engine, append-only ActionLog, and dual citizen verification.
+    - Exhaustive environment variable table covering all 24 server schema variables and client configurations with keys-later mode fallback explanations.
+    - Getting started, migrations, database seeding, and full quality gate instructions.
+    - Data sources and OpenStreetMap / Open-Meteo / TomTom / OpenCity attributions.
+    - Municipal public record notice.
+  - Reframing Audit:
+    - Removed `METROPOLITAN SECURITY GRID` badge from `src/app/(auth)/login/page.tsx`, replaced with `MUNICIPAL ROAD TRUTH LEDGER`.
+    - Cleaned up `docs/legacy/context.txt`.
+    - Verified `git grep -i "security grid"` returns 0 occurrences across all codebase sources.
+  - `tests/unit/readme-audit.test.ts`: Acceptance suite verifying:
+    - Presence of Mermaid architecture diagram, data sources, and truth ledger framing.
+    - Every server schema environment variable is documented in README.md.
+    - Zero occurrences of "security grid" in `src/`.
+- **Verified Against Docs:** PLAN.md Section 10 T72 card, Section 11 P5 row.
+- **Checks Run:**
+  ```
+  [Vitest: T72 Unit Suite]
+  ✓ tests/unit/readme-audit.test.ts (3 tests) 309ms
+  3 passed
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✔ 0 errors, 1 warning (img element in report page)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  35 passed (35)
+  Tests  196 passed (196)
+  > next build --webpack
+  ✓ Compiled successfully in 7.8s
+  ✓ Generating static pages (19/19) in 615ms
+  ```
 
 ### T70 · Installable PWA manifest and service worker · 2026-10-28
 - **Goal:** Implement installable Progressive Web App (PWA) with valid web manifest, icons (192x192, 512x512, maskable, apple-touch), service worker (`public/sw.js`) with offline caching and shell fallback (`public/offline.html`), and in-app install prompt banner.
