@@ -1,0 +1,56 @@
+{
+  "_synthetic": true,
+  "description": "Outer Ring Road (ORR) main carriageway route with parallel service road fixture",
+  "route": [
+    [12.9558, 77.7012],
+    [12.9535, 77.7020],
+    [12.9510, 77.7028],
+    [12.9480, 77.7036]
+  ],
+  "segments": [
+    {
+      "id": "seg-orr-main-1",
+      "osmWayId": "1001",
+      "name": "Outer Ring Road (Main Carriageway)",
+      "roadClass": "trunk",
+      "coords": [
+        [12.9558, 77.7012],
+        [12.9535, 77.7020],
+        [12.9510, 77.7028]
+      ]
+    },
+    {
+      "id": "seg-orr-main-2",
+      "osmWayId": "1002",
+      "name": "Outer Ring Road (Main Carriageway)",
+      "roadClass": "trunk",
+      "coords": [
+        [12.9510, 77.7028],
+        [12.9480, 77.7036]
+      ]
+    },
+    {
+      "id": "seg-orr-service-road",
+      "osmWayId": "2001",
+      "name": "Marathahalli Bridge Service Road",
+      "roadClass": "tertiary",
+      "coords": [
+        [12.9558, 77.7014],
+        [12.9535, 77.7022],
+        [12.9510, 77.7030],
+        [12.9480, 77.7038]
+      ]
+    },
+    {
+      "id": "seg-orr-service-divergent",
+      "osmWayId": "2002",
+      "name": "TechVillage Service Road Entry",
+      "roadClass": "service",
+      "coords": [
+        [12.9535, 77.7020],
+        [12.9520, 77.7005],
+        [12.9505, 77.6990]
+      ]
+    }
+  ]
+}

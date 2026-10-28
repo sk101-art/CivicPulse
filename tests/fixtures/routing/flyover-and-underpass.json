@@ -1,0 +1,35 @@
+{
+  "_synthetic": true,
+  "description": "Marathahalli flyover overhead vs surface underpass junction turn fixture",
+  "route": [
+    [12.9555, 77.7005],
+    [12.9554, 77.7012],
+    [12.9552, 77.7025],
+    [12.9550, 77.7040]
+  ],
+  "segments": [
+    {
+      "id": "seg-flyover-straight",
+      "osmWayId": "3001",
+      "name": "Marathahalli Flyover",
+      "roadClass": "trunk",
+      "coords": [
+        [12.9570, 77.7010],
+        [12.9554, 77.7012],
+        [12.9530, 77.7015]
+      ]
+    },
+    {
+      "id": "seg-underpass-turn",
+      "osmWayId": "3002",
+      "name": "HAL to Varthur Road Underpass",
+      "roadClass": "secondary",
+      "coords": [
+        [12.9555, 77.7005],
+        [12.9554, 77.7012],
+        [12.9552, 77.7025],
+        [12.9550, 77.7040]
+      ]
+    }
+  ]
+}

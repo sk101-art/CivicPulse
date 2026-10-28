@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T42 · Segment matching (PostGIS ST_DWithin and bearing)
+Current task: T43 · Cost-based route choice and vehicle profiles
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,50 @@ Current task: T42 · Segment matching (PostGIS ST_DWithin and bearing)
 - None
 
 ## Done
+
+### T42 · Segment matching (PostGIS ST_DWithin + Azimuth) · 2026-10-28
+- **Goal:** Robust segment matching module `src/lib/routing/matchSegments.ts` selecting road segments along a route LineString within 10 m whose bearing differs by < 30° from the route's local bearing; return ordered segment IDs; verify with fixtures for parallel service road and flyovers.
+- **Implemented:**
+  - `src/lib/routing/matchSegments.ts`:
+    - Spherical forward azimuth calculation `calculateBearing(lat1, lon1, lat2, lon2)`.
+    - Circular bearing difference `bearingDifference(b1, b2)` with 0°/360° wrap-around.
+    - Point-to-polyline geodesic distance computation `pointToPolylineDistanceM`.
+    - Local step-by-step route traversal comparing local direction against segment bearing.
+    - Integrated with PostGIS `ST_DWithin` spatial query on `RoadSegment` table for production routing.
+    - Supports in-memory candidate segments for high-speed fixture evaluations.
+  - `tests/fixtures/routing/orr-and-service-road.json`: Outer Ring Road main carriageway vs parallel service road fixture with `_synthetic: true`.
+  - `tests/fixtures/routing/flyover-and-underpass.json`: Elevated flyover straight vs surface turning road underpass fixture with `_synthetic: true`.
+  - `tests/unit/segment-matching.test.ts`: 5 unit tests verifying cardinal azimuths, bearing differences, point-to-line distances, and the two acceptance criteria:
+    - A route on ORR matches main carriageway segments and does NOT match the parallel service road (> 10 m away or divergent bearing).
+    - A route under a flyover matches the surface turn and does NOT match the overhead flyover (bearing difference > 30°).
+  - `tests/contract/match-segments.test.ts`: Contract test confirming spatial matching against real OSM `RoadSegment` rows in the database along the ORR corridor.
+  - `docs/plan/PLAN.md`: Ticked N2.
+- **Verified Against Docs:** PostGIS `ST_DWithin` and `ST_Azimuth` specification.
+- **Checks Run:**
+  ```
+  [vitest tests/unit/segment-matching.test.ts]
+  ✓ tests/unit/segment-matching.test.ts (5 tests) 6ms
+  Test Files  1 passed (1)
+  Tests  5 passed (5)
+
+  [vitest tests/contract/match-segments.test.ts]
+  ✓ tests/contract/match-segments.test.ts (1 test) 694ms
+  Test Files  1 passed (1)
+  Tests  1 passed (1)
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✖ 1 problem (0 errors, 1 warning)
+  > tsc --noEmit
+  > vitest run
+  Test Files  25 passed (25)
+  Tests  149 passed (149)
+  > next build --webpack
+  ✓ Compiled successfully in 6.2s
+  ✓ Generating static pages using 15 workers (19/19) in 790ms
+  ```
+- **Feature Rows Ticked:** N2.
+- **Notes for the Next Task:** Proceed to T43 (Cost-based route choice and vehicle profiles: hazard cost, route score, vehicle sensitivity matrix, "fastest ↔ safest" slider, explanation string, avoidAreas).
 
 ### T41 · Routing proxy (TomTom synthetic) · 2026-10-28
 - **Goal:** Server-side routing proxy using TomTom Calculate Route API (or synthetic fixture in keys-later mode), supporting alternative routes, travel modes (car, motorcycle, pedestrian, bicycle, wheelchair), traffic delays, and avoidAreas; replace every `project-osrm` call in the application.
