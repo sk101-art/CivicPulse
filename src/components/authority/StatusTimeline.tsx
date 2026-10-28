@@ -204,7 +204,7 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
                       </div>
                       <span className="text-[10px] font-mono uppercase tracking-widest font-bold">Rejected</span>
                       {report.rejectedAt && (
-                        <span className="text-[9px] font-mono text-magenta/50 ml-auto">
+                        <span suppressHydrationWarning className="text-[9px] font-mono text-magenta/50 ml-auto">
                           {formatDistanceToNow(new Date(report.rejectedAt))} ago
                         </span>
                       )}
@@ -307,18 +307,18 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
                 <div className="p-5 pt-3 flex items-center justify-between">
                   <div className="flex items-center gap-4 text-[9px] font-mono uppercase tracking-widest text-white/25">
                     {report.confirmedAt && (
-                      <span>C: {getElapsedTime(report.createdAt, report.confirmedAt)}</span>
+                      <span suppressHydrationWarning>C: {getElapsedTime(report.createdAt, report.confirmedAt)}</span>
                     )}
                     {report.assignedAt && (
-                      <span>A: {getElapsedTime(report.confirmedAt || report.createdAt, report.assignedAt)}</span>
+                      <span suppressHydrationWarning>A: {getElapsedTime(report.confirmedAt || report.createdAt, report.assignedAt)}</span>
                     )}
                     {report.resolvedAt && (
-                      <span>R: {getElapsedTime(report.assignedAt || report.createdAt, report.resolvedAt)}</span>
+                      <span suppressHydrationWarning>R: {getElapsedTime(report.assignedAt || report.createdAt, report.resolvedAt)}</span>
                     )}
                   </div>
-                  <div className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-white/40 font-bold">
+                  <div suppressHydrationWarning className="flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-white/40 font-bold">
                     <Clock className="w-3 h-3" />
-                    {getTotalTime(report)}
+                    <span suppressHydrationWarning>{getTotalTime(report)}</span>
                   </div>
                 </div>
               </motion.div>
