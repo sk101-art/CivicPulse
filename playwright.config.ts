@@ -1,4 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
+import dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
 
 const baseURL = process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
 
@@ -8,7 +13,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: 'html',
+  reporter: 'list',
   use: {
     baseURL,
     trace: 'on-first-retry',
@@ -26,3 +31,4 @@ export default defineConfig({
     timeout: 120000,
   },
 });
+
