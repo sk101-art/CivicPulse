@@ -64,6 +64,35 @@ export default async function PublicIssuePage({
     notFound();
   }
 
+  // Compute current user eligibility attributes for fix verification
+  let currentUser = null;
+  if (session?.user?.id) {
+    currentUser = await prisma.user.findUnique({
+      where: { id: session.user.id },
+      select: { id: true, createdAt: true, role: true, email: true },
+    });
+  }
+
+  const isReporter = Boolean(
+    currentUser &&
+      issue.reports.some(
+        (r) => r.role === EvidenceRole.REPORT && r.userId === currentUser.id
+      )
+  );
+
+  const hasVerified = Boolean(
+    currentUser &&
+      issue.verifications.some((v) => v.verifierId === currentUser.id)
+  );
+
+  const isClaimant = Boolean(
+    currentUser &&
+      (issue.reports.some((r) => r.role === EvidenceRole.CLAIM_FIX && r.userId === currentUser.id) ||
+       issue.actions.some((a) => a.action === "CLAIM_FIX" && a.actorId === currentUser.id))
+  );
+
+  const accountCreatedAt = currentUser ? currentUser.createdAt.toISOString() : null;
+
   // Enrich action log actor names
   const actorIds = Array.from(new Set(issue.actions.map((a) => a.actorId)));
   const users = await prisma.user.findMany({
@@ -197,6 +226,10 @@ export default async function PublicIssuePage({
               issueId={issue.id}
               issueCoords={{ lat: issue.lat, lng: issue.lng }}
               isLoggedIn={isLoggedIn}
+              isReporter={isReporter}
+              isClaimant={isClaimant}
+              hasVerified={hasVerified}
+              accountCreatedAt={accountCreatedAt}
             />
           </div>
         )}

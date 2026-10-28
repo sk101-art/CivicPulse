@@ -1,17 +1,43 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, XCircle, Camera, AlertTriangle, Loader2, X, ShieldCheck } from 'lucide-react';
+import Link from 'next/link';
+import {
+  CheckCircle2,
+  XCircle,
+  Camera,
+  AlertTriangle,
+  Loader2,
+  X,
+  ShieldCheck,
+  ShieldAlert,
+} from 'lucide-react';
 import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/CaptureCamera';
+import { getVerificationEligibility } from '@/lib/verification/eligibility';
+import { haversineDistanceM } from '@/lib/evidence/sign';
 
-interface VerifyFixModalProps {
+export interface VerifyFixModalProps {
   issueId: string;
   issueCoords: { lat: number; lng: number };
   isLoggedIn: boolean;
+  isReporter?: boolean;
+  isClaimant?: boolean;
+  hasVerified?: boolean;
+  accountCreatedAt?: Date | string | null;
+  initialDistanceM?: number | null;
 }
 
-export function VerifyFixModal({ issueId, issueCoords, isLoggedIn }: VerifyFixModalProps) {
+export function VerifyFixModal({
+  issueId,
+  issueCoords,
+  isLoggedIn,
+  isReporter = false,
+  isClaimant = false,
+  hasVerified = false,
+  accountCreatedAt = null,
+  initialDistanceM = null,
+}: VerifyFixModalProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [verdict, setVerdict] = useState<'FIXED' | 'NOT_FIXED'>('FIXED');
@@ -22,17 +48,46 @@ export function VerifyFixModal({ issueId, issueCoords, isLoggedIn }: VerifyFixMo
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  if (!isLoggedIn) {
-    return (
-      <a
-        href="/login"
-        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30 text-xs font-mono font-bold transition-colors"
-      >
-        <ShieldCheck className="w-4 h-4" />
-        Sign in to Verify This Fix (+20 XP)
-      </a>
+  const [userDistanceM, setUserDistanceM] = useState<number | null>(
+    typeof initialDistanceM === 'number' ? initialDistanceM : null
+  );
+
+  useEffect(() => {
+    if (typeof initialDistanceM === 'number') return;
+    if (typeof window === 'undefined' || !navigator.geolocation) return;
+    if (!isLoggedIn || isReporter || hasVerified || isClaimant) return;
+
+    let isMounted = true;
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (!isMounted) return;
+        const d = haversineDistanceM(
+          issueCoords.lat,
+          issueCoords.lng,
+          pos.coords.latitude,
+          pos.coords.longitude
+        );
+        setUserDistanceM(d);
+      },
+      () => {},
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
     );
-  }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [issueCoords.lat, issueCoords.lng, initialDistanceM, isLoggedIn, isReporter, hasVerified, isClaimant]);
+
+  const effectiveDistanceM = typeof initialDistanceM === 'number' ? initialDistanceM : userDistanceM;
+
+  const eligibility = getVerificationEligibility({
+    isLoggedIn,
+    isReporter,
+    isClaimant,
+    hasVerified,
+    accountCreatedAt,
+    distanceM: effectiveDistanceM,
+  });
 
   const handleCapture = (ev: CapturedEvidence) => {
     setEvidence(ev);
@@ -92,20 +147,57 @@ export function VerifyFixModal({ issueId, issueCoords, isLoggedIn }: VerifyFixMo
     }
   };
 
+  if (!eligibility.eligible) {
+    return (
+      <div data-testid="verification-button-area" className="flex flex-col items-start sm:items-end gap-2">
+        <button
+          type="button"
+          disabled
+          aria-disabled="true"
+          data-testid="verify-fix-button"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-white/5 border border-white/10 text-white/40 text-xs font-mono font-bold cursor-not-allowed opacity-60"
+        >
+          <ShieldAlert className="w-4 h-4 text-amber-400/80" />
+          Verify this fix
+        </button>
+        <div
+          data-testid="verify-eligibility-reason"
+          className="text-xs font-mono text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 shadow-sm max-w-xs text-left sm:text-right"
+        >
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span>{eligibility.reason}</span>
+        </div>
+        {!isLoggedIn && (
+          <Link
+            href={`/login?callbackUrl=/issue/${issueId}`}
+            data-testid="signin-to-verify-link"
+            className="text-[11px] font-mono text-cyan-400 hover:underline flex items-center gap-1 mt-0.5"
+          >
+            Sign in to citizen account &rarr;
+          </Link>
+        )}
+      </div>
+    );
+  }
+
   return (
     <>
-      <button
-        onClick={() => {
-          setIsOpen(true);
-          setErrorMessage(null);
-          setSuccessMessage(null);
-          setEvidence(null);
-        }}
-        className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-black text-xs font-mono font-bold hover:opacity-90 shadow-lg shadow-emerald-500/20 transition-all"
-      >
-        <ShieldCheck className="w-4 h-4" />
-        Verify This Fix (+20 XP)
-      </button>
+      <div data-testid="verification-button-area" className="flex flex-col items-start sm:items-end gap-2">
+        <button
+          type="button"
+          data-testid="verify-fix-button"
+          onClick={() => {
+            setIsOpen(true);
+            setErrorMessage(null);
+            setSuccessMessage(null);
+            setEvidence(null);
+          }}
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-black text-xs font-mono font-bold hover:opacity-90 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer"
+        >
+          <ShieldCheck className="w-4 h-4" />
+          Verify this fix (+20 XP)
+        </button>
+      </div>
 
       {isOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -120,6 +212,7 @@ export function VerifyFixModal({ issueId, issueCoords, isLoggedIn }: VerifyFixMo
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setIsOpen(false)}
                 className="p-1.5 rounded-lg bg-white/5 text-white/70 hover:text-white"
               >

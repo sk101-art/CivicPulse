@@ -56,7 +56,7 @@ export async function checkVerifierEligibility(
   if (originalReport && originalReport.userId === userId) {
     return {
       eligible: false,
-      reason: "Original reporter cannot verify their own reported issue",
+      reason: "Original reporter cannot verify their own reported issue (You reported this issue)",
     };
   }
 
@@ -86,9 +86,11 @@ export async function checkVerifierEligibility(
   // 5. Account must be older than 24 hours
   const accountAgeMs = Date.now() - new Date(user.createdAt).getTime();
   if (accountAgeMs < 24 * 3600 * 1000) {
+    const remainingMs = 24 * 3600 * 1000 - accountAgeMs;
+    const remainingHours = Math.max(1, Math.ceil(remainingMs / (3600 * 1000)));
     return {
       eligible: false,
-      reason: "Account must be at least 24 hours old to verify fixes",
+      reason: `Account must be at least 24 hours old to verify fixes (Your account must be at least 24 hours old (eligible in ${remainingHours} h))`,
     };
   }
 
@@ -96,7 +98,7 @@ export async function checkVerifierEligibility(
   if (issue.verifications && issue.verifications.length > 0) {
     return {
       eligible: false,
-      reason: "User has already submitted a verification for this issue",
+      reason: "User has already submitted a verification for this issue (Already verified by you)",
     };
   }
 
@@ -113,7 +115,7 @@ export async function checkVerifierEligibility(
   if (distanceM > 50) {
     return {
       eligible: false,
-      reason: `Verifier is ${Math.round(distanceM)}m away; must be within 50m of the issue`,
+      reason: `Verifier is ${Math.round(distanceM)}m away; must be within 50m of the issue (You must be within 50 m of the issue)`,
       distanceM,
     };
   }
