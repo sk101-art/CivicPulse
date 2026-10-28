@@ -50,9 +50,9 @@ export function RoutePanel({
   return (
     <>
       {/* Top Action Bar */}
-      <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-wrap items-center gap-2">
+      <div className="absolute top-4 left-4 right-28 z-[1000] pointer-events-none flex flex-wrap items-center gap-2">
         {/* Source Button */}
-        <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center">
+        <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
           <button
             onClick={() => setMode("source")}
             className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-black uppercase tracking-widest border transition-all ${
@@ -72,7 +72,7 @@ export function RoutePanel({
         </div>
 
         {/* Destination Button */}
-        <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center">
+        <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
           <button
             onClick={() => setMode("destination")}
             className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-black uppercase tracking-widest border transition-all ${
@@ -93,7 +93,7 @@ export function RoutePanel({
 
         {/* Vehicle Selector */}
         {setVehicle && (
-          <div className="p-1.5 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center gap-1">
+          <div className="p-1.5 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center gap-1 pointer-events-auto">
             {(
               [
                 ["motorcycle", "🏍️ Moto"],
@@ -119,7 +119,7 @@ export function RoutePanel({
 
         {/* Safest vs Fastest Slider */}
         {setBeta && (
-          <div className="px-3 py-1.5 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center gap-2 text-[10px] font-mono text-white/60">
+          <div className="px-3 py-1.5 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center gap-2 text-[10px] font-mono text-white/60 pointer-events-auto">
             <span>⚡ Fast</span>
             <input
               type="range"
@@ -138,7 +138,7 @@ export function RoutePanel({
 
         {/* Compute Safe Route Button */}
         {source && destination && (
-          <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center">
+          <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
             <button
               onClick={onOptimize}
               disabled={loading}
@@ -151,7 +151,7 @@ export function RoutePanel({
 
         {/* Report Button (if enabled) */}
         {showReportButton && (
-          <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center">
+          <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
             <button
               onClick={() => setMode("report")}
               className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-black uppercase tracking-widest border transition-all ${
@@ -167,7 +167,7 @@ export function RoutePanel({
 
         {/* Reset / Clear Button */}
         {(source || destination || allRoutes.length > 0) && (
-          <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center">
+          <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
             <button
               onClick={onClear}
               className="px-2.5 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-widest text-white/40 hover:text-white hover:bg-white/5 transition"
@@ -179,7 +179,7 @@ export function RoutePanel({
 
         {/* Keys-Later Mode Notice */}
         {keyDisabled && (
-          <div className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-mono">
+          <div className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-mono pointer-events-auto">
             ⚠️ TomTom key not set (keys-later mode)
           </div>
         )}

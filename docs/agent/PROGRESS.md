@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T46(A) · Map layers (clustered issues by band + live traffic)
+Current task: T50 · LLM Provider Chain & Guardrails (Track A)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,41 @@ Current task: T46(A) · Map layers (clustered issues by band + live traffic)
 - None
 
 ## Done
+
+### T46(A) · Map layers (clustered issues by band + live traffic) · 2026-10-28
+- **Goal:** Implement Track A scope of map overlays in `src/components/map/layers/`: zoom-adaptive issue clustering colored by priority band (CRITICAL: rose, HIGH: amber, MEDIUM: sky, LOW: zinc), live TomTom traffic flow tiles with keys-later notice when unconfigured, and an overlay toggle control; verify via Playwright e2e layer toggling without console errors.
+- **Implemented:**
+  - `src/components/map/layers/IssueClustersLayer.tsx`: Reactive issue clustering layer using `useMapEvents`:
+    - Groups reports into grid cells at zoom levels < 15, computing centroid and highest priority band in each cluster.
+    - Cluster circle markers show count, band badge, and zoom in on click (`map.setView(center, zoom + 2)`).
+    - At zoom >= 15, renders individual circle markers with priority band color, pulsing for new reports, and rich popup with category, priority score, and link to issue detail.
+  - `src/components/map/layers/TrafficTilesLayer.tsx`: Live TomTom traffic flow tile layer (`relative0`), displaying friendly non-intrusive badge when key is not set to prevent console 403 errors in keys-later mode.
+  - `src/components/map/layers/LayerControl.tsx`: Floating top-right overlay switcher dropdown with independent z-index (`z-[1010]`) and pointer event isolation, allowing independent toggling of "Issues (Bands)" and "Live Traffic".
+  - `src/components/map/layers/index.ts`: Clean export barrel for map layer components.
+  - `src/components/map/BaseMap.tsx`: Integrated `LayerControl`, `IssueClustersLayer`, and `TrafficTilesLayer`.
+  - `src/components/map/RoutePanel.tsx`: Added pointer event transparency to container bar so top-right controls do not intercept click events.
+  - `tests/e2e/map-layers.spec.ts`: Playwright e2e test logging in as citizen, loading `/citizen/map`, opening the LayerControl dropdown, toggling Live Traffic ON, toggling Issues OFF and ON, and asserting zero console errors.
+- **Verified Against Docs:** Leaflet layer events, TomTom Traffic Flow Tile API v4 format (`/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png`).
+- **Checks Run:**
+  ```
+  [Playwright E2E: tests/e2e/map-layers.spec.ts]
+  Running 1 test using 1 worker
+  ok 1 [chromium] › tests/e2e/map-layers.spec.ts:6:7 › T46: Map Layers Acceptance E2E › toggles issues and live traffic layers without console errors (7.3s)
+  1 passed (8.2s)
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✖ 1 problem (0 errors, 1 warning)
+  > tsc --noEmit
+  > vitest run
+  Test Files  26 passed (26)
+  Tests  153 passed (153)
+  > next build --webpack
+  ✓ Compiled successfully in 6.6s
+  ✓ Generating static pages using 15 workers (19/19) in 803ms
+  ```
+- **Feature Rows Ticked:** N6 (Track A scope complete; full row will be ticked upon completing T46(rest) in Track B).
+- **Notes for the Next Task:** Sequence up to T46(A) is complete! Stop and report as mandated.
 
 ### T43 · Cost-based route choice and vehicle profiles · 2026-10-28
 - **Goal:** Cost-based safe routing engine `src/lib/routing/cost.ts` implementing hazard cost and route scoring from Appendix A.3; vehicle profiles (motorcycle, car, pedestrian, wheelchair) with specific category sensitivity weights; safety slider ($\beta \in [0.0, 0.5]$); explanation generator ("avoids 2 hazards, +3 min"); critical blocking hazards become hard `avoidAreas`.

@@ -11,9 +11,9 @@ import {
   HAZARD_RADIUS_METERS,
 } from "./utils";
 import { MapSync, MapClickHandler, CustomZoomControls } from "./MapControls";
-import { IssueMarkersLayer } from "./IssueMarkersLayer";
 import { RouteLayer } from "./RouteLayer";
 import { RoutePanel, VehicleMode } from "./RoutePanel";
+import { IssueClustersLayer, TrafficTilesLayer, LayerControl } from "./layers";
 
 export interface BaseMapProps {
   reports: ReportPoint[];
@@ -40,6 +40,9 @@ export function BaseMap({
   const [beta, setBeta] = useState<number>(0.15);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [keyDisabled, setKeyDisabled] = useState<boolean>(false);
+
+  const [showIssuesLayer, setShowIssuesLayer] = useState(true);
+  const [showTrafficLayer, setShowTrafficLayer] = useState(false);
 
   const [allRoutes, setAllRoutes] = useState<RouteOption[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
@@ -181,6 +184,13 @@ export function BaseMap({
     <div
       className={`h-full w-full rounded-2xl overflow-hidden border border-white/10 relative ${className}`}
     >
+      <LayerControl
+        showIssues={showIssuesLayer}
+        onToggleIssues={setShowIssuesLayer}
+        showTraffic={showTrafficLayer}
+        onToggleTraffic={setShowTrafficLayer}
+      />
+
       <RoutePanel
         mode={mode}
         setMode={setMode}
@@ -239,12 +249,11 @@ export function BaseMap({
           onSelectRoute={setSelectedRouteIndex}
         />
 
-        <IssueMarkersLayer
-          reports={reports}
-          hazards={hazards}
-          pulse={pulse}
-          nowMs={nowMs}
-        />
+        {showTrafficLayer && <TrafficTilesLayer />}
+
+        {showIssuesLayer && (
+          <IssueClustersLayer reports={validReports} nowMs={nowMs} />
+        )}
       </MapContainer>
     </div>
   );
