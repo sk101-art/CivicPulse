@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { Category, EvidenceRole, Issue, Report, Status } from "@prisma/client";
 import { awardPoints } from "@/lib/points";
+import { snapPointToSegment } from "@/lib/db/segments";
 
 export interface IngestReportInput {
   userId: string;
@@ -51,7 +52,7 @@ export async function ingestReportWithSpatialMerge(
     photoUrl,
     photoSha256,
     signature,
-    gpsAccuracyM,
+    gpsAccuracyM = 5.0,
     capturedAt = new Date(),
     note,
     isSeed = false,
@@ -141,6 +142,8 @@ export async function ingestReportWithSpatialMerge(
   const needsDuplicateReview = Boolean(diffCategoryWithin25m || sameCategoryBetween25And40m);
   const slaDueAt = new Date(Date.now() + 72 * 3600 * 1000);
 
+  const snapped = await snapPointToSegment(lat, lng, category, 20).catch(() => null);
+
   return await prisma.$transaction(async (tx) => {
     const newIssue = await tx.issue.create({
       data: {
@@ -149,6 +152,7 @@ export async function ingestReportWithSpatialMerge(
         lat,
         lng,
         address: address || `Report Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+        segmentId: snapped?.id || null,
         slaDueAt,
         needsDuplicateReview,
         isSeed,

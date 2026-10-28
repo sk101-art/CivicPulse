@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: Audit after Phase 2 · Ready for Track A (T30)
+Current task: T33 · Weather from Open-Meteo
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,51 @@ Current task: Audit after Phase 2 · Ready for Track A (T30)
 - None
 
 ## Done
+
+### T30 · OSM road segments & snapping · 2026-10-28
+- **Goal:** Download real Overpass OSM road segments for pilot corridor (ORR Marathahalli to Kadubeesanahalli + 1 km), store in `RoadSegment` with PostGIS LineString geometry, lanes, corridor tracking, and POI proximity; provide `snapPointToSegment` PostGIS query with category suitability and integrate with report ingestion pipeline.
+- **Implemented:**
+  - `data/osm/pilot.json`: Live Overpass query output (3,528 elements: 3,466 highway ways, 62 school/hospital POIs, 3.08 MB).
+  - `scripts/import-osm-segments.ts`: Imports ways into `RoadSegment`, derives lanes (defaults by highway class), evaluates `nearSchoolOrHospital <= 200m`, marks arterial corridors as `tracked`, and sets `wardId` via PostGIS `ST_Covers`.
+  - `src/lib/db/segments.ts`: PostGIS `snapPointToSegment(lat, lng, category, maxDistanceM)` with category suitability filter `suitsCategory(roadClass, category)` ensuring vehicle incidents snap to road corridors.
+  - `src/lib/issues/merge.ts`: Integrated snapping into `ingestReportWithSpatialMerge` so created issues automatically link to the snapped `RoadSegment`.
+  - `tests/contract/osm-snap.test.ts`: Contract tests verifying snapping to Outer Ring Road, far point returns null, category suitability rules, and issue creation linking `segmentId`.
+- **Full Gate Output:**
+  ```
+  $ npm run lint
+  ✔ 0 errors, 1 warning (img element in report page)
+
+  $ npm run typecheck
+  ✔ tsc --noEmit (0 errors)
+
+  $ npm test
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  ✓ tests/unit/api-validation.test.ts (7 tests)
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+  ✓ tests/unit/state-machine.test.ts (29 tests)
+  ✓ tests/contract/health-aiqueue.test.ts (3 tests)
+  ✓ tests/unit/points.test.ts (8 tests)
+  ✓ tests/unit/device-key.test.ts (6 tests)
+  ✓ tests/contract/osm-snap.test.ts (6 tests)
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/contract/storage.test.ts (6 tests)
+  ✓ tests/unit/signing-verification.test.ts (8 tests)
+  ✓ tests/unit/nonce.test.ts (7 tests)
+  ✓ tests/unit/claim-gap.test.ts (4 tests)
+  ✓ tests/contract/merge.test.ts (5 tests)
+  ✓ tests/unit/public-issue.test.ts (4 tests)
+  ✓ tests/unit/desk-queue.test.ts (5 tests)
+  ✓ tests/unit/desk-actions.test.ts (7 tests)
+  ✓ tests/unit/report-flow.test.ts (4 tests)
+  ✓ tests/unit/verification.test.ts (4 tests)
+  Test Files  19 passed (19)
+  Tests  123 passed (123)
+
+  $ npm run build
+  ✔ Compiled successfully in 9.2s
+  ✔ Finished TypeScript in 10.0s
+  ✔ Generating static pages (18/18) in 795ms
+  ```
 
 ### Audit after Phase 2 · 2026-10-28
 - **Goal:** Audit Phase 2 (T20–T29) acceptance checks specified as `e2e`, create and verify missing Playwright e2e tests against `npm run build && npm start` with cleanup, and confirm the 7 seeded U7 agencies.
