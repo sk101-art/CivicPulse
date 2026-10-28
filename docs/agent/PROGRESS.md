@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T41 · Routing proxy (TomTom synthetic)
+Current task: T42 · Segment matching (PostGIS ST_DWithin and bearing)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,49 @@ Current task: T41 · Routing proxy (TomTom synthetic)
 - None
 
 ## Done
+
+### T41 · Routing proxy (TomTom synthetic) · 2026-10-28
+- **Goal:** Server-side routing proxy using TomTom Calculate Route API (or synthetic fixture in keys-later mode), supporting alternative routes, travel modes (car, motorcycle, pedestrian, bicycle, wheelchair), traffic delays, and avoidAreas; replace every `project-osrm` call in the application.
+- **Implemented:**
+  - `src/lib/external/tomtom.ts`: Server-only TomTom routing adapter enforcing:
+    - India geographic bounding box validation (`APP_REGION=IN`, Lat 6.0°–38.0° N, Lon 68.0°–98.0° E).
+    - 5-minute request caching via in-memory TTL map.
+    - Monthly request quota tracking against the 20,000 requests/month cap.
+    - POST body with `avoidAreas.rectangles` when critical road hazards need avoidance.
+    - Keys-later synthetic fallback using `tests/fixtures/routing/synthetic-tomtom-route.json` with `_synthetic: true`.
+    - Region travel mode fallback (falls back from motorcycle to car if unsupported in region).
+  - `src/app/api/routes/safe/route.ts`: Secure server-side endpoint accepting POST or GET requests, validating coordinates via Zod, and returning normalized route alternatives with geometry, distance, duration, and traffic delay.
+  - `src/components/map/utils.ts`: Switched `fetchAllRoutes` to call `/api/routes/safe` instead of calling `router.project-osrm.org`.
+  - `src/components/map/RoutePanel.tsx` & `src/components/map/BaseMap.tsx`: Cleaned UI strings and comments of legacy OSRM references.
+  - `tests/fixtures/routing/synthetic-tomtom-route.json`: TomTom Calculate Route v1 format fixture along Bengaluru ORR corridor with `_synthetic: true`.
+  - `tests/contract/tomtom-routing.test.ts`: 8 contract tests verifying fixture parsing, India coordinate bounding box gates, 5-minute caching, keys-later mode, POST/GET API endpoints, and zero occurrences of `project-osrm` in the source code.
+  - `docs/agent/ASSUMPTIONS.md`: Logged synthetic TomTom routing fixture assumption for live verification in T75.
+  - `docs/plan/PLAN.md`: Ticked N1.
+- **Verified Against Docs:** TomTom Routing API v1 documentation (`https://api.tomtom.com/routing/1/calculateRoute/{locations}/json`, `maxAlternatives`, `travelMode`, `avoidAreas`, `departAt`, `traffic`).
+- **Checks Run:**
+  ```
+  [git grep project-osrm]
+  docs/plan/PLAN.md: (spec only)
+  (0 occurrences in all source files)
+
+  [vitest tests/contract/tomtom-routing.test.ts]
+  ✓ tests/contract/tomtom-routing.test.ts (8 tests) 99ms
+  Test Files  1 passed (1)
+  Tests  8 passed (8)
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✖ 1 problem (0 errors, 1 warning)
+  > tsc --noEmit
+  > vitest run
+  Test Files  23 passed (23)
+  Tests  143 passed (143)
+  > next build --webpack
+  ✓ Compiled successfully in 8.3s
+  ✓ Generating static pages using 15 workers (19/19) in 778ms
+  ```
+- **Feature Rows Ticked:** N1.
+- **Notes for the Next Task:** Proceed to T42 (Segment matching: matching route LineString to OSM road segments using PostGIS ST_DWithin and bearing).
 
 ### T40 · Shared map module & component refactor · 2026-10-28
 - **Goal:** Extract duplicated map and routing code between `AuthorityMap.tsx` and `IssuesNearMeMap.tsx` into a single shared `src/components/map/` module with zero behavior change; reduce line counts of both legacy components below 150 lines; verify visually and via Playwright screenshot comparisons before and after.

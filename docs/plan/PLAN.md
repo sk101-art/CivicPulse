@@ -1114,7 +1114,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [ ] | I2 | Score explained | T35 | component test |
 | [ ] | M5 | Repair-window planner | T36 | fixture test |
 | [ ] | M9 | Commuter-hours estimate | T37 | unit test |
-| [ ] | N1 | Server-side TomTom routing | T41 | contract test; no `project-osrm` |
+| [x] | N1 | Server-side TomTom routing | T41 | contract test; no `project-osrm` |
 | [ ] | N2 | Segment-based hazard matching | T42 | parallel road and flyover fixtures |
 | [ ] | N3 | Cost-based choice, vehicle profiles | T43 | per-vehicle choice test |
 | [ ] | N4 | Diversion cap | T44 | unit test |

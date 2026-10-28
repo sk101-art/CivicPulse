@@ -120,7 +120,7 @@ export function BaseMap({
     clearRoutes();
 
     try {
-      // 1. Initial OSRM direct route
+      // 1. Initial direct route
       const initialRoutes = await fetchAllRoutes([source, destination], 3);
       if (initialRoutes.length === 0) {
         setRouteError("No driving route found between selected points.");

@@ -220,7 +220,7 @@ export function RoutePanel({
         <div className="absolute inset-0 z-[999] bg-slate-950/50 backdrop-blur-sm flex items-center justify-center">
           <div className="px-8 py-4 rounded-2xl bg-slate-900 border border-cyan-500/20 text-sm font-bold text-cyan-400 shadow-2xl flex items-center gap-3">
             <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-            Computing safe route via OSRM...
+            Computing safe route...
           </div>
         </div>
       )}

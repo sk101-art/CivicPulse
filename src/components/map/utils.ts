@@ -81,36 +81,47 @@ export async function fetchAllRoutes(
   waypoints: [number, number][],
   alternatives: number | false = 3
 ): Promise<Array<{ coords: [number, number][]; distance: number; duration: number }>> {
-  const coords = waypoints.map(([lat, lng]) => `${lng},${lat}`).join(";");
-  const altParam = alternatives === false ? "false" : alternatives.toString();
-  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&alternatives=${altParam}`;
+  if (waypoints.length < 2) return [];
 
-  const res = await fetch(url);
+  const origin = waypoints[0];
+  const destination = waypoints[waypoints.length - 1];
+  const viaWaypoints = waypoints.slice(1, -1);
+
+  const res = await fetch("/api/routes/safe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      origin: { latitude: origin[0], longitude: origin[1] },
+      destination: { latitude: destination[0], longitude: destination[1] },
+      waypoints: viaWaypoints.map(([lat, lon]) => ({ latitude: lat, longitude: lon })),
+      maxAlternatives:
+        alternatives === false ? 0 : typeof alternatives === "number" ? alternatives : 2,
+    }),
+  });
+
+  if (!res.ok) return [];
+
   const data: unknown = await res.json();
   const parsed = data as {
-    code?: string;
     routes?: Array<{
-      geometry?: { coordinates?: Array<[number, number]> };
+      coords?: Array<[number, number]>;
       distance?: number;
       duration?: number;
     }>;
   };
 
-  if (parsed.code !== "Ok" || !parsed.routes?.length) return [];
+  if (!parsed.routes?.length) return [];
 
   return parsed.routes
     .map((r) => {
-      const routeCoords = r.geometry?.coordinates?.map(
-        ([lng, lat]) => [lat, lng] as [number, number]
-      );
       if (
-        !routeCoords?.length ||
+        !r.coords?.length ||
         typeof r.distance !== "number" ||
         typeof r.duration !== "number"
       ) {
         return null;
       }
-      return { coords: routeCoords, distance: r.distance, duration: r.duration };
+      return { coords: r.coords, distance: r.distance, duration: r.duration };
     })
     .filter((x): x is { coords: [number, number][]; distance: number; duration: number } =>
       Boolean(x)
