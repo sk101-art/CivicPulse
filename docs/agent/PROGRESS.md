@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T33 · Weather from Open-Meteo
+Current task: T34(A) · Priority Index formula & weights
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,51 @@ Current task: T33 · Weather from Open-Meteo
 - None
 
 ## Done
+
+### T33 · Open-Meteo weather adapter · 2026-10-28
+- **Goal:** Hourly precipitation, precipitation probability, and temperature for next 72 h via Open-Meteo API (`timezone=Asia/Kolkata`); cache in `WeatherForecast` table, support high-speed bulk upsert, calculate rain risk summary for next 24h, verify CC-BY attribution string "Weather data by Open-Meteo.com", and store real live Bengaluru fixture.
+- **Implemented:**
+  - `tests/fixtures/weather/real-bangalore.json`: Live real Open-Meteo query output for Bengaluru pilot area (`12.9450, 77.7000`) containing 72 hourly rows.
+  - `src/lib/external/openmeteo.ts`: Open-Meteo API client with `fetchOpenMeteoForecast`, payload parser `parseOpenMeteoPayload`, and `WEATHER_ATTRIBUTION = "Weather data by Open-Meteo.com"`.
+  - `src/lib/jobs/weather.ts`: Forecast sync job `syncWeatherForecast` (using high performance parameterized SQL bulk upsert ON CONFLICT ("pointKey", "hour") DO UPDATE) and 24h rain aggregator `getRainForecast`.
+  - `tests/contract/weather.test.ts`: Contract tests verifying real Bengaluru fixture parsing (72 records), attribution string, idempotent DB sync, and 24h summary evaluation.
+- **Full Gate Output:**
+  ```
+  $ npm run lint
+  ✔ 0 errors, 1 warning (img element in report page)
+
+  $ npm run typecheck
+  ✔ tsc --noEmit (0 errors)
+
+  $ npm test
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  ✓ tests/unit/device-key.test.ts (6 tests)
+  ✓ tests/contract/health-aiqueue.test.ts (3 tests)
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+  ✓ tests/contract/weather.test.ts (4 tests)
+  ✓ tests/unit/nonce.test.ts (7 tests)
+  ✓ tests/unit/state-machine.test.ts (29 tests)
+  ✓ tests/unit/points.test.ts (8 tests)
+  ✓ tests/contract/storage.test.ts (6 tests)
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/unit/api-validation.test.ts (7 tests)
+  ✓ tests/unit/signing-verification.test.ts (8 tests)
+  ✓ tests/contract/osm-snap.test.ts (6 tests)
+  ✓ tests/unit/claim-gap.test.ts (4 tests)
+  ✓ tests/unit/public-issue.test.ts (4 tests)
+  ✓ tests/unit/desk-queue.test.ts (5 tests)
+  ✓ tests/unit/desk-actions.test.ts (7 tests)
+  ✓ tests/unit/report-flow.test.ts (4 tests)
+  ✓ tests/contract/merge.test.ts (5 tests)
+  ✓ tests/unit/verification.test.ts (4 tests)
+  Test Files  20 passed (20)
+  Tests  127 passed (127)
+
+  $ npm run build
+  ✔ Compiled successfully in 6.9s
+  ✔ Finished TypeScript in 11.2s
+  ✔ Generating static pages (18/18) in 728ms
+  ```
 
 ### T30 · OSM road segments & snapping · 2026-10-28
 - **Goal:** Download real Overpass OSM road segments for pilot corridor (ORR Marathahalli to Kadubeesanahalli + 1 km), store in `RoadSegment` with PostGIS LineString geometry, lanes, corridor tracking, and POI proximity; provide `snapPointToSegment` PostGIS query with category suitability and integrate with report ingestion pipeline.
