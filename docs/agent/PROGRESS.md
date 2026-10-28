@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T28 · Public issue page
+Current task: T29 · Claim-gap page and desk scorecard
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,63 @@ Current task: T28 · Public issue page
 - None
 
 ## Done
+
+### T28 · Public issue page · 2026-10-28
+- **Goal:** Build public issue page (`/issue/[id]`), displaying full signed evidence photo gallery (initial report, confirmations, claim, verifications) with coordinates and role badges, chronological public ActionLog status timeline with human-readable actor labels ("Desk A", "Desk B", "System"), assigned agency and handoff counter, Priority Index breakdown, and interactive "Verify this fix (+20 XP)" modal for claimed fixes. Page is completely accessible without login and contains zero desk-only controls.
+- **Verified against docs/types:**
+  - PLAN.md Section 6 & 10 T28 card.
+  - Public access invariant: logged-out visitor views full details without being redirected.
+  - Immutability invariant: DB trigger blocks UPDATE and DELETE on `ActionLog`.
+- **Changed:**
+  - Created `src/components/public/VerifyFixModal.tsx`: client modal allowing on-site citizens within 50m to inspect claimed fixes, select verdict (`FIXED` / `NOT_FIXED`), launch `CaptureCamera` with `role="VERIFY"`, and submit signed verification with +20 XP point award.
+  - Modified `src/app/(public)/issue/[id]/page.tsx`: public issue page with key metrics (agency, handoff count, PI score, SLA countdown), photo gallery of all evidence roles, ActionLog timeline with actor attribution, and VerifyFixModal integration.
+  - Created `tests/unit/public-issue.test.ts`: acceptance test suite verifying clean rendering for logged-out visitors, DB trigger enforcement rejecting UPDATE and DELETE on `ActionLog`, photo gallery role categorization, and agency handoff counts.
+  - Updated `docs/plan/PLAN.md`: ticked row A2 (Public action log) in Section 11 traceability matrix.
+- **Full Gate Execution:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  ✖ 1 problem (0 errors, 1 warning)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+   ✓ tests/unit/state-machine.test.ts (29 tests) 14ms
+   ✓ tests/contract/storage.test.ts (6 tests) 10ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 23ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 640ms
+   ✓ tests/unit/points.test.ts (8 tests) 9ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 674ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1078ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 869ms
+   ✓ tests/unit/signing-verification.test.ts (8 tests) 1210ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 1282ms
+   ✓ tests/unit/config.test.ts (3 tests) 5ms
+   ✓ tests/contract/merge.test.ts (5 tests) 1862ms
+   ✓ tests/unit/desk-queue.test.ts (5 tests) 1736ms
+   ✓ tests/unit/report-flow.test.ts (4 tests) 1784ms
+   ✓ tests/unit/desk-actions.test.ts (7 tests) 1610ms
+   ✓ tests/unit/public-issue.test.ts (4 tests) 1406ms
+   ✓ tests/unit/verification.test.ts (4 tests) 4025ms
+
+   Test Files  17 passed (17)
+        Tests  113 passed (113)
+     Duration  6.23s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 7.7s
+  ✓ Generating static pages using 15 workers (17/17) in 552ms
+  ```
+- **Notes for Next Task:** Next task is T29 (Claim-gap page and desk scorecard). Will implement `scripts/import-wards.ts`, `src/app/api/claim-gap/route.ts`, and `src/app/(public)/claim-gap/page.tsx`, displaying claim-gap statistics (% disputed of claimed fixes, median time to verify) per ward and per desk over 30/90 days, with choropleth and scorecard table. Per user instruction, use the pilot area polygon and log it in `ASSUMPTIONS.md`.
 
 ### T27 · Claim fix and citizen verification · 2026-10-28
 - **Goal:** Implement fix verification endpoint (`/api/issues/[id]/verify`), eligibility enforcement rules, dynamic verification weights based on reputation, atomic point awards (+20 XP for verification), state machine transitions (`VERIFIED_FIXED` when sum of weights >= 1.0, `DISPUTED` when dispute weight >= 0.5), G2 AI job queuing, and in-app `CaptureCamera` fix claim flow.

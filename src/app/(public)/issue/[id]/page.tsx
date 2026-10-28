@@ -2,7 +2,17 @@ import { prisma } from "@/lib/db/prisma";
 import { notFound } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { MapPin, Clock, ArrowLeft, ShieldCheck } from "lucide-react";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
+import { 
+  MapPin, Clock, ArrowLeft, ShieldCheck, 
+  Building2, ArrowRightLeft, 
+  Activity, CheckCircle2
+} from "lucide-react";
+import { VerifyFixModal } from "@/components/public/VerifyFixModal";
+import { Status, Band, EvidenceRole } from "@prisma/client";
+
+export const revalidate = 0;
 
 export default async function PublicIssuePage({
   params,
@@ -10,15 +20,21 @@ export default async function PublicIssuePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
+  const session = await getServerSession(authOptions);
+  const isLoggedIn = Boolean(session?.user);
 
   let issue = await prisma.issue.findUnique({
     where: { id },
     include: {
+      agency: { select: { id: true, code: true, name: true, slaHours: true } },
       reports: {
         orderBy: { createdAt: "desc" },
       },
       actions: {
         orderBy: { createdAt: "asc" },
+      },
+      verifications: {
+        orderBy: { createdAt: "desc" },
       },
     },
   });
@@ -29,8 +45,10 @@ export default async function PublicIssuePage({
       include: {
         issue: {
           include: {
+            agency: { select: { id: true, code: true, name: true, slaHours: true } },
             reports: { orderBy: { createdAt: "desc" } },
             actions: { orderBy: { createdAt: "asc" } },
+            verifications: { orderBy: { createdAt: "desc" } },
           },
         },
       },
@@ -44,86 +62,267 @@ export default async function PublicIssuePage({
     notFound();
   }
 
-  const primaryReport = issue.reports[0] || null;
+  // Enrich action log actor names
+  const actorIds = Array.from(new Set(issue.actions.map((a) => a.actorId)));
+  const users = await prisma.user.findMany({
+    where: { id: { in: actorIds } },
+    select: { id: true, email: true, name: true, role: true },
+  });
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const enrichedActions = issue.actions.map((action) => {
+    let actorName = "Citizen";
+    if (action.actorId === "system" || action.actorId === "SYSTEM") {
+      actorName = "System";
+    } else {
+      const u = userMap.get(action.actorId);
+      if (u) {
+        if (u.email === "desk-a@civicpulse.local") {
+          actorName = "Desk A";
+        } else if (u.email === "desk-b@civicpulse.local") {
+          actorName = "Desk B";
+        } else if (u.name) {
+          actorName = u.name;
+        } else if (u.role === "AUTHORITY") {
+          actorName = "Desk Officer";
+        }
+      }
+    }
+    return {
+      ...action,
+      actorName,
+    };
+  });
+
+  const effectiveBand = (issue.bandOverride || issue.band) as Band;
+  const bandBadgeColor =
+    effectiveBand === "CRITICAL"
+      ? "border-red-500/40 text-red-400 bg-red-500/10"
+      : effectiveBand === "HIGH"
+      ? "border-amber-500/40 text-amber-400 bg-amber-500/10"
+      : effectiveBand === "MEDIUM"
+      ? "border-cyan-500/40 text-cyan-400 bg-cyan-500/10"
+      : "border-slate-500/40 text-slate-400 bg-slate-500/10";
+
+  const getRoleLabel = (role: EvidenceRole) => {
+    switch (role) {
+      case "REPORT":
+        return "Initial Report";
+      case "CONFIRM":
+        return "Citizen Confirmation";
+      case "CLAIM_FIX":
+        return "Desk Fix Claim";
+      case "VERIFY":
+        return "Citizen Verification";
+      default:
+        return role;
+    }
+  };
+
+  const piBreakdown = (issue.piBreakdown as Record<string, number> | null) || null;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 font-body p-4 sm:p-8">
-      <div className="max-w-3xl mx-auto space-y-8">
+    <div className="min-h-screen bg-[#070b14] text-zinc-100 font-body p-4 sm:p-8">
+      <div className="max-w-4xl mx-auto space-y-8">
+        {/* Top Navigation */}
         <div className="flex items-center justify-between">
           <Link
             href="/citizen/dashboard"
             className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-zinc-400 hover:text-white transition"
           >
             <ArrowLeft className="w-4 h-4" />
-            Dashboard
+            Home
           </Link>
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-zinc-900 border border-zinc-800 text-zinc-300">
+          <div className="flex items-center gap-3">
+            <span className={`px-3 py-1 rounded-full text-xs font-mono font-bold border ${bandBadgeColor}`}>
+              {effectiveBand} BAND ({issue.priority.toFixed(1)})
+            </span>
+            <span className="px-3 py-1 rounded-full text-xs font-mono font-bold bg-white/10 text-white">
               {issue.status}
             </span>
-            {issue.isSeed && (
-              <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-zinc-800 text-zinc-400">
-                seed
+            {issue.slaBreached && (
+              <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                SLA BREACHED
               </span>
             )}
           </div>
         </div>
 
-        {/* Primary Evidence Photo */}
-        {primaryReport && (
-          <div className="relative aspect-video rounded-3xl overflow-hidden bg-black border border-zinc-800 shadow-2xl">
-            <Image
-              src={primaryReport.photoUrl}
-              alt="Report evidence"
-              fill
-              className="object-cover"
-              unoptimized
-            />
-            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between text-xs font-mono text-white/90 bg-black/60 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10">
-              <span className="flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-cyan" />
-                {issue.lat.toFixed(5)}, {issue.lng.toFixed(5)}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                {new Date(primaryReport.capturedAt).toLocaleString()}
-              </span>
+        {/* Title & Location Header */}
+        <div className="space-y-2">
+          <span className="text-xs font-mono uppercase text-cyan tracking-widest block">
+            {issue.category.replace(/_/g, " ")}
+          </span>
+          <h1 className="text-2xl sm:text-3xl font-display font-black text-white">
+            {issue.address || "Road Infrastructure Issue"}
+          </h1>
+          <p className="text-xs font-mono text-white/50 flex items-center gap-1.5">
+            <MapPin className="w-4 h-4 text-cyan" />
+            Lat: {issue.lat.toFixed(5)}, Lng: {issue.lng.toFixed(5)}
+          </p>
+        </div>
+
+        {/* Claimed Fixed Banner & Verification CTA */}
+        {issue.status === Status.CLAIMED_FIXED && (
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/40 to-teal-950/40 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-emerald-400 font-mono font-bold text-sm">
+                <CheckCircle2 className="w-5 h-5" />
+                Work Claimed Complete by Operations Desk
+              </div>
+              <p className="text-xs font-mono text-white/60">
+                Citizens within 50 metres can confirm or dispute this repair with a signed photo.
+              </p>
             </div>
+            <VerifyFixModal
+              issueId={issue.id}
+              issueCoords={{ lat: issue.lat, lng: issue.lng }}
+              isLoggedIn={isLoggedIn}
+            />
           </div>
         )}
 
-        {/* Issue Details Card */}
-        <div className="rounded-2xl bg-zinc-900/60 border border-zinc-800 p-6 space-y-6">
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-xs font-mono uppercase text-cyan tracking-widest block mb-1">
-                {issue.category}
-              </span>
-              <h1 className="text-xl font-display font-black text-white">
-                {issue.address || "Road Infrastructure Issue"}
-              </h1>
+        {/* Key Metrics Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Agency & Handoffs Card */}
+          <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+            <span className="text-[11px] font-mono uppercase text-white/40 tracking-wider block">
+              Responsible Agency
+            </span>
+            <div className="flex items-center gap-2 text-base font-bold text-white font-mono">
+              <Building2 className="w-5 h-5 text-cyan" />
+              {issue.agency?.name || "Unassigned"}
             </div>
-            <div className="text-right">
-              <span className="text-[10px] font-mono text-zinc-500 block uppercase">Priority Index</span>
-              <span className="text-2xl font-mono font-black text-primary">
-                {issue.priority !== null ? Math.round(issue.priority) : "—"}
-              </span>
+            <div className="flex items-center gap-1.5 text-xs font-mono text-amber-300 pt-1">
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span>{issue.handoffCount} agency handoff(s)</span>
             </div>
           </div>
 
-          {primaryReport?.note && (
-            <div className="text-sm text-zinc-300 bg-zinc-950/40 p-4 rounded-xl border border-zinc-800/80">
-              {primaryReport.note}
-            </div>
-          )}
-
-          {/* Evidence Reports Gallery / Count */}
-          <div className="pt-2 border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-400 font-mono">
-            <span>Verified Confirmations: {issue.reports.length}</span>
-            <span className="flex items-center gap-1.5 text-emerald-400">
-              <ShieldCheck className="w-4 h-4" />
-              Cryptographically Signed
+          {/* Priority Index Breakdown Card */}
+          <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+            <span className="text-[11px] font-mono uppercase text-white/40 tracking-wider block">
+              Priority Index (PI)
             </span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-black font-mono text-white">
+                {issue.priority.toFixed(1)}
+              </span>
+              <span className="text-xs font-mono text-white/50">/ 100</span>
+            </div>
+            {piBreakdown && (
+              <div className="text-[10px] font-mono text-white/60 space-x-2 pt-1">
+                <span>S: {piBreakdown.S?.toFixed(2) ?? "—"}</span>
+                <span>E: {piBreakdown.E?.toFixed(2) ?? "—"}</span>
+                <span>V: {piBreakdown.V?.toFixed(2) ?? "—"}</span>
+                <span>U: {piBreakdown.U?.toFixed(2) ?? "—"}</span>
+              </div>
+            )}
+          </div>
+
+          {/* SLA Timeline Card */}
+          <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
+            <span className="text-[11px] font-mono uppercase text-white/40 tracking-wider block">
+              SLA Resolution Due
+            </span>
+            <div className="flex items-center gap-2 text-sm font-bold text-white font-mono">
+              <Clock className="w-4 h-4 text-rose-400" />
+              {new Date(issue.slaDueAt).toLocaleDateString()}
+            </div>
+            <div className="text-xs font-mono text-white/50 pt-1">
+              Target: {issue.agency?.slaHours ?? 72} hours from filing
+            </div>
+          </div>
+        </div>
+
+        {/* Evidence Photo Gallery */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+            <h2 className="text-lg font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              Signed Evidence Gallery ({issue.reports.length})
+            </h2>
+            <span className="text-xs font-mono text-white/40">Hardware-Signed / GPS Gate</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {issue.reports.map((report) => (
+              <div
+                key={report.id}
+                className="rounded-2xl overflow-hidden bg-black/40 border border-white/10 space-y-3 p-3 shadow-lg"
+              >
+                <div className="relative aspect-video rounded-xl overflow-hidden bg-black/60">
+                  <Image
+                    src={report.photoUrl}
+                    alt={getRoleLabel(report.role)}
+                    fill
+                    className="object-cover"
+                    unoptimized
+                  />
+                  <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-[10px] font-mono font-bold text-white border border-white/10">
+                    {getRoleLabel(report.role)}
+                  </div>
+                </div>
+
+                <div className="space-y-1 px-1 text-xs font-mono text-white/60">
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/80 font-bold">
+                      Accuracy: {report.gpsAccuracyM.toFixed(1)}m
+                    </span>
+                    <span className="text-[11px]">
+                      {new Date(report.capturedAt).toLocaleString()}
+                    </span>
+                  </div>
+                  {report.note && (
+                    <p className="text-xs text-white/80 bg-white/5 p-2 rounded-lg font-sans border border-white/5">
+                      &quot;{report.note}&quot;
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Public ActionLog Status Timeline */}
+        <div className="space-y-4 pt-4">
+          <div className="border-b border-white/10 pb-3">
+            <h2 className="text-lg font-bold font-mono text-white uppercase tracking-wider flex items-center gap-2">
+              <Activity className="w-5 h-5 text-cyan" />
+              Public Action Log & Audit Trail
+            </h2>
+            <p className="text-xs font-mono text-white/40 mt-1">
+              Append-only municipal truth ledger. Changes cannot be modified or deleted.
+            </p>
+          </div>
+
+          <div className="space-y-3 relative before:absolute before:inset-0 before:left-3.5 before:w-0.5 before:bg-white/10">
+            {enrichedActions.map((log) => (
+              <div key={log.id} className="relative pl-9 space-y-1.5 py-1">
+                <div className="absolute left-2 top-2 w-3.5 h-3.5 rounded-full bg-cyan/30 border-2 border-cyan -translate-x-1/2" />
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="font-bold text-cyan">{log.actorName}</span>
+                  <span className="text-white/40">
+                    {new Date(log.createdAt).toLocaleString()}
+                  </span>
+                </div>
+
+                <div className="text-xs font-mono text-white/90">
+                  Executed: <span className="font-bold text-white">{log.action}</span>
+                  {log.fromStatus && log.toStatus && log.fromStatus !== log.toStatus && (
+                    <span className="text-white/50 text-[11px] ml-2">
+                      ({log.fromStatus} &rarr; {log.toStatus})
+                    </span>
+                  )}
+                </div>
+
+                {log.note && (
+                  <p className="text-xs text-white/70 bg-white/5 p-2 rounded-lg font-sans border border-white/5">
+                    &quot;{log.note}&quot;
+                  </p>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       </div>
