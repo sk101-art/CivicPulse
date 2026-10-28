@@ -28,6 +28,7 @@ export interface RunAiOptions<T> {
   timeoutMs?: number;
   model?: string;
   adapters?: LlmAdapter[];
+  skipCache?: boolean;
 }
 
 export interface RunAiResult<T> {
@@ -94,30 +95,32 @@ export async function runAi<T>(options: RunAiOptions<T>): Promise<RunAiResult<T>
 
   // 2. Hash Input & Cache Lookup
   const inputHash = computeInputHash(feature, promptVer, inputPayload);
-  try {
-    const cachedRun = await prisma.aiRun.findFirst({
-      where: {
-        feature,
-        inputHash,
-        valid: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (cachedRun && cachedRun.output) {
-      const parsed = schema.safeParse(cachedRun.output);
-      if (parsed.success) {
-        return {
-          data: parsed.data,
-          provider: (cachedRun.model.split(":")[0] as LlmProviderName) || "gemini",
-          model: cachedRun.model,
+  if (!options.skipCache) {
+    try {
+      const cachedRun = await prisma.aiRun.findFirst({
+        where: {
+          feature,
+          inputHash,
           valid: true,
-          cached: true,
-        };
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      if (cachedRun && cachedRun.output) {
+        const parsed = schema.safeParse(cachedRun.output);
+        if (parsed.success) {
+          return {
+            data: parsed.data,
+            provider: (cachedRun.model.split(":")[0] as LlmProviderName) || "gemini",
+            model: cachedRun.model,
+            valid: true,
+            cached: true,
+          };
+        }
       }
+    } catch {
+      // If DB read fails, continue to live execution without caching
     }
-  } catch {
-    // If DB read fails, continue to live execution without caching
   }
 
   // 3. Prepare Provider Chain

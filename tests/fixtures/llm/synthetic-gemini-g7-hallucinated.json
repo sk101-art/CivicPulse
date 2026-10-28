@@ -1,0 +1,21 @@
+{
+  "_synthetic": true,
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\n  \"text\": \"HIGH priority (72.4) — POTHOLES on primary road. 4 distinct user reports confirmed 75% severity in wheel_path.\",\n  \"fact_ids\": [\"f_summary\", \"f_sev\", \"f_conf\"]\n}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 185,
+    "candidatesTokenCount": 47,
+    "totalTokenCount": 232
+  }
+}

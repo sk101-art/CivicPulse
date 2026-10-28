@@ -13,3 +13,5 @@
 | 2026-10-28 | T50 | `tests/fixtures/llm/synthetic-groq-g2.json` conforms to Groq OpenAI-compatible Chat Completions response schema | To verify with a live call in T75 | open |
 | 2026-10-28 | T51 | `tests/fixtures/llm/synthetic-gemini-g1-disagree.json` conforms to Google Gemini 1.5/2.5 Flash `generateContent` response schema | To verify with a live call in T75 | open |
 | 2026-10-28 | T52 | `tests/fixtures/llm/synthetic-groq-g2-flagged.json` conforms to Groq OpenAI-compatible Chat Completions response schema | To verify with a live call in T75 | open |
+| 2026-10-28 | T57 | `tests/fixtures/llm/synthetic-gemini-g7.json` conforms to Google Gemini 1.5/2.5 Flash `generateContent` response schema | To verify with a live call in T75 | open |
+| 2026-10-28 | T57 | `tests/fixtures/llm/synthetic-gemini-g7-hallucinated.json` conforms to Google Gemini 1.5/2.5 Flash `generateContent` response schema | To verify with a live call in T75 | open |

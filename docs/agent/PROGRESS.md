@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T57(A) · G7 Explainers & Drafts Track A Scope (Track A)
+Current task: T60(A) · Road Timeline & History Track A Scope (Track A)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,41 @@ Current task: T57(A) · G7 Explainers & Drafts Track A Scope (Track A)
 - None
 
 ## Done
+
+### T57(A) · G7 explainers and drafts (Track A: PI sentence rephrasing) · 2026-10-28
+- **Goal:** Implement Track A scope of G7 explainer: synthesize Priority Index sentence facts into natural, grounded citizen explanations with cited fact IDs, enforce strict guardrails against invented numbers (`numbersGrounded`) and unknown fact IDs, and ensure immediate fallback to deterministic template on any discrepancy.
+- **Implemented:**
+  - `src/lib/ai/explainer.ts`:
+    - `g7ExplainerSchema` & `g7JsonSchema`: Appendix D schema (`text: string`, `fact_ids: string[]`).
+    - `explainPrioritySentence(facts, options)`: Formats facts as JSON with IDs, calls LLM provider chain, checks for unknown fact IDs, validates that all numbers in generated text are grounded in cited facts via `numbersGrounded`, and falls back to deterministic template string (`facts.map(f => f.text).join(". ")`) on guardrail rejection or provider error.
+  - `src/lib/ai/run.ts`: Added `skipCache?: boolean` support to allow test suites to test adapter edge cases independently of cached runs.
+  - `tests/fixtures/llm/synthetic-gemini-g7.json`: Synthetic Gemini response fixture (`_synthetic: true`).
+  - `tests/fixtures/llm/synthetic-gemini-g7-hallucinated.json`: Synthetic fixture containing hallucinated number for guardrail testing (`_synthetic: true`).
+  - `tests/unit/explainer.test.ts`: Acceptance suite verifying:
+    - Normal explainer rephrasing with cited fact IDs.
+    - Acceptance check: Invented number ("4 user reports" when fact had "2") triggers `INVENTED_NUMBER_REJECTED` and falls back to exact deterministic template.
+    - Rejection of unknown fact IDs with fallback to template.
+    - Graceful fallback to template on provider 429 quota exhaustion or missing keys.
+  - `docs/agent/ASSUMPTIONS.md`: Logged synthetic fixtures for live verification in T75.
+- **Verified Against Docs:** PLAN.md Section 10 T57 card, Appendix D G7 schema, Rule 20.
+- **Checks Run:**
+  ```
+  [Vitest: T57 Acceptance Suite]
+  ✓ tests/unit/explainer.test.ts (4 tests) 648ms
+  4 passed
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✔ 0 errors, 1 warning (img element in report page)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  32 passed (32)
+  Tests  184 passed (184)
+  > next build --webpack
+  ✓ Compiled successfully in 6.4s
+  ✓ Generating static pages (19/19) in 603ms
+  ```
 
 ### T52 · G2 fix-check comparator · 2026-10-28
 - **Goal:** Implement G2 fix-check comparator on CLAIMED_FIXED reports: compare original filing photo against claim photo with Appendix D JSON schema, flag issues where defect is still visible or location differs (with confidence >= 0.7), add the "Needs citizen check — AI flagged" badge on the public issue UI, write an ActionLog audit row, and strictly ensure AI output never invokes the state machine or mutates status.
