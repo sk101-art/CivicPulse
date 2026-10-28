@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T21 · Capture nonce
+Current task: T22 · Camera capture, GPS gate and signing
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,65 @@ Current task: T21 · Capture nonce
 - None
 
 ## Done
+
+### T21 · Capture nonce · 2026-10-28
+- **Goal:** Issue random 128-bit nonce tied to user, valid 5 minutes, single-use, backed by `EvidenceNonce` table in database.
+- **Verified against docs/types:**
+  - Node.js `crypto.randomBytes(16).toString('hex')` (128 bits).
+  - Prisma 7 `EvidenceNonce` model: `userId`, `value`, `expiresAt`, `usedAt`.
+- **Changed:**
+  - Created `src/lib/evidence/nonce.ts`: `generateEvidenceNonce` (128-bit random value, 5-minute expiry) and `consumeEvidenceNonce` (atomic single-use verification checking existence, user ownership, non-expiry, and unused status).
+  - Created `src/app/api/evidence/nonce/route.ts`: authenticated POST route issuing single-use nonces.
+  - Created `tests/unit/nonce.test.ts`: acceptance test suite verifying 401 unauthenticated, 201 generation, consumption, rejection of reused nonces, rejection of expired nonces, rejection of other user's nonces, and rejection of non-existent nonces.
+  - Updated `docs/plan/PLAN.md`: ticked row V2 in Section 11 traceability matrix.
+- **Full Gate Execution:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\page.tsx
+    476:29  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  ✖ 2 problems (0 errors, 2 warnings)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+
+   ✓ tests/unit/points.test.ts (8 tests) 13ms
+   ✓ tests/unit/config.test.ts (3 tests) 9ms
+   ✓ tests/contract/storage.test.ts (6 tests) 17ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 33ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 671ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 638ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 673ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 1074ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1344ms
+   ✓ tests/contract/merge.test.ts (5 tests) 2282ms
+
+   Test Files  10 passed (10)
+        Tests  52 passed (52)
+     Duration  4.34s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 13.6s
+  ✓ Generating static pages using 15 workers (15/15) in 1290ms
+  Route (app)
+  ├ ƒ /api/evidence/nonce
+  ```
+- **Notes for Next Task:** Next task is T22 (Camera capture, GPS gate and signing). Will build `src/components/evidence/CaptureCamera.tsx`, `src/lib/evidence/sign.ts`, `src/lib/evidence/verify.ts`, with canonical JSON serialization, IEEE P1363 ECDSA verification on Node server, GPS accuracy <= 30m enforcement, and <= 50m pin drag constraint.
 
 ### T20 · Device signing keys · 2026-10-28
 - **Goal:** Generate non-extractable ECDSA P-256 key pair on client with Web Crypto, store CryptoKey in IndexedDB via `idb`, export public key as JWK, register with server via `/api/evidence/device`.

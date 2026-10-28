@@ -1100,7 +1100,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [ ] | A3 | Agency label + handoff counter | T25 | reassign test |
 | [ ] | A4 | Desk scorecard | T29 | claim-gap unit test (by desk) |
 | [ ] | V1 | In-app camera only | T22 | e2e: no file input on capture |
-| [ ] | V2 | Capture nonce | T21 | nonce tests |
+| [x] | V2 | Capture nonce | T21 | nonce tests |
 | [ ] | V3 | Signed evidence | T20, T22 | signature tests (byte, lat, time tamper) |
 | [ ] | V4 | Two-key closure | T24, T27 | state machine table tests |
 | [ ] | V5 | Verifier rules | T27 | eligibility tests |
