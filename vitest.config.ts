@@ -14,7 +14,7 @@ if (fs.existsSync(path.join(rootDir, '.env.local'))) {
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['tests/unit/**/*.test.ts', 'tests/contract/**/*.test.ts'],
+    include: ['tests/unit/**/*.test.{ts,tsx}', 'tests/contract/**/*.test.{ts,tsx}'],
     globals: true,
   },
   resolve: {

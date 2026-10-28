@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T35 · Priority Index breakdown UI & audit log
+Current task: T40 · Map component refactoring
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,59 @@ Current task: T35 · Priority Index breakdown UI & audit log
 - None
 
 ## Done
+
+### T35 · Priority Index breakdown UI & audit log · 2026-10-28
+- **Goal:** Priority explanation UI component `src/components/priority/PriorityBreakdown.tsx` featuring stacked bar of weighted factors, band chip, sentence built from `sentenceFacts`, "estimated" pill tags next to E (Exposure) and U (Usability), and SLA floor notice when applied; embedded in `/issue/[id]` public issue detail page.
+- **Implemented:**
+  - `src/components/priority/PriorityBreakdown.tsx`: Clean, accessible component rendering:
+    - Stacked bar proportioned to weighted contributions `w_i × factor_i`.
+    - Band badge chip with semantic colors (CRITICAL: rose, HIGH: amber, MEDIUM: sky, LOW: zinc).
+    - Factor tags with `estimated` labels explicitly marked on E and U.
+    - Multiplier summary for Confidence C and Season/Rain Σ.
+    - SLA breach notice: `SLA breached (> 2x SLA): minimum priority floor of 60 enforced.`
+    - Template sentence built only from `sentenceFacts.summary` or `piText`.
+  - `src/app/(public)/issue/[id]/page.tsx`: Embedded `PriorityBreakdown` replacing raw placeholder.
+  - `vitest.config.ts`: Added `.test.tsx` to test pattern match.
+  - `tests/unit/priority-breakdown.test.tsx`: Component tests verifying Worked Examples 1, 2, and 3 with stacked bar, band chip, estimated pills, and floor notice.
+- **Full Gate Output:**
+  ```
+  $ npm run lint
+  ✔ 0 errors, 1 warning (img element in report page)
+
+  $ npm run typecheck
+  ✔ tsc --noEmit (0 errors)
+
+  $ npm test
+  ✓ tests/contract/geom-trigger.test.ts (1 test)
+  ✓ tests/contract/health-aiqueue.test.ts (3 tests)
+  ✓ tests/unit/device-key.test.ts (6 tests)
+  ✓ tests/contract/weather.test.ts (4 tests)
+  ✓ tests/contract/seed-auth.test.ts (6 tests)
+  ✓ tests/unit/nonce.test.ts (7 tests)
+  ✓ tests/unit/priority.test.ts (5 tests)
+  ✓ tests/unit/priority-breakdown.test.tsx (3 tests)
+  ✓ tests/unit/state-machine.test.ts (29 tests)
+  ✓ tests/contract/storage.test.ts (6 tests)
+  ✓ tests/unit/api-validation.test.ts (7 tests)
+  ✓ tests/unit/signing-verification.test.ts (8 tests)
+  ✓ tests/unit/config.test.ts (3 tests)
+  ✓ tests/unit/points.test.ts (8 tests)
+  ✓ tests/unit/claim-gap.test.ts (4 tests)
+  ✓ tests/contract/osm-snap.test.ts (6 tests)
+  ✓ tests/unit/public-issue.test.ts (4 tests)
+  ✓ tests/unit/desk-queue.test.ts (5 tests)
+  ✓ tests/unit/desk-actions.test.ts (7 tests)
+  ✓ tests/unit/report-flow.test.ts (4 tests)
+  ✓ tests/contract/merge.test.ts (5 tests)
+  ✓ tests/unit/verification.test.ts (4 tests)
+  Test Files  22 passed (22)
+  Tests  135 passed (135)
+
+  $ npm run build
+  ✔ Compiled successfully in 15.2s
+  ✔ Finished TypeScript in 10.1s
+  ✔ Generating static pages (18/18) in 745ms
+  ```
 
 ### T34 · Priority Index calculation and formula · 2026-10-28
 - **Goal:** Implement the full CivicPulse Priority Index (PI) engine in pure TypeScript based strictly on PLAN.md Appendix A specifications (factors S, E, V, U, P, C, and Σ season/rain multiplier), age floor rule (> 2x SLA enforces min PI of 60), sentence facts generator, and background recomputation on evidence/action changes.

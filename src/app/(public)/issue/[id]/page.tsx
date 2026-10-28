@@ -10,6 +10,8 @@ import {
   Activity, CheckCircle2
 } from "lucide-react";
 import { VerifyFixModal } from "@/components/public/VerifyFixModal";
+import { PriorityBreakdown } from "@/components/priority/PriorityBreakdown";
+import type { PriorityBreakdown as PriorityBreakdownType } from "@/lib/priority";
 import { Status, Band, EvidenceRole } from "@prisma/client";
 
 export const revalidate = 0;
@@ -119,7 +121,7 @@ export default async function PublicIssuePage({
     }
   };
 
-  const piBreakdown = (issue.piBreakdown as Record<string, number> | null) || null;
+  const breakdown = (issue.piBreakdown as unknown as PriorityBreakdownType) || null;
 
   return (
     <div className="min-h-screen bg-[#070b14] text-zinc-100 font-body p-4 sm:p-8">
@@ -200,25 +202,12 @@ export default async function PublicIssuePage({
           </div>
 
           {/* Priority Index Breakdown Card */}
-          <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
-            <span className="text-[11px] font-mono uppercase text-white/40 tracking-wider block">
-              Priority Index (PI)
-            </span>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black font-mono text-white">
-                {issue.priority.toFixed(1)}
-              </span>
-              <span className="text-xs font-mono text-white/50">/ 100</span>
-            </div>
-            {piBreakdown && (
-              <div className="text-[10px] font-mono text-white/60 space-x-2 pt-1">
-                <span>S: {piBreakdown.S?.toFixed(2) ?? "—"}</span>
-                <span>E: {piBreakdown.E?.toFixed(2) ?? "—"}</span>
-                <span>V: {piBreakdown.V?.toFixed(2) ?? "—"}</span>
-                <span>U: {piBreakdown.U?.toFixed(2) ?? "—"}</span>
-              </div>
-            )}
-          </div>
+          <PriorityBreakdown
+            priority={issue.priority}
+            band={effectiveBand}
+            breakdown={breakdown}
+            piText={issue.piText}
+          />
 
           {/* SLA Timeline Card */}
           <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-2">
