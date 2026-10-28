@@ -21,25 +21,36 @@ export default async function DeskPage() {
     redirect('/login');
   }
 
-  const [rawIssues, agencies] = await Promise.all([
-    prisma.issue.findMany({
-      include: {
-        agency: { select: { id: true, code: true, name: true, slaHours: true } },
-        _count: { select: { reports: true, comments: true } },
-        reports: {
-          take: 1,
-          orderBy: { createdAt: "desc" },
-          select: { id: true, photoUrl: true, createdAt: true },
+  const loadDeskData = async () => {
+    return Promise.all([
+      prisma.issue.findMany({
+        include: {
+          agency: { select: { id: true, code: true, name: true, slaHours: true } },
+          _count: { select: { reports: true, comments: true } },
+          reports: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            select: { id: true, photoUrl: true, createdAt: true },
+          },
         },
-      },
-      orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
-      take: 200,
-    }),
-    prisma.agency.findMany({
-      select: { id: true, code: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-  ]);
+        orderBy: [{ priority: "desc" }, { createdAt: "desc" }],
+        take: 200,
+      }),
+      prisma.agency.findMany({
+        select: { id: true, code: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+  };
+
+  let rawIssues: Awaited<ReturnType<typeof loadDeskData>>[0];
+  let agencies: Awaited<ReturnType<typeof loadDeskData>>[1];
+  try {
+    [rawIssues, agencies] = await loadDeskData();
+  } catch (err) {
+    console.warn("Desk query initial attempt failed, retrying with fresh connection:", err);
+    [rawIssues, agencies] = await loadDeskData();
+  }
 
   // Sort by PI Band (CRITICAL > HIGH > MEDIUM > LOW) then Priority desc
   const issues = [...rawIssues];
