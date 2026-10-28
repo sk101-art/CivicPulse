@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Tier, Category, Status, Band, EvidenceRole } from '@prisma/client';
+import { PrismaClient, Role, Tier, Category, Status, Band, EvidenceRole, SegmentEventType } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
@@ -262,6 +262,257 @@ async function main() {
         },
       });
     }
+  }
+
+  // 5. Upsert Pilot Road Segment and Seeded History for T60(A)
+  console.log('[Seed] Upserting pilot road segment and historical events (T60)...');
+  const pilotSegmentId = 'seed-seg-orr-kadubeesanahalli';
+  const pilotSegment = await prisma.roadSegment.upsert({
+    where: { id: pilotSegmentId },
+    update: {
+      name: 'Outer Ring Road (Kadubeesanahalli Section)',
+      osmWayId: BigInt(99999901),
+      roadClass: 'primary',
+      lanes: 6,
+      busesPerHour: 48,
+      pedestrianEstimate: 120,
+      nearSchoolOrHospital: false,
+      soleAccess: false,
+      tracked: true,
+    },
+    create: {
+      id: pilotSegmentId,
+      name: 'Outer Ring Road (Kadubeesanahalli Section)',
+      osmWayId: BigInt(99999901),
+      roadClass: 'primary',
+      lanes: 6,
+      busesPerHour: 48,
+      pedestrianEstimate: 120,
+      nearSchoolOrHospital: false,
+      soleAccess: false,
+      tracked: true,
+    },
+  });
+
+  const dayMs = 24 * 60 * 60 * 1000;
+  const pilotEvents = [
+    {
+      id: 'seed-evt-resurface-180d',
+      segmentId: pilotSegment.id,
+      type: SegmentEventType.RESURFACED,
+      agency: 'Greater Bengaluru Authority (GBA)',
+      contractor: 'Sri Lakshmi Infrastructure',
+      workOrder: 'WO/GBA/2026/0411',
+      source: 'OFFICIAL_RECORD',
+      occurredAt: new Date(now.getTime() - 180 * dayMs),
+      isSeed: true,
+    },
+    {
+      id: 'seed-evt-roadcut-120d',
+      segmentId: pilotSegment.id,
+      type: SegmentEventType.ROAD_CUT,
+      agency: 'Bengaluru Water Supply and Sewerage Board (BWSSB)',
+      contractor: 'Cauvery Water Works',
+      workOrder: 'BWSSB/UTILITY/9021',
+      source: 'OFFICIAL_RECORD',
+      occurredAt: new Date(now.getTime() - 120 * dayMs),
+      isSeed: true,
+    },
+    {
+      id: 'seed-evt-flood-90d',
+      segmentId: pilotSegment.id,
+      type: SegmentEventType.WATERLOGGED,
+      agency: 'Greater Bengaluru Authority (GBA)',
+      contractor: null,
+      workOrder: null,
+      source: 'MONSOON_AUDIT',
+      occurredAt: new Date(now.getTime() - 90 * dayMs),
+      isSeed: true,
+    },
+    {
+      id: 'seed-evt-recurrence-7d',
+      segmentId: pilotSegment.id,
+      type: SegmentEventType.RECURRENCE,
+      agency: 'Greater Bengaluru Authority (GBA)',
+      contractor: 'Sri Lakshmi Infrastructure',
+      workOrder: 'WO/GBA/2026/0411',
+      source: 'SYSTEM_DETECTOR',
+      occurredAt: new Date(now.getTime() - 7 * dayMs),
+      isSeed: true,
+    },
+  ];
+
+  for (const evt of pilotEvents) {
+    await prisma.segmentEvent.upsert({
+      where: { id: evt.id },
+      update: {
+        type: evt.type,
+        agency: evt.agency,
+        contractor: evt.contractor,
+        workOrder: evt.workOrder,
+        source: evt.source,
+        occurredAt: evt.occurredAt,
+        isSeed: true,
+      },
+      create: {
+        id: evt.id,
+        segmentId: evt.segmentId,
+        type: evt.type,
+        agency: evt.agency,
+        contractor: evt.contractor,
+        workOrder: evt.workOrder,
+        source: evt.source,
+        occurredAt: evt.occurredAt,
+        isSeed: true,
+      },
+    });
+  }
+
+  // Seed two linked issues on this segment: a fixed prior issue with agency handoff, and an active recurrence
+  const fixedIssueId = 'seed-issue-orr-fixed';
+  const recurrenceIssueId = 'seed-issue-orr-recurrence';
+
+  const fixedIssue = await prisma.issue.upsert({
+    where: { id: fixedIssueId },
+    update: {
+      category: Category.POTHOLES,
+      status: Status.VERIFIED_FIXED,
+      lat: 12.9360,
+      lng: 77.6955,
+      address: 'Outer Ring Road, Kadubeesanahalli Junction (Near Bus Bay)',
+      priority: 0.78,
+      band: Band.HIGH,
+      agencyId: agencyMap['BWSSB'],
+      segmentId: pilotSegment.id,
+      handoffCount: 1,
+      createdAt: new Date(now.getTime() - 60 * dayMs),
+      slaDueAt: new Date(now.getTime() - 55 * dayMs),
+      isSeed: true,
+    },
+    create: {
+      id: fixedIssueId,
+      category: Category.POTHOLES,
+      status: Status.VERIFIED_FIXED,
+      lat: 12.9360,
+      lng: 77.6955,
+      address: 'Outer Ring Road, Kadubeesanahalli Junction (Near Bus Bay)',
+      priority: 0.78,
+      band: Band.HIGH,
+      agencyId: agencyMap['BWSSB'],
+      segmentId: pilotSegment.id,
+      handoffCount: 1,
+      createdAt: new Date(now.getTime() - 60 * dayMs),
+      slaDueAt: new Date(now.getTime() - 55 * dayMs),
+      isSeed: true,
+    },
+  });
+
+  const fixedIssueLogs = [
+    {
+      action: 'CREATED',
+      actorId: citizenA.id,
+      toStatus: Status.OPEN,
+      note: 'Citizen reported crater pothole in outer bus lane',
+      createdAt: new Date(now.getTime() - 60 * dayMs),
+    },
+    {
+      action: 'REASSIGN_AGENCY',
+      actorId: citizenA.id,
+      note: 'Jurisdiction transferred: Reassigned from BESCOM to BWSSB following utility trench settlement',
+      createdAt: new Date(now.getTime() - 50 * dayMs),
+    },
+    {
+      action: 'CLAIM_FIX',
+      actorId: citizenB.id,
+      fromStatus: Status.OPEN,
+      toStatus: Status.CLAIMED_FIXED,
+      note: 'Bitumen cold mix patch completed by Cauvery Water Works',
+      createdAt: new Date(now.getTime() - 35 * dayMs),
+    },
+    {
+      action: 'VERIFIED_FIX',
+      actorId: citizenB.id,
+      fromStatus: Status.CLAIMED_FIXED,
+      toStatus: Status.VERIFIED_FIXED,
+      note: 'Citizen verified fix: flush road surface restored and verified by dual citizen check',
+      createdAt: new Date(now.getTime() - 30 * dayMs),
+    },
+  ];
+
+  for (const log of fixedIssueLogs) {
+    const existing = await prisma.actionLog.findFirst({
+      where: {
+        issueId: fixedIssue.id,
+        action: log.action,
+      },
+    });
+    if (!existing) {
+      await prisma.actionLog.create({
+        data: {
+          issueId: fixedIssue.id,
+          actorId: log.actorId,
+          action: log.action,
+          toStatus: log.toStatus,
+          fromStatus: log.fromStatus,
+          note: log.note,
+          createdAt: log.createdAt,
+        },
+      });
+    }
+  }
+
+  const recurrenceIssue = await prisma.issue.upsert({
+    where: { id: recurrenceIssueId },
+    update: {
+      category: Category.POTHOLES,
+      status: Status.OPEN,
+      lat: 12.9361,
+      lng: 77.6956,
+      address: 'Outer Ring Road, Kadubeesanahalli Junction (Near Bus Bay)',
+      priority: 0.88,
+      band: Band.HIGH,
+      agencyId: agencyMap['GBA'],
+      segmentId: pilotSegment.id,
+      recurrenceOf: fixedIssue.id,
+      createdAt: new Date(now.getTime() - 7 * dayMs),
+      slaDueAt: new Date(now.getTime() + 48 * 3600 * 1000),
+      isSeed: true,
+    },
+    create: {
+      id: recurrenceIssueId,
+      category: Category.POTHOLES,
+      status: Status.OPEN,
+      lat: 12.9361,
+      lng: 77.6956,
+      address: 'Outer Ring Road, Kadubeesanahalli Junction (Near Bus Bay)',
+      priority: 0.88,
+      band: Band.HIGH,
+      agencyId: agencyMap['GBA'],
+      segmentId: pilotSegment.id,
+      recurrenceOf: fixedIssue.id,
+      createdAt: new Date(now.getTime() - 7 * dayMs),
+      slaDueAt: new Date(now.getTime() + 48 * 3600 * 1000),
+      isSeed: true,
+    },
+  });
+
+  const existingRecurrenceLog = await prisma.actionLog.findFirst({
+    where: {
+      issueId: recurrenceIssue.id,
+      action: 'CREATED',
+    },
+  });
+  if (!existingRecurrenceLog) {
+    await prisma.actionLog.create({
+      data: {
+        issueId: recurrenceIssue.id,
+        actorId: citizenA.id,
+        action: 'CREATED',
+        toStatus: Status.OPEN,
+        note: 'Recurrent pothole formed at prior BWSSB utility trench location',
+        createdAt: new Date(now.getTime() - 7 * dayMs),
+      },
+    });
   }
 
   console.log('[Seed] Database seed completed successfully!');

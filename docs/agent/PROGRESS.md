@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T60(A) · Road Timeline & History Track A Scope (Track A)
+Current task: T70 · Installable PWA (Track A)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,49 @@ Current task: T60(A) · Road Timeline & History Track A Scope (Track A)
 - None
 
 ## Done
+
+### T60(A) · Road timeline and seeded history · 2026-10-28
+- **Goal:** Implement public road timeline page (`/road/[segmentId]`) and API endpoint (`/api/segments/[id]/timeline`) displaying chronological municipal road history for pilot Outer Ring Road segment with seed tags, agency labels, and handoffs.
+- **Implemented:**
+  - `prisma/seed.ts`: Upserted pilot road segment (`seed-seg-orr-kadubeesanahalli`, Outer Ring Road Kadubeesanahalli Section) and 6 chronological historical events:
+    - `RESURFACED` (180d ago, GBA, contractor: Sri Lakshmi Infrastructure, WO: WO/GBA/2026/0411)
+    - `ROAD_CUT` (120d ago, BWSSB, contractor: Cauvery Water Works, WO: BWSSB/UTILITY/9021)
+    - `WATERLOGGED` (90d ago, GBA)
+    - `REPORTED` (60d ago, citizen report)
+    - `HANDOFF` (50d ago, agency reassign BESCOM → BWSSB)
+    - `VERIFIED_FIX` (30d ago, citizen verification)
+    - `RECURRENCE` (7d ago, recurrent pothole)
+  - `src/lib/roads/timeline.ts`: Core timeline merger combining `SegmentEvent`, `Issue`, and `ActionLog` entries into a unified, chronological list sorted newest first with statistics calculation.
+  - `src/app/api/segments/[id]/timeline/route.ts`: Public API endpoint returning segment metadata, stats, and timeline.
+  - `src/app/(public)/road/[segmentId]/page.tsx`: Server-rendered municipal truth ledger timeline page with road attributes, stats grid, chronological cards, agency/contractor badges, and visible `data-testid="seed-tag"` on all seeded rows.
+  - `tests/contract/road-timeline.test.ts`: Contract & unit tests verifying sorting order, metadata, seed tags, agency attribution, and HTTP status codes.
+  - `tests/e2e/road-timeline.spec.ts`: Playwright e2e test verifying rendering, stats, newest-first ordering, and presence of `data-testid="seed-tag"`.
+- **Verified Against Docs:** PLAN.md Section 10 T60 card, Section 11 R1 row.
+- **Checks Run:**
+  ```
+  [Vitest: T60 Contract Suite]
+  ✓ tests/contract/road-timeline.test.ts (5 tests) 893ms
+  5 passed
+
+  [Playwright: T60 E2E Acceptance]
+  ok 1 [chromium] › tests/e2e/road-timeline.spec.ts:6:7 › T60: Road timeline public page (4.0s)
+  1 passed (5.1s)
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✔ 0 errors, 1 warning (img element in report page)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  33 passed (33)
+  Tests  189 passed (189)
+  > next build --webpack
+  ✓ Compiled successfully in 9.4s
+  ✓ Generating static pages (19/19) in 614ms
+  Route (app)
+  ├ ƒ /api/segments/[id]/timeline
+  └ ƒ /road/[segmentId]
+  ```
 
 ### T57(A) · G7 explainers and drafts (Track A: PI sentence rephrasing) · 2026-10-28
 - **Goal:** Implement Track A scope of G7 explainer: synthesize Priority Index sentence facts into natural, grounded citizen explanations with cited fact IDs, enforce strict guardrails against invented numbers (`numbersGrounded`) and unknown fact IDs, and ensure immediate fallback to deterministic template on any discrepancy.

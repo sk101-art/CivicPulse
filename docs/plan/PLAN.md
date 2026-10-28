@@ -1123,7 +1123,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [ ] | N7 | Saved commutes + alerts | T47 | spatial match test |
 | [x] | N8 | GPS accuracy gate + pin bounds | T12, T22 | validation test; capture e2e |
 | [ ] | N9 | Search + reverse geocoding | T48 | contract tests |
-| [ ] | R1 | Road timeline | T60 | e2e on seed |
+| [x] | R1 | Road timeline | T60 | e2e on seed |
 | [ ] | R2 | Recurrence detector | T61 | unit test |
 | [ ] | R3 | "Who dug this?" capture | T62 | e2e with fixture image |
 | [ ] | R4 | Escalation drafts | T63 | snapshot tests |
