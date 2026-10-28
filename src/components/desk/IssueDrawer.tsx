@@ -5,11 +5,12 @@ import {
   X, CheckCircle2, XCircle, ArrowRightLeft, 
   Play, CheckCheck, RotateCcw, AlertTriangle, 
   Clock, MapPin, Building2, ShieldAlert, Loader2,
-  UserCheck
+  UserCheck, Camera
 } from 'lucide-react';
 import { getAllowedActions, type IssueAction } from '@/lib/issues/stateMachine';
 import { Status, Band, Category } from '@prisma/client';
 import Image from 'next/image';
+import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/CaptureCamera';
 
 interface ActionLogEntry {
   id: string;
@@ -81,6 +82,8 @@ export function IssueDrawer({
   const [selectedAgencyId, setSelectedAgencyId] = useState('');
   const [selectedBand, setSelectedBand] = useState<Band>('MEDIUM');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [capturedFixEvidence, setCapturedFixEvidence] = useState<CapturedEvidence | null>(null);
+  const [showFixCamera, setShowFixCamera] = useState<boolean>(false);
   const [isPending, startTransition] = useTransition();
 
   const issueId = issue?.id;
@@ -212,8 +215,26 @@ export function IssueDrawer({
     }
 
     if (activeForm === 'CLAIM_FIX') {
-      startTransition(() => {
-        executeAction('CLAIM_FIX');
+      startTransition(async () => {
+        let evidencePayload = undefined;
+        if (capturedFixEvidence) {
+          const photoBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(capturedFixEvidence.blob);
+            reader.onloadend = () => {
+              const res = (reader.result as string).split(',')[1];
+              resolve(res);
+            };
+            reader.onerror = reject;
+          });
+          evidencePayload = {
+            photoBase64,
+            payload: capturedFixEvidence.payload,
+            signature: capturedFixEvidence.signature,
+            mimeType: 'image/jpeg',
+          };
+        }
+        await executeAction('CLAIM_FIX', { evidence: evidencePayload });
       });
       return;
     }
@@ -383,6 +404,55 @@ export function IssueDrawer({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {activeForm === 'CLAIM_FIX' && (
+                <div className="space-y-3">
+                  <span className="text-xs font-mono text-white/70 block">
+                    Signed Claim Evidence (GPS Gated)
+                  </span>
+                  {showFixCamera ? (
+                    <div className="rounded-xl overflow-hidden border border-white/10">
+                      <CaptureCamera
+                        role="CLAIM_FIX"
+                        targetCoords={{ lat: issue.lat, lng: issue.lng }}
+                        onCapture={(ev) => {
+                          setCapturedFixEvidence(ev);
+                          setShowFixCamera(false);
+                        }}
+                        onCancel={() => setShowFixCamera(false)}
+                      />
+                    </div>
+                  ) : capturedFixEvidence ? (
+                    <div className="space-y-2">
+                      <div className="relative w-full h-40 rounded-xl overflow-hidden border border-emerald-500/30">
+                        <Image
+                          src={capturedFixEvidence.previewUrl}
+                          alt="Captured fix"
+                          fill
+                          className="object-cover"
+                          unoptimized
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowFixCamera(true)}
+                        className="text-xs font-mono text-cyan-400 hover:underline flex items-center gap-1.5"
+                      >
+                        <Camera className="w-3.5 h-3.5" /> Retake Photo
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowFixCamera(true)}
+                      className="w-full py-3 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/30 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Camera className="w-4 h-4" />
+                      Launch Camera (Within 50m of Issue)
+                    </button>
+                  )}
                 </div>
               )}
 

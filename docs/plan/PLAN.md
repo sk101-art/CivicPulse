@@ -1102,8 +1102,8 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [x] | V1 | In-app camera only | T22 | e2e: no file input on capture |
 | [x] | V2 | Capture nonce | T21 | nonce tests |
 | [x] | V3 | Signed evidence | T20, T22 | signature tests (byte, lat, time tamper) |
-| [ ] | V4 | Two-key closure | T24, T27 | state machine table tests |
-| [ ] | V5 | Verifier rules | T27 | eligibility tests |
+| [x] | V4 | Two-key closure | T24, T27 | state machine table tests |
+| [x] | V5 | Verifier rules | T27 | eligibility tests |
 | [ ] | V6 | Claim-gap page | T29 | unit test + page e2e |
 | [ ] | V8 | Verify-nearby push | T2A | recipient selection test |
 | [ ] | M1 | Road segments + snapping | T30 | snap test on fixture |

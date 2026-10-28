@@ -9,6 +9,7 @@ import {
 } from "@/lib/issues/stateMachine";
 import { verifyEvidence } from "@/lib/evidence/verify";
 import { uploadEvidencePhoto } from "@/lib/external/storage";
+import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
 import { NextResponse } from "next/server";
 import { Role, EvidenceRole } from "@prisma/client";
@@ -143,6 +144,12 @@ export async function POST(
           role: "CLAIM_FIX",
           distanceM,
         };
+
+        // Enqueue G2 AI fix-check job (report photo vs claim photo comparison)
+        await enqueueAiJob({
+          feature: "G2",
+          targetId: claimReport.id,
+        }).catch((err) => console.error("Failed to enqueue G2 job:", err));
       }
     }
 

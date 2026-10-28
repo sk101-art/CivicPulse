@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T27 · Claim fix and citizen verification
+Current task: T28 · Public issue page
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,64 @@ Current task: T27 · Claim fix and citizen verification
 - None
 
 ## Done
+
+### T27 · Claim fix and citizen verification · 2026-10-28
+- **Goal:** Implement fix verification endpoint (`/api/issues/[id]/verify`), eligibility enforcement rules, dynamic verification weights based on reputation, atomic point awards (+20 XP for verification), state machine transitions (`VERIFIED_FIXED` when sum of weights >= 1.0, `DISPUTED` when dispute weight >= 0.5), G2 AI job queuing, and in-app `CaptureCamera` fix claim flow.
+- **Verified against docs/types:**
+  - PLAN.md Section 6 verifier eligibility rules: GPS accuracy <= 30m, within 50m of issue, not original reporter, not claimant desk officer, account age >= 24h, one verification per user per issue.
+  - Verification weight formula: `0.5 + min(0.5, rep / 1000)`.
+  - State machine rules: `CLAIMED_FIXED` -> `VERIFIED_FIXED` (sum >= 1.0) and `CLAIMED_FIXED` -> `DISPUTED` (weight >= 0.5).
+- **Changed:**
+  - Created `src/lib/issues/verification.ts`: `calculateVerificationWeight`, `checkVerifierEligibility` (enforcing all 7 eligibility rules), and `processVerification` (verifies evidence signature, uploads photo, records Verification and Report within database transaction, calculates cumulative weights, executes system state transition, awards XP, and enqueues G2 AI job).
+  - Created `src/app/api/issues/[id]/verify/route.ts`: authenticated POST route validating verdict and signed evidence payload.
+  - Modified `src/app/api/issues/[id]/actions/route.ts`: enqueued G2 AI job upon desk fix claim.
+  - Modified `src/components/desk/IssueDrawer.tsx`: integrated `CaptureCamera` for desk fix claim (`role="CLAIM_FIX"`), allowing live GPS-gated photo capture before claiming fix.
+  - Created `tests/unit/verification.test.ts`: comprehensive acceptance test suite verifying weight calculations, all 7 eligibility rejection conditions, citizen dispute transition to `DISPUTED`, and cumulative verification weights reaching 1.0 transitioning to `VERIFIED_FIXED`.
+  - Updated `docs/plan/PLAN.md`: ticked rows V4 (Two-key closure) and V5 (Verifier rules) in Section 11 traceability matrix.
+- **Full Gate Execution:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  ✖ 1 problem (0 errors, 1 warning)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+   ✓ tests/unit/state-machine.test.ts (29 tests) 14ms
+   ✓ tests/unit/points.test.ts (8 tests) 7ms
+   ✓ tests/contract/storage.test.ts (6 tests) 10ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 29ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 907ms
+   ✓ tests/unit/config.test.ts (3 tests) 9ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 739ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 787ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1111ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 1069ms
+   ✓ tests/unit/signing-verification.test.ts (8 tests) 1223ms
+   ✓ tests/contract/merge.test.ts (5 tests) 2047ms
+   ✓ tests/unit/desk-actions.test.ts (7 tests) 1674ms
+   ✓ tests/unit/report-flow.test.ts (4 tests) 1810ms
+   ✓ tests/unit/desk-queue.test.ts (5 tests) 1696ms
+   ✓ tests/unit/verification.test.ts (4 tests) 3683ms
+
+   Test Files  16 passed (16)
+        Tests  109 passed (109)
+     Duration  6.02s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 8.9s
+  ✓ Generating static pages using 15 workers (17/17) in 572ms
+  ```
+- **Notes for Next Task:** Next task is T28 (Public issue page). Will build `src/app/(public)/issue/[id]/page.tsx`, displaying photo gallery (report, confirms, claim, verifications), public ActionLog status timeline, agency label, handoff counter, PI score breakdown, and "Verify this fix" button when status is CLAIMED_FIXED and viewer is eligible. Readable without login.
 
 ### T26 · Shared desk dashboard · 2026-10-28
 - **Goal:** Provide shared desk dashboard (`/desk`) with unified queue sorted by PI band (CRITICAL > HIGH > MEDIUM > LOW) then Priority index, filterable by status, category, agency, ward, and SLA breach, with slide-over Issue Drawer exposing state-machine allowed actions and inline audit trail ("Who did what") from `/api/issues/[id]/log`.
