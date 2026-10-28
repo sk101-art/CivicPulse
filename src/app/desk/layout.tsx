@@ -26,9 +26,8 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
     label: string;
   }> = [
     { href: '/desk', icon: 'LayoutDashboard', label: 'Operations Queue' },
-    { href: '/desk/status', icon: 'TrendingUp', label: 'Operations Status' },
-    { href: '/desk/tickets', icon: 'FileText', label: 'Active Tickets' },
     { href: '/desk/map', icon: 'Map', label: 'Route Optimizer' },
+    { href: '/claim-gap', icon: 'TrendingUp', label: 'Claim Gap' },
     { href: '/desk/personnels', icon: 'User', label: 'Field Personnel' },
   ];
 

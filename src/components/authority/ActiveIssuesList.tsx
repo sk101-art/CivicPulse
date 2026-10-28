@@ -46,8 +46,8 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
     setSelectedId(null);
     setResolveData({ desc: '', photo: '' });
     toast({
-      title: 'Coming in T25',
-      description: 'Resolution workflow will be available via /api/issues/[id]/actions in T25.',
+      title: 'Action in Operations Queue',
+      description: 'Resolution workflow is available in the Operations Queue via Issue Drawer.',
       variant: 'info',
     });
   };
@@ -56,8 +56,8 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
     setItemLoading(id, true);
     try {
       toast({
-        title: 'Coming in T25',
-        description: 'Desk confirmation will be available via /api/issues/[id]/actions in T25.',
+        title: 'Action in Operations Queue',
+        description: 'Desk confirmation is available in the Operations Queue via Issue Drawer.',
         variant: 'info',
       });
     } finally {
@@ -70,8 +70,8 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
     setIsAssigning(false);
     setSelectedId(null);
     toast({
-      title: 'Coming in T25',
-      description: 'Personnel assignment will be available via /api/issues/[id]/actions in T25.',
+      title: 'Action in Operations Queue',
+      description: 'Personnel assignment is available in the Operations Queue via Issue Drawer.',
       variant: 'info',
     });
   };

@@ -94,8 +94,8 @@ export function StatusTimeline({ reports, currentFilter, counts }: StatusTimelin
   const handleManualStatusUpdate = async () => {
     setShowOverride(null);
     toast({
-      title: 'Coming in T25',
-      description: 'Status transitions will be managed via the v2 state machine in T25.',
+      title: 'Action in Operations Queue',
+      description: 'Status transitions are managed via the Operations Queue Issue Drawer.',
       variant: 'info',
     });
   };
