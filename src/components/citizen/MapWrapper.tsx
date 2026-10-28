@@ -52,6 +52,8 @@ export function MapWrapper(props: MapWrapperProps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...formData,
+            lat: reportModal.lat,
+            lng: reportModal.lng,
             latitude: reportModal.lat,
             longitude: reportModal.lng,
             address: `Map Pin (${reportModal.lat.toFixed(4)}, ${reportModal.lng.toFixed(4)})`
@@ -70,6 +72,8 @@ export function MapWrapper(props: MapWrapperProps) {
         await queueReport({
           id: crypto.randomUUID(),
           ...formData,
+          lat: reportModal.lat,
+          lng: reportModal.lng,
           latitude: reportModal.lat,
           longitude: reportModal.lng,
         });

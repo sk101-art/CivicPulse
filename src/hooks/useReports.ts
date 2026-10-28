@@ -72,7 +72,7 @@ export function useReports(options: {
       const res = await fetch(options.endpoint);
       if (res.ok) {
         const data = await res.json();
-        const rawList: RawReportInput[] = Array.isArray(data) ? data : data.reports || [];
+        const rawList: RawReportInput[] = Array.isArray(data) ? data : data.reports || data.issues || [];
         setReports(rawList.map(normalizeReport));
       } else {
         setError('Failed to fetch reports');
@@ -90,6 +90,18 @@ export function useReports(options: {
   }, [fetchReports, router]);
 
   useEffect(() => {
+    const handleSync = () => {
+      fetchReports();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('civicpulse:synced', handleSync);
+      return () => {
+        window.removeEventListener('civicpulse:synced', handleSync);
+      };
+    }
+  }, [fetchReports]);
+
+  useEffect(() => {
     let ignore = false;
     async function load() {
       try {
@@ -97,7 +109,7 @@ export function useReports(options: {
         if (res.ok) {
           const data = await res.json();
           if (!ignore) {
-            const rawList: RawReportInput[] = Array.isArray(data) ? data : data.reports || [];
+            const rawList: RawReportInput[] = Array.isArray(data) ? data : data.reports || data.issues || [];
             setReports(rawList.map(normalizeReport));
           }
         } else {

@@ -129,9 +129,16 @@ function FileReportContent() {
       }
 
       // Fetch nonce
-      const nonceRes = await fetch('/api/evidence/nonce', { method: 'POST' });
-      if (!nonceRes.ok) throw new Error('Failed to obtain capture nonce from server');
-      const { nonce } = await nonceRes.json();
+      let nonce = 'offline';
+      try {
+        const nonceRes = await fetch('/api/evidence/nonce', { method: 'POST' });
+        if (nonceRes.ok) {
+          const nonceData = await nonceRes.json();
+          nonce = nonceData.nonce || 'offline';
+        }
+      } catch {
+        nonce = 'offline';
+      }
 
       const arrayBuffer = await blob.arrayBuffer();
       const photoHash = await computePhotoHash(arrayBuffer);
@@ -224,16 +231,23 @@ function FileReportContent() {
 
     try {
       const photoBase64 = await blobToBase64(capturedEvidence.blob);
+      const shouldQueueOffline = !isOnline || capturedEvidence.payload.nonce === 'offline';
 
-      if (!isOnline) {
-        // Queue offline report
+      if (shouldQueueOffline) {
+        // Queue offline report with valid offline signature
+        const { keyPair } = await getOrCreateDeviceKey();
+        let payload = capturedEvidence.payload;
+        let signature = capturedEvidence.signature;
+
+        if (payload.nonce !== 'offline') {
+          payload = { ...payload, nonce: 'offline' };
+          signature = await signEvidencePayload(payload, keyPair.privateKey);
+        }
+
         await queueReport({
           category,
-          payload: {
-            ...capturedEvidence.payload,
-            nonce: 'offline',
-          },
-          signature: capturedEvidence.signature,
+          payload,
+          signature,
           photoBase64,
           mimeType: 'image/jpeg',
           note,
@@ -242,6 +256,7 @@ function FileReportContent() {
           offline: true,
         });
 
+        router.refresh();
         router.push('/citizen/dashboard');
         return;
       }
@@ -270,12 +285,41 @@ function FileReportContent() {
       const json = await res.json();
       const issueId = json.issue?.id;
 
+      router.refresh();
       if (issueId) {
         router.push(`/citizen/report/${issueId}`);
       } else {
         router.push('/citizen/dashboard');
       }
     } catch (err) {
+      if (err instanceof TypeError && err.message.toLowerCase().includes('fetch')) {
+        try {
+          const { keyPair } = await getOrCreateDeviceKey();
+          const offlinePayload: EvidencePayload = {
+            ...capturedEvidence.payload,
+            nonce: 'offline',
+          };
+          const offlineSig = await signEvidencePayload(offlinePayload, keyPair.privateKey);
+
+          await queueReport({
+            category,
+            payload: offlinePayload,
+            signature: offlineSig,
+            photoBase64: await blobToBase64(capturedEvidence.blob),
+            mimeType: 'image/jpeg',
+            note,
+            sizeClass,
+            blockedShare,
+            offline: true,
+          });
+
+          router.refresh();
+          router.push('/citizen/dashboard');
+          return;
+        } catch {
+          // ignore fallback error
+        }
+      }
       setErrorMessage(err instanceof Error ? err.message : 'Report submission failed');
       setLoading(false);
     }

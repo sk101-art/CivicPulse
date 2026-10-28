@@ -21,6 +21,8 @@ export interface QueuedOfflineReport {
   description?: string;
   latitude?: number;
   longitude?: number;
+  lat?: number;
+  lng?: number;
   photoData?: string;
   sizeClass?: string;
   blockedShare?: string;
@@ -37,8 +39,10 @@ export type QueuedReportInput =
       title?: string;
       description?: string;
       category: string;
-      latitude: number;
-      longitude: number;
+      latitude?: number;
+      longitude?: number;
+      lat?: number;
+      lng?: number;
       photoData?: string;
     };
 
@@ -50,6 +54,40 @@ export function useOfflineSync() {
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
   const [db, setDb] = useState<IDBPDatabase | null>(null);
+  const [pendingCount, setPendingCount] = useState<number>(0);
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadCount() {
+      if (!db) return;
+      try {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const count = await tx.objectStore(STORE_NAME).count();
+        if (!ignore) {
+          setPendingCount(count);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const handleCountChange = () => {
+      void loadCount();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('civicpulse:queue-changed', handleCountChange);
+    }
+
+    void loadCount();
+
+    return () => {
+      ignore = true;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('civicpulse:queue-changed', handleCountChange);
+      }
+    };
+  }, [db]);
 
   useEffect(() => {
     let isMounted = true;
@@ -89,25 +127,50 @@ export function useOfflineSync() {
     if (!db || !isOnline) return;
 
     try {
+      // Ensure device key is registered so offline signatures are accepted
+      try {
+        const { initDeviceKey } = await import('@/lib/evidence/deviceKey');
+        await initDeviceKey();
+      } catch {
+        // proceed
+      }
+
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
       const allReports = (await store.getAll()) as QueuedOfflineReport[];
 
+      let syncedAny = false;
       for (const report of allReports) {
         if (!report.synced) {
           try {
+            const bodyPayload = {
+              ...report,
+              lat: report.payload?.lat ?? report.lat ?? report.latitude,
+              lng: report.payload?.lng ?? report.lng ?? report.longitude,
+            };
+
             const response = await fetch('/api/reports', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(report),
+              body: JSON.stringify(bodyPayload),
             });
 
             if (response.ok) {
               await store.delete(report.id);
+              syncedAny = true;
+            } else {
+              console.warn('Failed to sync offline report:', report.id, response.status);
             }
           } catch (err) {
             console.error('Failed to sync offline report:', report.id, err);
           }
+        }
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('civicpulse:queue-changed'));
+        if (syncedAny) {
+          window.dispatchEvent(new CustomEvent('civicpulse:synced'));
         }
       }
     } catch (err) {
@@ -128,6 +191,9 @@ export function useOfflineSync() {
       };
 
       await db.put(STORE_NAME, fullReport);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('civicpulse:queue-changed'));
+      }
 
       if (isOnline) {
         await syncReports();
@@ -142,5 +208,5 @@ export function useOfflineSync() {
     }
   }, [isOnline, db, syncReports]);
 
-  return { isOnline, queueReport, syncReports };
+  return { isOnline, pendingCount, queueReport, syncReports };
 }

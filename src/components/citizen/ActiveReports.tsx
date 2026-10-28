@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { staggerContainer, fadeUp } from '@/lib/framer';
 import { RefreshButton } from '@/components/ui/RefreshButton';
 import { useReports, Report as HookReport } from '@/hooks/useReports';
+import { useOfflineSync } from '@/hooks/useOfflineSync';
 
 interface ReportItem extends Omit<HookReport, 'priorityScore' | 'voteCount' | 'commentCount' | 'createdAt'> {
   id: string;
@@ -51,14 +52,30 @@ const categoryIcons: Record<Category, { emoji: string; color: string }> = {
 };
 
 export function ActiveReports({ initialReports }: ActiveReportsProps) {
+  const { pendingCount, syncReports } = useOfflineSync();
   const { reports, invalidate } = useReports({
-    endpoint: '/api/reports',
+    endpoint: '/api/reports?mine=true',
     initialData: initialReports,
     autoRefresh: 30000,
   });
 
   return (
     <div className="space-y-4">
+      {pendingCount > 0 && (
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-mono">
+          <div className="flex items-center gap-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+            <span>{pendingCount} offline report{pendingCount > 1 ? 's' : ''} queued locally (synchronizing...)</span>
+          </div>
+          <button
+            onClick={() => syncReports()}
+            className="px-3 py-1.5 rounded-lg bg-amber-400/20 hover:bg-amber-400/30 text-amber-200 font-bold tracking-wider uppercase text-[10px] transition-all"
+          >
+            Sync Now
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-2">
         <div className="space-y-1">
           <h3 className="font-display font-bold text-xl text-white uppercase tracking-tight">Operational Records</h3>
@@ -112,7 +129,7 @@ export function ActiveReports({ initialReports }: ActiveReportsProps) {
             return (
               <motion.div key={report.id ? `${report.id}-${idx}` : `report-${idx}`} variants={fadeUp}>
                 <Link
-                  href={`/citizen/report/${report.id}`}
+                  href={`/citizen/report/${(report as { issueId?: string }).issueId || report.id}`}
                   className="group block rounded-2xl transition-all duration-300 overflow-hidden bg-card border border-white/5 hover:bg-white/[0.04] flex flex-col h-full"
                   style={{ borderColor: `${sc.color}15` }}
                 >

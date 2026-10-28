@@ -230,12 +230,17 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, onDevic
         );
       });
 
-      // Fetch 128-bit single-use nonce
-      const nonceRes = await fetch('/api/evidence/nonce', { method: 'POST' });
-      if (!nonceRes.ok) {
-        throw new Error(`Failed to obtain capture nonce: ${nonceRes.statusText}`);
+      // Fetch 128-bit single-use nonce (or fallback to offline)
+      let nonce = 'offline';
+      try {
+        const nonceRes = await fetch('/api/evidence/nonce', { method: 'POST' });
+        if (nonceRes.ok) {
+          const nonceData = await nonceRes.json();
+          nonce = nonceData.nonce || 'offline';
+        }
+      } catch {
+        nonce = 'offline';
       }
-      const { nonce } = await nonceRes.json();
 
       setCaptureStatusMessage('Computing SHA-256 hash and cryptographic signature...');
 

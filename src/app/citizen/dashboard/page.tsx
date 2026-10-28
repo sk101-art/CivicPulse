@@ -121,8 +121,11 @@ export default async function CitizenDashboard() {
         </div>
 
         {/* Active Reports */}
-        <ActiveReports initialReports={userReports.map(r => ({
+        <ActiveReports
+          key={userReports.length > 0 ? userReports[0].id : 'empty'}
+          initialReports={userReports.map(r => ({
           id: r.id,
+          issueId: r.issueId,
           title: `${r.issue.category.replace(/_/g, ' ')} at ${r.issue.address || 'Bengaluru'}`,
           category: r.issue.category,
           status: r.issue.status,

@@ -39,14 +39,33 @@ const directReportSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   category: z.nativeEnum(Category).default(Category.OTHER),
-  lat: z.number().min(11.5).max(14.5),
-  lng: z.number().min(76.5).max(78.5),
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
   address: z.string().optional(),
   photoUrl: z.string().url().default("https://placehold.co/600x400.jpg"),
   photoSha256: z.string().default("placeholder_sha256"),
   signature: z.string().default("client_signature_placeholder"),
   gpsAccuracyM: z.number().min(0).max(30).default(10),
-});
+}).transform((d) => ({
+  ...d,
+  lat: d.lat ?? d.latitude ?? 12.9716,
+  lng: d.lng ?? d.longitude ?? 77.5946,
+})).pipe(
+  z.object({
+    title: z.string().optional(),
+    description: z.string().optional(),
+    category: z.nativeEnum(Category),
+    lat: z.number().min(11.5).max(14.5),
+    lng: z.number().min(76.5).max(78.5),
+    address: z.string().optional(),
+    photoUrl: z.string().url(),
+    photoSha256: z.string(),
+    signature: z.string(),
+    gpsAccuracyM: z.number().min(0).max(30),
+  })
+);
 
 export async function POST(req: Request) {
   try {
@@ -213,6 +232,48 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const categoryParam = searchParams.get("category");
     const statusParam = searchParams.get("status");
+    const mineParam = searchParams.get("mine") === "true";
+
+    if (mineParam) {
+      const userReports = await prisma.report.findMany({
+        where: { userId: auth.user.id },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: {
+          issue: {
+            include: {
+              _count: { select: { reports: true, comments: true } },
+            },
+          },
+        },
+      });
+
+      const formatted = userReports.map((r) => ({
+        id: r.id,
+        issueId: r.issueId,
+        title: `${r.issue.category.replace(/_/g, " ")} at ${r.issue.address || "Bengaluru"}`,
+        category: r.issue.category,
+        status: r.issue.status,
+        createdAt: r.createdAt,
+        address: r.issue.address,
+        latitude: r.lat,
+        longitude: r.lng,
+        lat: r.lat,
+        lng: r.lng,
+        priorityScore: r.issue.priority,
+        priority: r.issue.priority,
+        voteCount: r.issue._count?.reports || 0,
+        commentCount: r.issue._count?.comments || 0,
+      }));
+
+      return NextResponse.json(
+        { reports: formatted, issues: formatted },
+        {
+          status: 200,
+          headers: { "Cache-Control": "no-store, max-age=0" },
+        }
+      );
+    }
 
     const validStatus =
       statusParam && Object.values(Status).includes(statusParam as Status)
@@ -234,12 +295,31 @@ export async function GET(req: Request) {
           orderBy: { createdAt: "desc" },
           take: 1,
         },
+        _count: {
+          select: { reports: true, comments: true },
+        },
       },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
 
-    return NextResponse.json({ issues }, { status: 200 });
+    const formatted = issues.map((i) => ({
+      ...i,
+      latitude: i.lat,
+      longitude: i.lng,
+      priorityScore: i.priority,
+      title: `${i.category.replace(/_/g, " ")} at ${i.address || "Bengaluru"}`,
+      voteCount: i._count?.reports || i.reports?.length || 0,
+      commentCount: i._count?.comments || 0,
+    }));
+
+    return NextResponse.json(
+      { issues: formatted, reports: formatted },
+      {
+        status: 200,
+        headers: { "Cache-Control": "no-store, max-age=0" },
+      }
+    );
   } catch (error: unknown) {
     console.error("Failed to fetch reports:", error);
     return apiError(500, "INTERNAL_ERROR", "Internal server error fetching reports");
