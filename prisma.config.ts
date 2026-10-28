@@ -19,6 +19,6 @@ export default defineConfig({
   },
   datasource: {
     // Migrations run against DIRECT_DATABASE_URL (Supabase session pooler on port 5432)
-    url: process.env["DIRECT_DATABASE_URL"] || process.env["APP_DATABASE_URL"],
+    url: process.env["DIRECT_DATABASE_URL"] || process.env["APP_DATABASE_URL"] || "",
   },
 });

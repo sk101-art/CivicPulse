@@ -66,10 +66,11 @@ export async function uploadEvidencePhoto({
   const path = `issues/${issueId}/${reportId}.${ext}`;
   const bucket = env.SUPABASE_EVIDENCE_BUCKET || "evidence";
 
+  const isTest = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
   const supabaseUrl = env.SUPABASE_URL;
   const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (supabaseUrl && serviceRoleKey) {
+  if (supabaseUrl && serviceRoleKey && !isTest) {
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
         persistSession: false,
@@ -99,9 +100,9 @@ export async function uploadEvidencePhoto({
     };
   }
 
-  // Keys-later mode: construct the standard Supabase public object URL
+  // Test mode or keys-later mode: construct the standard Supabase public object URL
   // Default URL format for Supabase public bucket
-  const syntheticHost = "https://ofkshdculpzvqergntcs.supabase.co";
+  const syntheticHost = supabaseUrl || "https://ofkshdculpzvqergntcs.supabase.co";
   const publicUrl = `${syntheticHost}/storage/v1/object/public/${bucket}/${path}`;
 
   return {

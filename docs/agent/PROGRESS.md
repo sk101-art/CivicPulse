@@ -8,6 +8,29 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Fix · Prisma generate on Vercel · 2026-10-28
+- **Goal:** Fix Vercel build failure (`Type error: Module "@prisma/client" has no exported member 'Role' (prisma/seed.ts)`).
+- **Implemented:**
+  - `package.json`: Added `"postinstall": "prisma generate"` to ensure Prisma Client is automatically generated when Vercel executes `npm install` prior to running `next build`.
+  - `tsconfig.json`: Added `"prisma"` and `"scripts"` to `exclude` array so administrative/seed scripts outside Next.js are not compiled by `next build`'s production TypeScript type check.
+  - `prisma.config.ts`: Added fallback empty string `process.env["DIRECT_DATABASE_URL"] || process.env["APP_DATABASE_URL"] || ""` to prevent undefined connection string errors during offline generation.
+  - `src/lib/external/storage.ts`: Isolated remote network photo upload calls when running under Vitest/test environment (`process.env.NODE_ENV === "test" || process.env.VITEST === "true"`), returning deterministic synthetic URLs to comply with Rule 14.
+- **Checks Run:**
+  ```
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✖ 1 problem (0 errors, 1 warning)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  35 passed (35)
+  Tests  196 passed (196)
+  > next build --webpack
+  ✓ Compiled successfully in 7.3s
+  Finished TypeScript in 10.7s ...
+  ✓ Generating static pages using 15 workers (19/19) in 816ms
+  ```
+
 ### T73 · Demo seed and demo story E2E suite · 2026-10-28
 - **Goal:** Create labelled seed demo script (`scripts/seed-demo.ts`) covering pilot corridor segments with traffic samples, road fix-then-fail history, and issues across bands; build and verify complete end-to-end demo story Playwright suite (`tests/e2e/demo.spec.ts`) passing twice in a row.
 - **Implemented:**
