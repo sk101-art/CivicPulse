@@ -198,6 +198,40 @@ export function computePriority(
   };
 }
 
+/**
+ * Resolves PriorityBand from a 0–100 Priority Index (PI).
+ */
+export function getPriorityBand(pi: number, config: PriorityConfig = PRIORITY_CONFIG): PriorityBand {
+  const normalizedPi = pi <= 1.0 && pi > 0 ? pi * 100 : pi;
+  if (normalizedPi >= config.bands.critical) {
+    return "CRITICAL";
+  } else if (normalizedPi >= config.bands.high) {
+    return "HIGH";
+  } else if (normalizedPi >= config.bands.medium) {
+    return "MEDIUM";
+  }
+  return "LOW";
+}
+
+/**
+ * Normalizes and formats a Priority Index score (0–100) and its band.
+ */
+export function formatPriority(rawPi: number | null | undefined): {
+  score: number;
+  scoreFormatted: string;
+  band: PriorityBand;
+} {
+  const num = typeof rawPi === "number" && !isNaN(rawPi) ? rawPi : 0;
+  const normalized = num <= 1.0 && num > 0 ? num * 100 : num;
+  const clamped = Math.max(0, Math.min(100, normalized));
+  const band = getPriorityBand(clamped);
+  return {
+    score: Math.round(clamped * 10) / 10,
+    scoreFormatted: clamped.toFixed(1),
+    band,
+  };
+}
+
 export { computeSeverity } from "./factors/severity";
 export { computeExposure } from "./factors/exposure";
 export { computeVulnerability } from "./factors/vulnerability";

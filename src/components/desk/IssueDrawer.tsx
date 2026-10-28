@@ -11,6 +11,7 @@ import { getAllowedActions, type IssueAction } from '@/lib/issues/stateMachine';
 import { Status, Band, Category } from '@prisma/client';
 import Image from 'next/image';
 import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/CaptureCamera';
+import { formatPriority } from '@/lib/priority';
 
 interface ActionLogEntry {
   id: string;
@@ -121,7 +122,8 @@ export function IssueDrawer({
 
   if (!issue) return null;
 
-  const effectiveBand = issue.bandOverride || issue.band;
+  const pri = formatPriority(issue.priority);
+  const effectiveBand = issue.bandOverride || issue.band || pri.band;
   const allowedActions = getAllowedActions(issue.status, 'AUTHORITY');
 
   const executeAction = async (action: IssueAction, extraPayload?: Record<string, unknown>) => {
@@ -257,7 +259,7 @@ export function IssueDrawer({
           <div className="space-y-2">
             <div className="flex items-center gap-3">
               <span className={`px-2.5 py-0.5 rounded text-xs font-mono font-bold border ${bandColor}`}>
-                {effectiveBand} ({issue.priority.toFixed(1)})
+                {effectiveBand} (PI: {pri.scoreFormatted})
               </span>
               <span className="px-2.5 py-0.5 rounded text-xs font-mono font-semibold bg-white/10 text-white">
                 {issue.status}

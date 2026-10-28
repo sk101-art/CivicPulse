@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { IssueDrawer, type DeskIssueItem } from './IssueDrawer';
 import { Status, Category, Band } from '@prisma/client';
+import { formatPriority } from '@/lib/priority';
 
 interface DeskQueueProps {
   initialIssues: DeskIssueItem[];
@@ -271,7 +272,8 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
           </div>
         ) : (
           issues.map((issue) => {
-            const effectiveBand = issue.bandOverride || issue.band;
+            const pri = formatPriority(issue.priority);
+            const effectiveBand = issue.bandOverride || issue.band || pri.band;
             const bandColor =
               effectiveBand === 'CRITICAL'
                 ? 'border-red-500/40 text-red-400 bg-red-500/10'
@@ -295,7 +297,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                     <span className="block text-[10px] tracking-wider uppercase">
                       {effectiveBand}
                     </span>
-                    <span className="text-base">{issue.priority.toFixed(1)}</span>
+                    <span className="text-base">{pri.scoreFormatted}</span>
                   </div>
 
                   <div className="space-y-1">

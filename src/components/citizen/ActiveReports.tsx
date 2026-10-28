@@ -8,6 +8,7 @@ import { staggerContainer, fadeUp } from '@/lib/framer';
 import { RefreshButton } from '@/components/ui/RefreshButton';
 import { useReports, Report as HookReport } from '@/hooks/useReports';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
+import { formatPriority } from '@/lib/priority';
 
 interface ReportItem extends Omit<HookReport, 'priorityScore' | 'voteCount' | 'commentCount' | 'createdAt'> {
   id: string;
@@ -125,7 +126,7 @@ export function ActiveReports({ initialReports }: ActiveReportsProps) {
           {reports.map((report, idx) => {
             const sc = statusConfig[report.status as Status] || statusConfig.OPEN;
             const ci = categoryIcons[report.category as Category] || categoryIcons.OTHER;
-            const priorityPct = Math.round((report.priorityScore || 0) * 100);
+            const pri = formatPriority(report.priorityScore);
             return (
               <motion.div key={report.id ? `${report.id}-${idx}` : `report-${idx}`} variants={fadeUp}>
                 <Link
@@ -137,9 +138,14 @@ export function ActiveReports({ initialReports }: ActiveReportsProps) {
                   <div className="p-6 pb-2 flex items-center justify-between">
                     <div className="flex items-baseline gap-2">
                       <span className="text-4xl font-display font-black tracking-tighter leading-none" style={{ color: sc.color, fontVariantNumeric: 'tabular-nums' }}>
-                        {priorityPct}
+                        {pri.scoreFormatted}
                       </span>
-                      <span className="text-[9px] font-mono uppercase tracking-widest opacity-25 font-bold">pts</span>
+                      <div className="flex flex-col">
+                        <span className="text-[8px] font-mono uppercase tracking-widest font-black" style={{ color: sc.color }}>
+                          {pri.band}
+                        </span>
+                        <span className="text-[8px] font-mono uppercase tracking-widest opacity-30 font-bold">PI</span>
+                      </div>
                     </div>
                     <div
                       className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl shrink-0 backdrop-blur-xl"

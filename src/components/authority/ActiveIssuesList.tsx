@@ -8,6 +8,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { modalBackdrop, modalContent, fadeUp, staggerContainer } from '@/lib/framer';
 import { toast } from '@/lib/toast';
+import { formatPriority } from '@/lib/priority';
 
 import { AssignModal } from './AssignModal';
 
@@ -122,8 +123,14 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
           className="flex-1 overflow-y-auto grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 custom-scrollbar pb-10"
         >
           {activeIssues.map((issue) => {
-            const severity = getSeverityColor(issue.priorityScore);
-            const pct = Math.round(issue.priorityScore * 100);
+            const pri = formatPriority(issue.priorityScore);
+            const severity = pri.band === 'CRITICAL'
+              ? 'var(--accent-magenta)'
+              : pri.band === 'HIGH'
+              ? 'var(--accent-amber)'
+              : pri.band === 'MEDIUM'
+              ? 'var(--accent-cyan)'
+              : 'var(--accent-electric-blue)';
             const isLoading = loadingItems[issue.id];
             
             return (
@@ -137,9 +144,14 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
                 <div className="p-6 pb-0 flex items-center justify-between">
                   <div className="flex items-baseline gap-2">
                     <span className="text-5xl font-display font-black tracking-tighter leading-none" style={{ color: severity, fontVariantNumeric: 'tabular-nums' }}>
-                      {pct}
+                      {pri.scoreFormatted}
                     </span>
-                    <span className="text-[9px] font-mono uppercase tracking-widest opacity-25 font-bold">pts</span>
+                    <div className="flex flex-col">
+                      <span className="text-[8px] font-mono uppercase tracking-widest font-black" style={{ color: severity }}>
+                        {pri.band}
+                      </span>
+                      <span className="text-[9px] font-mono uppercase tracking-widest opacity-25 font-bold">PI</span>
+                    </div>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/5">
