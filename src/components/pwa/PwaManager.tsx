@@ -8,6 +8,8 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 }
 
+export const PWA_DISMISSED_SESSION_KEY = "civicpulse_pwa_dismissed";
+
 export function PwaManager() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
@@ -28,11 +30,21 @@ export function PwaManager() {
       });
     }
 
+    const isDismissed = () => {
+      try {
+        return sessionStorage.getItem(PWA_DISMISSED_SESSION_KEY) === "1";
+      } catch {
+        return false;
+      }
+    };
+
     // 2. Listen for BeforeInstallPrompt
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setShowInstallBanner(true);
+      if (!isDismissed()) {
+        setShowInstallBanner(true);
+      }
     };
 
     const handleAppInstalled = () => {
@@ -51,6 +63,15 @@ export function PwaManager() {
     };
   }, []);
 
+  const handleDismiss = () => {
+    setShowInstallBanner(false);
+    try {
+      sessionStorage.setItem(PWA_DISMISSED_SESSION_KEY, "1");
+    } catch (err) {
+      console.warn("Could not save PWA dismissal", err);
+    }
+  };
+
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
     await deferredPrompt.prompt();
@@ -58,6 +79,9 @@ export function PwaManager() {
     if (choice.outcome === "accepted") {
       setShowInstallBanner(false);
     }
+    try {
+      sessionStorage.setItem(PWA_DISMISSED_SESSION_KEY, "1");
+    } catch {}
     setDeferredPrompt(null);
   };
 
@@ -68,7 +92,7 @@ export function PwaManager() {
   return (
     <div
       data-testid="pwa-install-banner"
-      className="fixed bottom-4 left-4 z-50 max-w-sm rounded-xl bg-slate-900/95 border border-blue-500/30 p-4 shadow-2xl backdrop-blur-md transition-all duration-300"
+      className="fixed bottom-24 lg:bottom-6 left-4 right-4 sm:right-auto sm:max-w-sm z-40 rounded-xl bg-slate-900/95 border border-blue-500/30 p-4 shadow-2xl backdrop-blur-md transition-all duration-300"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
@@ -83,9 +107,10 @@ export function PwaManager() {
           </div>
         </div>
         <button
-          onClick={() => setShowInstallBanner(false)}
+          onClick={handleDismiss}
           className="text-slate-400 hover:text-white p-1 rounded-md transition-colors"
           aria-label="Dismiss"
+          data-testid="pwa-dismiss-btn"
         >
           <X className="w-4 h-4" />
         </button>
@@ -100,8 +125,9 @@ export function PwaManager() {
           Install App
         </button>
         <button
-          onClick={() => setShowInstallBanner(false)}
+          onClick={handleDismiss}
           className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors"
+          data-testid="pwa-later-btn"
         >
           Later
         </button>
