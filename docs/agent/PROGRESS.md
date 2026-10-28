@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T19 Stabilisation complete · Phase 2 ready
+Current task: T21 · Capture nonce
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,66 @@ Current task: T19 Stabilisation complete · Phase 2 ready
 - None
 
 ## Done
+
+### T20 · Device signing keys · 2026-10-28
+- **Goal:** Generate non-extractable ECDSA P-256 key pair on client with Web Crypto, store CryptoKey in IndexedDB via `idb`, export public key as JWK, register with server via `/api/evidence/device`.
+- **Verified against docs/types:**
+  - W3C Web Cryptography API: `SubtleCrypto.generateKey` with `{ name: 'ECDSA', namedCurve: 'P-256' }`, `extractable: false`, usages `['sign', 'verify']`. Export public key via `exportKey('jwk', keyPair.publicKey)`.
+  - `idb` (v8.0.3): Structured cloning of `CryptoKey` in IndexedDB object store `device_keys`.
+  - Prisma 7 `DeviceKey` model in schema: `id`, `userId`, `publicJwk`, `createdAt`, `revokedAt`.
+- **Changed:**
+  - Created `src/lib/evidence/deviceKey.ts`: client-side key generation, IndexedDB storage with `idb`, public JWK export, server registration.
+  - Created `src/app/api/evidence/device/route.ts`: POST endpoint validates ECDSA P-256 public JWK, ensures authentication via `withAuth`, deduplicates/reuses existing key if identical coordinates, persists `DeviceKey` row in Prisma; GET endpoint lists user's active device keys.
+  - Created `src/components/evidence/DeviceKeyInitializer.tsx`: client component to auto-initialize and register device keys when session is active.
+  - Modified `src/components/providers.tsx`: mounted `DeviceKeyInitializer` inside `SessionProvider`.
+  - Created `tests/unit/device-key.test.ts`: verified 401 unauthenticated, 400 invalid JWK, 201 valid registration, 200 key reuse, GET registered keys, and Web Crypto non-extractable private key properties.
+- **Full Gate Execution:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\page.tsx
+    476:29  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  ✖ 2 problems (0 errors, 2 warnings)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+
+   ✓ tests/unit/points.test.ts (8 tests) 12ms
+   ✓ tests/unit/config.test.ts (3 tests) 8ms
+   ✓ tests/contract/storage.test.ts (6 tests) 16ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 34ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 743ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 707ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 647ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1286ms
+   ✓ tests/contract/merge.test.ts (5 tests) 2068ms
+
+   Test Files  9 passed (9)
+        Tests  45 passed (45)
+     Duration  4.12s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 17.0s
+  ✓ Generating static pages using 15 workers (14/14) in 1114ms
+  Route (app)
+  ├ ƒ /api/evidence/device
+  ```
+- **Notes for Next Task:** Next task is T21 (Capture nonce). Will create `src/app/api/evidence/nonce/route.ts` and `src/lib/evidence/nonce.ts`, issuing 128-bit single-use cryptographically random nonces with 5-minute validity stored in `EvidenceNonce`.
 
 ### T19 · Stabilisation before Phase 2 · 2026-10-27
 - **Goal:** Green gate (`npm run lint && npm run typecheck && npm test && npm run build`), no disabled rules, no ts-ignore/eslint-disable, no skipped tests.
