@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T22 · Camera capture, GPS gate and signing
+Current task: T23 · Report flow rewrite
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,67 @@ Current task: T22 · Camera capture, GPS gate and signing
 - None
 
 ## Done
+
+### T22 · Camera capture, GPS gate and signing · 2026-10-28
+- **Goal:** Build in-app camera capture (environment mode, canvas max 1600px, no file input/gallery), GPS gate (≤30m accuracy circle, pin offset max 50m), canonical JSON payload serialization, client-side ECDSA P-256 signing, and server-side verification using IEEE P1363 decoding with registered user device keys.
+- **Verified against docs/types:**
+  - Web Crypto SubtleCrypto sign produces IEEE P1363 `r||s` raw signature buffers.
+  - Node.js `crypto.verify` with `{ dsaEncoding: 'ieee-p1363' }` and `crypto.createPublicKey({ key: jwk, format: 'jwk' })`.
+  - Canonical JSON sorting keys alphabetically without extraneous whitespace: `accuracy`, `capturedAt`, `lat`, `lng`, `nonce`, `photoHash`, `role`.
+- **Changed:**
+  - Created `src/lib/evidence/sign.ts`: canonical JSON formatter, browser/server `computePhotoHash`, `signEvidencePayload`, and `haversineDistanceM`.
+  - Created `src/lib/evidence/verify.ts`: server verification logic checking uploaded photo SHA-256 digest, 5-minute capture timestamp freshness, GPS accuracy ≤30m, pilot bounds, single-use nonce consumption, and ECDSA P-256 signature verification.
+  - Created `src/components/evidence/CaptureCamera.tsx`: client component with live video feed, accuracy gate indicator, max 50m pin adjustment, canvas downscaling to max 1600px, and zero `<input type="file">` elements.
+  - Created `tests/unit/signing-verification.test.ts`: acceptance test suite verifying canonical JSON formatting, valid signature verification, photo tampering rejection (PHOTO_HASH_MISMATCH), coordinate tampering rejection (INVALID_SIGNATURE), expired timestamp rejection (TIMESTAMP_EXPIRED), poor accuracy rejection (ACCURACY_TOO_LOW), out-of-bounds rejection (OUT_OF_BOUNDS), and source inspection verifying absence of file inputs.
+  - Updated `docs/plan/PLAN.md`: ticked rows V1, V3, and N8 in Section 11 traceability matrix.
+  - Updated `docs/agent/ASSUMPTIONS.md`: logged localhost/synthetic camera and GPS testing assumption with real-phone verification scheduled for T71 deployment.
+- **Full Gate Execution:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\page.tsx
+    476:29  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  ✖ 2 problems (0 errors, 2 warnings)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+
+   ✓ tests/unit/points.test.ts (8 tests) 8ms
+   ✓ tests/unit/config.test.ts (3 tests) 5ms
+   ✓ tests/contract/storage.test.ts (6 tests) 11ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 22ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 571ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 606ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 756ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 972ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 937ms
+   ✓ tests/unit/signing-verification.test.ts (8 tests) 1192ms
+   ✓ tests/contract/merge.test.ts (5 tests) 2393ms
+
+   Test Files  11 passed (11)
+        Tests  60 passed (60)
+     Duration  3.75s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 6.1s
+  ✓ Generating static pages using 15 workers (15/15) in 538ms
+  ```
+- **Notes for Next Task:** Next task is T23 (Report flow rewrite). Will integrate `CaptureCamera` and `verifyEvidence` into `src/app/citizen/report/page.tsx`, `src/app/api/reports/route.ts`, and `src/hooks/useOfflineSync.ts`, uploading evidence photo via `uploadEvidencePhoto` (T13), deduplicating/merging via `mergeOrCreateIssue` (T14), enqueuing G1 in `AiJob` (T17), awarding +10 XP points (T15), and navigating to `/issue/<id>` or `/citizen/report/<id>`.
 
 ### T21 · Capture nonce · 2026-10-28
 - **Goal:** Issue random 128-bit nonce tied to user, valid 5 minutes, single-use, backed by `EvidenceNonce` table in database.

@@ -1099,9 +1099,9 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [ ] | A2 | Public action log | T25, T28 | log tests; DB blocks UPDATE/DELETE |
 | [ ] | A3 | Agency label + handoff counter | T25 | reassign test |
 | [ ] | A4 | Desk scorecard | T29 | claim-gap unit test (by desk) |
-| [ ] | V1 | In-app camera only | T22 | e2e: no file input on capture |
+| [x] | V1 | In-app camera only | T22 | e2e: no file input on capture |
 | [x] | V2 | Capture nonce | T21 | nonce tests |
-| [ ] | V3 | Signed evidence | T20, T22 | signature tests (byte, lat, time tamper) |
+| [x] | V3 | Signed evidence | T20, T22 | signature tests (byte, lat, time tamper) |
 | [ ] | V4 | Two-key closure | T24, T27 | state machine table tests |
 | [ ] | V5 | Verifier rules | T27 | eligibility tests |
 | [ ] | V6 | Claim-gap page | T29 | unit test + page e2e |
@@ -1121,7 +1121,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [ ] | N5 | Departure advice | T45 | fixture test |
 | [ ] | N6 | Map layers | T40, T46 | layer toggle e2e |
 | [ ] | N7 | Saved commutes + alerts | T47 | spatial match test |
-| [ ] | N8 | GPS accuracy gate + pin bounds | T12, T22 | validation test; capture e2e |
+| [x] | N8 | GPS accuracy gate + pin bounds | T12, T22 | validation test; capture e2e |
 | [ ] | N9 | Search + reverse geocoding | T48 | contract tests |
 | [ ] | R1 | Road timeline | T60 | e2e on seed |
 | [ ] | R2 | Recurrence detector | T61 | unit test |
