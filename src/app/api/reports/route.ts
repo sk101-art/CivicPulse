@@ -7,7 +7,7 @@ import { verifyEvidence } from "@/lib/evidence/verify";
 import { toCanonicalJson, type EvidencePayload } from "@/lib/evidence/sign";
 import { uploadEvidencePhoto } from "@/lib/external/storage";
 import { NextResponse } from "next/server";
-import { Category, Role, Status } from "@prisma/client";
+import { Category, Status } from "@prisma/client";
 import { z } from "zod";
 import crypto from "crypto";
 
@@ -69,7 +69,7 @@ const directReportSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const auth = await withAuth(Role.CITIZEN);
+    const auth = await withAuth();
     if (auth.error) {
       return auth.error;
     }
