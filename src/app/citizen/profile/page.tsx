@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Link from 'next/link';
 import { AppHeader } from "@/components/layout/AppHeader";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 
 export const revalidate = 0;
 
@@ -66,17 +67,14 @@ export default async function CitizenProfile() {
         subtitle="Citizen Identity"
         accentColor={activeColor}
         actionButton={
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <Link href="/citizen/dashboard">
-              <button className="p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all border border-white/10 flex items-center gap-2 text-xs font-bold text-white/70 hover:text-white uppercase tracking-widest">
+              <button className="p-2 sm:p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all border border-white/10 flex items-center gap-1.5 text-xs font-bold text-white/70 hover:text-white uppercase tracking-widest">
                 <ChevronLeft className="w-4 h-4" />
-                Dashboard
+                <span className="hidden sm:inline">Dashboard</span>
               </button>
             </Link>
-            <div className="hidden sm:flex flex-col items-end">
-              <p className="text-[10px] font-mono uppercase tracking-widest opacity-40">Status</p>
-              <p className="text-xs font-black uppercase tracking-widest" style={{ color: activeColor }}>{profile.tier}</p>
-            </div>
+            <LogoutButton variant="compact" testId="citizen-logout-button" />
           </div>
         }
       />
@@ -138,6 +136,13 @@ export default async function CitizenProfile() {
                    <div className="text-3xl font-display font-bold text-white">{s.value}</div>
                 </div>
               ))}
+           </div>
+
+           <div className="px-8 pb-8 md:px-12 md:pb-10 border-t border-white/5 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+             <span className="text-xs font-mono text-white/40">
+               Logged in as {user.email}
+             </span>
+             <LogoutButton variant="primary" testId="logout-button" />
            </div>
         </section>
 
