@@ -290,6 +290,8 @@ export function IssueDrawer({
           <button
             onClick={onClose}
             className="p-2 rounded-lg bg-white/5 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            data-testid="close-drawer-button"
+            aria-label="Close drawer"
           >
             <X className="w-5 h-5" />
           </button>

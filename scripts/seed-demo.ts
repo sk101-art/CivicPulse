@@ -410,7 +410,6 @@ export async function seedDemoData() {
       address: 'Outer Ring Road, Agara Lake Northbound Median',
       priority: 22.0,
       band: Band.LOW,
-      band: Band.LOW,
       agencyId: agencyMap['GBA'],
       segmentId: 'seed-demo-seg-agara-lake',
       createdAt: new Date(now.getTime() - 10 * dayMs),

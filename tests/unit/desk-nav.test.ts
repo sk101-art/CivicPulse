@@ -18,9 +18,10 @@ describe("Desk Navigation and Legacy Routes Redirects", () => {
     expect(() => DeskStatusPage()).toThrow("REDIRECT:/desk");
   });
 
-  it("ensures 'Coming in T25' is completely eliminated from repository", () => {
+  it("ensures legacy placeholder string is completely eliminated from repository", () => {
+    const target = ["Coming", "in", "T25"].join(" ");
     try {
-      const output = execSync('git grep "Coming in T25"', { encoding: "utf8" });
+      const output = execSync(`git grep "${target}"`, { encoding: "utf8" });
       expect(output.trim()).toBe("");
     } catch {
       // Non-zero exit code means 0 matches found, which is expected

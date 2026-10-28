@@ -17,6 +17,7 @@ export interface Report {
   createdAt?: string | Date;
   voteCount?: number;
   commentCount?: number;
+  isSeed?: boolean;
 }
 
 export interface RawReportInput {
@@ -34,6 +35,7 @@ export interface RawReportInput {
   createdAt?: string | Date;
   voteCount?: number;
   commentCount?: number;
+  isSeed?: boolean;
 }
 
 function normalizeReport(item: RawReportInput): Report {

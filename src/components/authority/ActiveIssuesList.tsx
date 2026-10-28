@@ -77,12 +77,6 @@ export function ActiveIssuesList({ issues }: { issues: IssueItem[] }) {
     });
   };
 
-  const getSeverityColor = (score: number) => {
-    if (score >= 0.8) return 'var(--accent-magenta)';
-    if (score >= 0.5) return 'var(--accent-amber)';
-    return 'var(--accent-electric-blue)';
-  };
-
   const getStatusLabel = (status: string) => {
     switch (status) {
       case 'OPEN': return 'Verification Required';
