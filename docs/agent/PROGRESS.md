@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T23 · Report flow rewrite
+Current task: T24 · Issue state machine
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,70 @@ Current task: T23 · Report flow rewrite
 - None
 
 ## Done
+
+### T23 · Report flow rewrite · 2026-10-28
+- **Goal:** Modernize reporting flow to 4 steps: Category → Capture (live camera & GPS gate) → Details (optional note, defect size class, road blockage share) → Review & Sign, with backend signature verification, photo storage upload, deduplication/merge (+10 XP or +0 XP for duplicate), offline queuing, and navigation to public issue page `/issue/<id>`.
+- **Verified against docs/types:**
+  - PLAN.md Section 10 T23 specification.
+  - `uploadEvidencePhoto` in `src/lib/external/storage.ts` for photo buffer validation and storage.
+  - Offline sync acceptance: offline reports accepted without nonce if capturedAt is within 24 hours.
+- **Changed:**
+  - Modified `src/app/citizen/report/page.tsx`: redesigned multi-step wizard using `CaptureCamera` (no file input), size class selection (`small`, `medium`, `large`), road blockage selection (`none`, `part lane`, `one lane`, `full`), hardware signing, and submission via online API or offline queue. Replaced `<img>` tags with Next.js `<Image unoptimized />`.
+  - Modified `src/app/api/reports/route.ts`: added branch for signed evidence payload, photo buffer decoding, offline 24-hour verification, live nonce verification, photo upload to Supabase storage, spatial merge and deduplication via `ingestReportWithSpatialMerge`, and G1 AI job queuing.
+  - Modified `src/hooks/useOfflineSync.ts`: enhanced `QueuedOfflineReport` and `QueuedReportInput` types to support signed evidence payloads with backward compatibility for legacy callers.
+  - Created `src/app/(public)/issue/[id]/page.tsx`: public issue page displaying status, category, address, photo, coordinates, and timestamp.
+  - Created `tests/unit/report-flow.test.ts`: acceptance test suite verifying valid signed report filing, 10m duplicate merge, 24h offline report acceptance, and >24h offline report expiration rejection.
+  - Updated `docs/plan/PLAN.md`: ticked row F1 in Section 11 traceability matrix.
+  - Updated `docs/agent/DECISIONS.md`: logged creation of `src/app/(public)/issue/[id]/page.tsx` scaffold.
+- **Full Gate Execution:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  ✖ 1 problem (0 errors, 1 warning)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+
+   ✓ tests/unit/points.test.ts (8 tests) 8ms
+   ✓ tests/unit/config.test.ts (3 tests) 6ms
+   ✓ tests/contract/storage.test.ts (6 tests) 10ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 24ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 1626ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 1790ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 2008ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 2005ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 4416ms
+   ✓ tests/unit/signing-verification.test.ts (8 tests) 4874ms
+   ✓ tests/unit/report-flow.test.ts (4 tests) 7180ms
+   ✓ tests/contract/merge.test.ts (5 tests) 8918ms
+
+   Test Files  12 passed (12)
+        Tests  64 passed (64)
+     Duration  10.46s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 11.0s
+  ✓ Generating static pages using 15 workers (15/15) in 614ms
+  Route (app)
+  ├ ƒ /api/reports
+  ├ ƒ /citizen/report
+  ├ ƒ /issue/[id]
+  ```
+- **Notes for Next Task:** Next task is T24 (Issue state machine). Will encode the Section 6 transition table into `src/lib/issues/stateMachine.ts`, ensuring single source of truth for transitions, actors, requirements, and ActionLog generation.
 
 ### T22 · Camera capture, GPS gate and signing · 2026-10-28
 - **Goal:** Build in-app camera capture (environment mode, canvas max 1600px, no file input/gallery), GPS gate (≤30m accuracy circle, pin offset max 50m), canonical JSON payload serialization, client-side ECDSA P-256 signing, and server-side verification using IEEE P1363 decoding with registered user device keys.
