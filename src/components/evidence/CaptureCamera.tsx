@@ -17,9 +17,11 @@ export interface CaptureCameraProps {
   onCapture: (evidence: CapturedEvidence) => void;
   onCancel?: () => void;
   targetCoords?: { lat: number; lng: number };
+  onDeviceUpload?: () => void;
+  onSkip?: () => void;
 }
 
-export function CaptureCamera({ role, onCapture, onCancel, targetCoords }: CaptureCameraProps) {
+export function CaptureCamera({ role, onCapture, onCancel, targetCoords, onDeviceUpload, onSkip }: CaptureCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -319,16 +321,36 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords }: Captu
         )}
 
         {cameraError && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-zinc-900/90 text-red-400">
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-zinc-900/90 text-red-400 z-30">
             <AlertTriangle className="w-10 h-10 mb-2" />
             <p className="font-semibold text-sm">{cameraError}</p>
-            <button
-              type="button"
-              onClick={startCamera}
-              className="mt-4 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs rounded-lg transition"
-            >
-              Retry Camera
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+              {onDeviceUpload && (
+                <button
+                  type="button"
+                  onClick={onDeviceUpload}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5 cursor-pointer"
+                >
+                  📁 Choose from Device
+                </button>
+              )}
+              {onSkip && (
+                <button
+                  type="button"
+                  onClick={onSkip}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5 cursor-pointer"
+                >
+                  ⚡ Skip Photo (Dev Mode)
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={startCamera}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs rounded-xl transition cursor-pointer"
+              >
+                Retry Camera
+              </button>
+            </div>
           </div>
         )}
 
@@ -447,6 +469,30 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords }: Captu
             )}
           </button>
         </div>
+
+        {(onDeviceUpload || onSkip) && (
+          <div className="flex items-center justify-center gap-4 py-1 text-xs">
+            {onDeviceUpload && (
+              <button
+                type="button"
+                onClick={onDeviceUpload}
+                className="text-zinc-400 hover:text-white underline cursor-pointer transition"
+              >
+                📁 Choose from Device
+              </button>
+            )}
+            {onDeviceUpload && onSkip && <span className="text-zinc-600">•</span>}
+            {onSkip && (
+              <button
+                type="button"
+                onClick={onSkip}
+                className="text-amber-400 hover:text-amber-300 underline cursor-pointer transition"
+              >
+                ⚡ Skip Photo (Temporary Dev Mode)
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Status Hint */}
         <div className="text-center text-[11px] text-zinc-500">
