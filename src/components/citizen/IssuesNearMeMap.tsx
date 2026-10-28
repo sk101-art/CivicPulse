@@ -10,12 +10,16 @@ import { useReports } from '@/hooks/useReports';
 
 type NearbyReport = {
   id: string;
-  latitude: number;
-  longitude: number;
-  title: string;
+  latitude?: number;
+  longitude?: number;
+  lat?: number;
+  lng?: number;
+  title?: string;
   status: string;
   category: string;
   priorityScore?: number | null;
+  priority?: number | null;
+  address?: string | null;
   createdAt?: string | Date;
 };
 
@@ -173,11 +177,26 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
     autoRefresh: 30000,
   });
   const reports = rawReports as NearbyReport[];
-    const [userPos, setUserPos] = useState<[number, number] | null>(null);
+  const validReports = useMemo(() => {
+    return reports
+      .map((r) => {
+        const lat = typeof r.latitude === 'number' ? r.latitude : typeof r.lat === 'number' ? r.lat : NaN;
+        const lng = typeof r.longitude === 'number' ? r.longitude : typeof r.lng === 'number' ? r.lng : NaN;
+        return {
+          ...r,
+          latitude: lat,
+          longitude: lng,
+          priorityScore: r.priorityScore ?? r.priority ?? 0.5,
+          title: r.title || `${(r.category || 'Issue').replace(/_/g, ' ')} at ${r.address || 'Bengaluru'}`,
+        };
+      })
+      .filter((r) => !isNaN(r.latitude) && !isNaN(r.longitude) && isFinite(r.latitude) && isFinite(r.longitude));
+  }, [reports]);
+  const [userPos, setUserPos] = useState<[number, number] | null>(null);
   const [geoError, setGeoError] = useState('');
   const [radius] = useState(10000);
   const [mapCenter, setMapCenter] = useState<[number, number]>([12.9716, 77.5946]);
-    const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
   const [mode, setMode] = useState<PlacementMode>(null);
@@ -185,7 +204,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
   const [destination, setDestination] = useState<[number, number] | null>(null);
   const [allRoutes, setAllRoutes] = useState<RouteOption[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
-    const [routeLoading, setRouteLoading] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
   const [pulse, setPulse] = useState(0);
 
@@ -194,8 +213,8 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
     return () => window.clearInterval(t);
   }, []);
 
-  const categoryOptions = useMemo(() => ['ALL', ...Array.from(new Set(reports.map(r => r.category))).sort()], [reports]);
-  const statusOptions = useMemo(() => ['ALL', ...Array.from(new Set(reports.map(r => r.status))).sort()], [reports]);
+  const categoryOptions = useMemo(() => ['ALL', ...Array.from(new Set(validReports.map(r => r.category))).sort()], [validReports]);
+  const statusOptions = useMemo(() => ['ALL', ...Array.from(new Set(validReports.map(r => r.status))).sort()], [validReports]);
 
   const catColor = useCallback((category: string) => {
     const m: Record<string, string> = {
@@ -220,23 +239,23 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
   }, []);
 
   const filtered = useMemo(() => {
-    if (!userPos) return reports;
-    const withinRadius = reports.filter(r => haversineMeters(userPos[0], userPos[1], r.latitude, r.longitude) <= radius);
+    if (!userPos) return validReports;
+    const withinRadius = validReports.filter(r => haversineMeters(userPos[0], userPos[1], r.latitude, r.longitude) <= radius);
     let f = withinRadius;
     if (categoryFilter !== 'ALL') f = f.filter(r => r.category === categoryFilter);
     if (statusFilter !== 'ALL') f = f.filter(r => r.status === statusFilter);
     return f;
-  }, [reports, userPos, radius, categoryFilter, statusFilter]);
+  }, [validReports, userPos, radius, categoryFilter, statusFilter]);
 
   // Removed renderPoints clustering
 
   const hazards = useMemo(() => {
     if (allRoutes.length > 0 && allRoutes[selectedRouteIndex]) {
-      const openIssues = reports.filter(r => r.status !== 'VERIFIED_FIXED' && r.status !== 'REJECTED');
+      const openIssues = validReports.filter(r => r.status !== 'VERIFIED_FIXED' && r.status !== 'REJECTED');
       return openIssues.filter(issue => pointToPolyDist([issue.latitude, issue.longitude], allRoutes[selectedRouteIndex].coords) < HAZARD_RADIUS);
     }
     return [];
-  }, [selectedRouteIndex, allRoutes, reports]);
+  }, [selectedRouteIndex, allRoutes, validReports]);
 
   const clearRoutes = useCallback(() => {
     setAllRoutes([]);
@@ -265,7 +284,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
     clearRoutes();
 
     try {
-      const openIssues = reports.filter(r => r.status !== 'RESOLVED');
+      const openIssues = validReports.filter(r => r.status !== 'RESOLVED');
       const getHazards = (coords: [number, number][]) => 
         openIssues.filter(issue => pointToPolyDist([issue.latitude, issue.longitude], coords) < HAZARD_RADIUS);
 
@@ -339,7 +358,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
     } finally {
       setRouteLoading(false);
     }
-  }, [source, destination, reports, clearRoutes]);
+  }, [source, destination, validReports, clearRoutes]);
 
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -553,12 +572,15 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
           );
         })}
 
-        {hazards.map((h) => (
-          <FeatureGroup key={`hz-group-${h.id}`}>
-            <Circle key={`hz-pulse-${h.id}`} center={[h.latitude, h.longitude]} radius={HAZARD_RADIUS * (1 + 0.18 * pulseFactor)} pathOptions={{ fillColor: 'var(--accent-magenta)', fillOpacity: 0.06, color: 'var(--accent-magenta)', weight: 1, dashArray: '4, 10', opacity: 0.55 }} />
-            <Circle key={`hz-${h.id}`} center={[h.latitude, h.longitude]} radius={HAZARD_RADIUS} pathOptions={{ fillColor: 'var(--accent-magenta)', fillOpacity: 0.12, color: 'var(--accent-magenta)', weight: 2, opacity: 0.85 }} />
-          </FeatureGroup>
-        ))}
+        {hazards.map((h) => {
+          if (h.latitude == null || h.longitude == null || isNaN(h.latitude) || isNaN(h.longitude)) return null;
+          return (
+            <FeatureGroup key={`hz-group-${h.id}`}>
+              <Circle key={`hz-pulse-${h.id}`} center={[h.latitude, h.longitude]} radius={HAZARD_RADIUS * (1 + 0.18 * pulseFactor)} pathOptions={{ fillColor: 'var(--accent-magenta)', fillOpacity: 0.06, color: 'var(--accent-magenta)', weight: 1, dashArray: '4, 10', opacity: 0.55 }} />
+              <Circle key={`hz-${h.id}`} center={[h.latitude, h.longitude]} radius={HAZARD_RADIUS} pathOptions={{ fillColor: 'var(--accent-magenta)', fillOpacity: 0.12, color: 'var(--accent-magenta)', weight: 2, opacity: 0.85 }} />
+            </FeatureGroup>
+          );
+        })}
 
         {source && (
           <Marker position={source} icon={sourceIcon()}><Popup><b>Source</b></Popup></Marker>
@@ -568,6 +590,7 @@ export function IssuesNearMeMap({ showReportButton, onReportLocationAction }: { 
         )}
 
         {filtered.map((r) => {
+          if (r.latitude == null || r.longitude == null || isNaN(r.latitude) || isNaN(r.longitude)) return null;
           const isHz = hazards.some(h => h.id === r.id);
           const color = r.status === 'RESOLVED' ? 'var(--accent-lime)' : catColor(r.category);
           const pr = r.priorityScore == null ? 0.5 : Number(r.priorityScore);

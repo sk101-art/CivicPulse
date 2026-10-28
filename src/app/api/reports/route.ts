@@ -120,7 +120,15 @@ export async function GET(req: Request) {
       take: 50,
     });
 
-    return NextResponse.json(issues, {
+    const formatted = issues.map((i) => ({
+      ...i,
+      latitude: i.lat,
+      longitude: i.lng,
+      priorityScore: i.priority,
+      title: `${i.category.replace(/_/g, " ")} at ${i.address || "Bengaluru"}`,
+    }));
+
+    return NextResponse.json(formatted, {
       headers: {
         "Cache-Control": "no-store, max-age=0",
       },

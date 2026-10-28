@@ -47,12 +47,16 @@ function destIcon() {
 
 interface ReportPoint {
   id: string;
-  latitude: number;
-  longitude: number;
-  title: string;
+  latitude?: number;
+  longitude?: number;
+  lat?: number;
+  lng?: number;
+  title?: string;
   status: string;
   category: string;
   priorityScore?: number;
+  priority?: number;
+  address?: string | null;
 }
 
 type PlacementMode = 'source' | 'destination' | 'report' | null;
@@ -60,8 +64,13 @@ type PlacementMode = 'source' | 'destination' | 'report' | null;
 function MapSync({ reports }: { reports: ReportPoint[] }) {
   const map = useMap();
   useEffect(() => {
-    if (reports.length > 0) {
-      const bounds = L.latLngBounds(reports.map(r => [r.latitude, r.longitude]));
+    const valid = reports.filter(r => {
+      const lat = r.latitude ?? r.lat;
+      const lng = r.longitude ?? r.lng;
+      return lat != null && lng != null && !isNaN(lat) && !isNaN(lng) && isFinite(lat) && isFinite(lng);
+    });
+    if (valid.length > 0) {
+      const bounds = L.latLngBounds(valid.map(r => [(r.latitude ?? r.lat)!, (r.longitude ?? r.lng)!]));
       map.fitBounds(bounds, { padding: [50, 50] });
     }
   }, [reports, map]);
@@ -190,6 +199,22 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
   const [loading, setLoading] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
 
+  const validReports = useMemo(() => {
+    return reports
+      .map((r) => {
+        const lat = typeof r.latitude === 'number' ? r.latitude : typeof r.lat === 'number' ? r.lat : NaN;
+        const lng = typeof r.longitude === 'number' ? r.longitude : typeof r.lng === 'number' ? r.lng : NaN;
+        return {
+          ...r,
+          latitude: lat,
+          longitude: lng,
+          priorityScore: r.priorityScore ?? r.priority ?? 0.5,
+          title: r.title || `${(r.category || 'Issue').replace(/_/g, ' ')} at ${r.address || 'Bengaluru'}`,
+        };
+      })
+      .filter((r) => !isNaN(r.latitude) && !isNaN(r.longitude) && isFinite(r.latitude) && isFinite(r.longitude));
+  }, [reports]);
+
   useEffect(() => {
     const t = window.setInterval(() => setPulse((p) => (p + 1) % 120), 80);
     return () => window.clearInterval(t);
@@ -211,11 +236,11 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
 
   const hazards = useMemo(() => {
     if (allRoutes.length > 0 && allRoutes[selectedRouteIndex]) {
-      const openIssues = reports.filter(r => r.status !== 'VERIFIED_FIXED' && r.status !== 'REJECTED');
+      const openIssues = validReports.filter(r => r.status !== 'VERIFIED_FIXED' && r.status !== 'REJECTED');
       return openIssues.filter(issue => pointToPolyDist([issue.latitude, issue.longitude], allRoutes[selectedRouteIndex].coords) < HAZARD_RADIUS);
     }
     return [];
-  }, [selectedRouteIndex, allRoutes, reports]);
+  }, [selectedRouteIndex, allRoutes, validReports]);
 
   const clearRoutes = useCallback(() => {
     setAllRoutes([]);
@@ -244,7 +269,7 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
     clearRoutes();
 
     try {
-      const openIssues = reports.filter(r => r.status !== 'RESOLVED');
+      const openIssues = validReports.filter(r => r.status !== 'RESOLVED');
       const getHazards = (coords: [number, number][]) => 
         openIssues.filter(issue => pointToPolyDist([issue.latitude, issue.longitude], coords) < HAZARD_RADIUS);
 
@@ -305,10 +330,10 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
     } finally {
       setLoading(false);
     }
-  }, [source, destination, reports, clearRoutes]);
+  }, [source, destination, validReports, clearRoutes]);
 
-  const center: [number, number] = reports.length > 0
-    ? [reports[0].latitude, reports[0].longitude]
+  const center: [number, number] = validReports.length > 0
+    ? [validReports[0].latitude, validReports[0].longitude]
     : [12.9716, 77.5946];
 
   const pulseFactor = 0.85 + 0.15 * Math.sin(pulse / 6);
@@ -491,35 +516,38 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
           );
         })}
 
-        {hazards.map((h) => (
-          <FeatureGroup key={`hz-group-${h.id}`}>
-            <Circle
-              key={`hz-pulse-${h.id}`}
-              center={[h.latitude, h.longitude]}
-              radius={HAZARD_RADIUS * (1 + 0.18 * pulseFactor)}
-              pathOptions={{
-                fillColor: 'var(--accent-magenta)',
-                fillOpacity: 0.06,
-                color: 'var(--accent-magenta)',
-                weight: 1,
-                dashArray: '4, 10',
-                opacity: 0.55,
-              }}
-            />
-            <Circle
-              key={`hz-${h.id}`}
-              center={[h.latitude, h.longitude]}
-              radius={HAZARD_RADIUS}
-              pathOptions={{
-                fillColor: 'var(--accent-magenta)',
-                fillOpacity: 0.12,
-                color: 'var(--accent-magenta)',
-                weight: 2,
-                opacity: 0.85,
-              }}
-            />
-          </FeatureGroup>
-        ))}
+        {hazards.map((h) => {
+          if (h.latitude == null || h.longitude == null || isNaN(h.latitude) || isNaN(h.longitude)) return null;
+          return (
+            <FeatureGroup key={`hz-group-${h.id}`}>
+              <Circle
+                key={`hz-pulse-${h.id}`}
+                center={[h.latitude, h.longitude]}
+                radius={HAZARD_RADIUS * (1 + 0.18 * pulseFactor)}
+                pathOptions={{
+                  fillColor: 'var(--accent-magenta)',
+                  fillOpacity: 0.06,
+                  color: 'var(--accent-magenta)',
+                  weight: 1,
+                  dashArray: '4, 10',
+                  opacity: 0.55,
+                }}
+              />
+              <Circle
+                key={`hz-${h.id}`}
+                center={[h.latitude, h.longitude]}
+                radius={HAZARD_RADIUS}
+                pathOptions={{
+                  fillColor: 'var(--accent-magenta)',
+                  fillOpacity: 0.12,
+                  color: 'var(--accent-magenta)',
+                  weight: 2,
+                  opacity: 0.85,
+                }}
+              />
+            </FeatureGroup>
+          );
+        })}
 
         {source && (
           <Marker position={source} icon={sourceIcon()}>
@@ -532,7 +560,8 @@ export default function CivicMap({ reports, showReportButton = false, onReportLo
           </Marker>
         )}
 
-        {reports.map((r) => {
+        {validReports.map((r) => {
+          if (r.latitude == null || r.longitude == null || isNaN(r.latitude) || isNaN(r.longitude)) return null;
           const isHz = hazards.some((h) => h.id === r.id);
           const color = r.status === 'RESOLVED' ? 'var(--accent-lime)' : catColor(r.category);
           const radius = 6 + ((r.priorityScore ?? 0.5) * 8);

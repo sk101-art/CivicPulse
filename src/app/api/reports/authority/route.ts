@@ -10,11 +10,27 @@ const authorityReportSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
   category: z.nativeEnum(Category).default(Category.OTHER),
-  lat: coordinateSchema.shape.lat,
-  lng: coordinateSchema.shape.lng,
+  lat: z.number().optional(),
+  lng: z.number().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
   address: z.string().optional(),
   agencyId: z.string().optional(),
-});
+}).transform((data) => ({
+  ...data,
+  lat: data.lat ?? data.latitude,
+  lng: data.lng ?? data.longitude,
+})).pipe(
+  z.object({
+    title: z.string().optional(),
+    description: z.string().optional(),
+    category: z.nativeEnum(Category),
+    lat: coordinateSchema.shape.lat,
+    lng: coordinateSchema.shape.lng,
+    address: z.string().optional(),
+    agencyId: z.string().optional(),
+  })
+);
 
 export async function POST(req: Request) {
   try {
@@ -81,5 +97,49 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     console.error("Authority report filing failed:", error);
     return apiError(500, "INTERNAL_ERROR", "Internal server error occurred");
+  }
+}
+
+export async function GET() {
+  try {
+    const auth = await withAuth(Role.AUTHORITY);
+    if (auth.error) {
+      return auth.error;
+    }
+
+    const issues = await prisma.issue.findMany({
+      orderBy: { priority: "desc" },
+      include: {
+        reports: {
+          take: 5,
+          orderBy: { createdAt: "desc" },
+        },
+        actions: {
+          take: 5,
+          orderBy: { createdAt: "desc" },
+        },
+        _count: {
+          select: { reports: true, comments: true },
+        },
+      },
+      take: 100,
+    });
+
+    const formatted = issues.map((i) => ({
+      ...i,
+      latitude: i.lat,
+      longitude: i.lng,
+      priorityScore: i.priority,
+      title: `${i.category.replace(/_/g, " ")} at ${i.address || "Bengaluru"}`,
+    }));
+
+    return NextResponse.json(formatted, {
+      headers: {
+        "Cache-Control": "no-store, max-age=0",
+      },
+    });
+  } catch (error: unknown) {
+    console.error("Error fetching authority issues:", error);
+    return apiError(500, "INTERNAL_ERROR", "Error fetching authority issues");
   }
 }
