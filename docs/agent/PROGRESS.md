@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T24 · Issue state machine
+Current task: T25 · Desk actions endpoint, action log, agencies and handoffs
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,61 @@ Current task: T24 · Issue state machine
 - None
 
 ## Done
+
+### T24 · Issue state machine · 2026-10-28
+- **Goal:** Implement the centralized issue state transition table from PLAN.md Section 6 in `src/lib/issues/stateMachine.ts`, ensuring single source of truth for transitions, actors, requirements, and ActionLog generation.
+- **Verified against docs/types:**
+  - PLAN.md Section 6 transition table and invariants (closed issues cannot reopen; verify requires weight >= 1.0; dispute requires weight >= 0.5; claim-fix requires signed photo <= 50m; reject/reopen requires written note; assign requires agencyId).
+  - Prisma 7 `Status` and `ActionLog` schemas.
+- **Changed:**
+  - Created `src/lib/issues/stateMachine.ts`: transition table rules, `transition(issue, action, actor, context)` validator, `InvalidStateTransitionError`, ActionLog and Issue update generation.
+  - Created `tests/unit/state-machine.test.ts`: table-driven tests verifying all allowed transitions pass and 12 disallowed transitions throw `InvalidStateTransitionError`, plus context validation checks.
+- **Full Gate Execution:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+  ✖ 1 problem (0 errors, 1 warning)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+
+   ✓ tests/unit/points.test.ts (8 tests) 8ms
+   ✓ tests/unit/state-machine.test.ts (29 tests) 14ms
+   ✓ tests/unit/config.test.ts (3 tests) 5ms
+   ✓ tests/contract/storage.test.ts (6 tests) 10ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 21ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 706ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 743ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 885ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1036ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 1018ms
+   ✓ tests/unit/signing-verification.test.ts (8 tests) 1175ms
+   ✓ tests/unit/report-flow.test.ts (4 tests) 1649ms
+   ✓ tests/contract/merge.test.ts (5 tests) 2115ms
+
+   Test Files  13 passed (13)
+        Tests  93 passed (93)
+     Duration  3.81s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 6.6s
+  ✓ Generating static pages using 15 workers (15/15) in 476ms
+  ```
+- **Notes for Next Task:** Next task is T25 (Desk actions endpoint, action log, agencies and handoffs). Will implement `src/app/api/issues/[id]/actions/route.ts` and `src/app/api/issues/[id]/log/route.ts`, supporting desk operations (`CONFIRM`, `REJECT`, `ASSIGN_AGENCY`, `REASSIGN_AGENCY`, `START_WORK`, `CLAIM_FIX`, `OVERRIDE_BAND`), ensuring append-only ActionLog entries and incrementing handoffCount.
 
 ### T23 · Report flow rewrite · 2026-10-28
 - **Goal:** Modernize reporting flow to 4 steps: Category → Capture (live camera & GPS gate) → Details (optional note, defect size class, road blockage share) → Review & Sign, with backend signature verification, photo storage upload, deduplication/merge (+10 XP or +0 XP for duplicate), offline queuing, and navigation to public issue page `/issue/<id>`.
