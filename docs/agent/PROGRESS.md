@@ -1,12 +1,73 @@
 # Progress ledger
-Current task: T73 · Demo Story E2E (Track A)
+Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
 ## Blocked (needs Sujay)
-- None
+- User deployment of Vercel production instance and setting environment variables (STOP before T71 per instructions).
 
 ## Done
+
+### T73 · Demo seed and demo story E2E suite · 2026-10-28
+- **Goal:** Create labelled seed demo script (`scripts/seed-demo.ts`) covering pilot corridor segments with traffic samples, road fix-then-fail history, and issues across bands; build and verify complete end-to-end demo story Playwright suite (`tests/e2e/demo.spec.ts`) passing twice in a row.
+- **Implemented:**
+  - `scripts/seed-demo.ts`: Seeder for demo data:
+    - 10 arterial road segments along Outer Ring Road corridor with realistic traffic samples (`currentSpeed`, `freeFlowSpeed`, `confidence`).
+    - Fix-then-fail municipal history on Kadubeesanahalli segment (resurfacing, utility road cut, monsoon waterlogging, citizen report, agency handoff, verified fix, recurrence).
+    - Multi-band issues: `CRITICAL` (waterlogging on Bellandur corridor), `HIGH` (recurrence on Kadubeesanahalli), `MEDIUM` (streetlights on Cessna Park road), and `LOW` (traffic signs on Agara lake section).
+  - `package.json`: Added `"seed:demo": "tsx scripts/seed-demo.ts"`.
+  - `tests/e2e/demo.spec.ts`: End-to-end demo story suite testing the full lifecycle:
+    1. Citizen signs in and reports a pothole on Outer Ring Road corridor with signed ECDSA P-256 evidence.
+    2. PostGIS automatically snaps the report to pilot segment `seed-seg-orr-kadubeesanahalli`.
+    3. Desk confirms the issue (`OPEN` → `CONFIRMED`).
+    4. Assert that NO generic gallery picker (`<input type="file">`) exists.
+    5. Desk claims fix with signed photo evidence (`CONFIRMED` → `CLAIMED_FIXED`).
+    6. Second citizen inspects and disputes the fix (`CLAIMED_FIXED` → `DISPUTED`).
+    7. Public `/claim-gap` scorecard reflects the disputed claim and rising claim gap metrics.
+    8. Public `/road/[segmentId]` timeline displays the full chronological history with visible `data-testid="seed-tag"`.
+- **Verified Against Docs:** PLAN.md Section 10 T73 card, Section 11 P3 row.
+- **Checks Run (Passed Twice in a Row):**
+  ```
+  [Run 1 of 2: npm run e2e -- demo]
+  > miniproject@0.1.0 e2e
+  > playwright test demo
+
+  Running 1 test using 1 worker
+  [Seed Demo] Initializing CivicPulse Demo Environment...
+  [Seed Demo] Seeding ~10 pilot road segments and traffic samples...
+  [Seed Demo] Seeding fix-then-fail history on Kadubeesanahalli segment...
+  [Seed Demo] Seeding issues across bands (CRITICAL, HIGH, MEDIUM, LOW)...
+  [Seed Demo] Demo environment seeded successfully!
+    ok 1 [chromium] › tests\e2e\demo.spec.ts:55:7 › T73: End-to-End CivicPulse Demo Story › Demo Story: Citizen report -> No gallery picker -> Signed claim -> Citizen dispute -> Claim gap rises -> Road timeline recurrence (10.6s)
+
+    1 passed (13.4s)
+
+  [Run 2 of 2: npm run e2e -- demo]
+  > miniproject@0.1.0 e2e
+  > playwright test demo
+
+  Running 1 test using 1 worker
+  [Seed Demo] Initializing CivicPulse Demo Environment...
+  [Seed Demo] Seeding ~10 pilot road segments and traffic samples...
+  [Seed Demo] Seeding fix-then-fail history on Kadubeesanahalli segment...
+  [Seed Demo] Seeding issues across bands (CRITICAL, HIGH, MEDIUM, LOW)...
+  [Seed Demo] Demo environment seeded successfully!
+    ok 1 [chromium] › tests\e2e\demo.spec.ts:55:7 › T73: End-to-End CivicPulse Demo Story › Demo Story: Citizen report -> No gallery picker -> Signed claim -> Citizen dispute -> Claim gap rises -> Road timeline recurrence (10.9s)
+
+    1 passed (13.7s)
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✔ 0 errors, 1 warning (img element in report page)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  35 passed (35)
+  Tests  196 passed (196)
+  > next build --webpack
+  ✓ Compiled successfully in 8.0s
+  ✓ Generating static pages (19/19) in 688ms
+  ```
 
 ### T72 · Security, README and municipal framing audit · 2026-10-28
 - **Goal:** Rewrite README around the municipal road truth ledger (what, why, how to run, environment variables table, Mermaid architecture diagram, data sources & attributions), and eliminate all "Metropolitan Security Grid" phrasing across the repository.

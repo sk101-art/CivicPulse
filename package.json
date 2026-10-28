@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "check:keys": "tsx scripts/check-keys.ts",
     "db:seed": "tsx prisma/seed.ts",
+    "seed:demo": "tsx scripts/seed-demo.ts",
     "migrate:v1": "tsx scripts/migrate-v1-to-v2.ts",
     "test": "vitest run",
     "e2e": "playwright test"

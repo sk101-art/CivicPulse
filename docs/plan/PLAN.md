@@ -1140,7 +1140,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [ ] | G8 | Moderation | T58 | unit tests |
 | [ ] | P1 | Deploy | T71 | deployed health check |
 | [ ] | P2 | Privacy by design | T2B | retention test; policy page |
-| [ ] | P3 | Tests for demo and logic | T00, T03, T73 | demo e2e passes twice |
+| [x] | P3 | Tests for demo and logic | T00, T03, T73 | demo e2e passes twice |
 | [x] | P5 | Drop "Security Grid" framing | T01, T72 | grep empty |
 | [x] | P6 | Installable PWA | T70 | Lighthouse installability |
 
