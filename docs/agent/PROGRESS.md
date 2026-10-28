@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T40 · Map component refactoring
+Current task: T41 · Routing proxy (TomTom synthetic)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,47 @@ Current task: T40 · Map component refactoring
 - None
 
 ## Done
+
+### T40 · Shared map module & component refactor · 2026-10-28
+- **Goal:** Extract duplicated map and routing code between `AuthorityMap.tsx` and `IssuesNearMeMap.tsx` into a single shared `src/components/map/` module with zero behavior change; reduce line counts of both legacy components below 150 lines; verify visually and via Playwright screenshot comparisons before and after.
+- **Implemented:**
+  - `src/components/map/types.ts`: Shared types (`ReportPoint`, `RouteOption`, `PlacementMode`).
+  - `src/components/map/utils.ts`: Shared utilities (`sourceIcon`, `destIcon`, `haversineMeters`, `pointToPolyDist`, `fetchAllRoutes`, `buildDetourWaypoints`).
+  - `src/components/map/MapControls.tsx`: `MapSync`, `MapClickHandler`, `CustomZoomControls`.
+  - `src/components/map/IssueMarkersLayer.tsx`: CircleMarker with priority color, pulse animation, and rich popup.
+  - `src/components/map/RouteLayer.tsx`: Route polylines, hazard buffers, and source/dest pins.
+  - `src/components/map/RoutePanel.tsx`: Route search controls, hazard warnings, and alternative selection.
+  - `src/components/map/BaseMap.tsx`: Clean unified MapContainer coordinating layers, leaflet styles, and interactions.
+  - `src/components/authority/AuthorityMap.tsx`: Thin wrapper around `BaseMap` (595 lines → 11 lines).
+  - `src/components/citizen/IssuesNearMeMap.tsx`: Thin wrapper around `BaseMap` (617 lines → 38 lines).
+  - `tests/screenshots/`: Captured before and after screenshots of citizen and desk map pages (`citizen-map-before.png`, `citizen-map-after.png`, `desk-map-before.png`, `desk-map-after.png`).
+  - `tests/e2e/map-refactor.spec.ts`: Playwright e2e test confirming both map pages mount without console errors and both legacy files are < 150 lines.
+- **Checks Run:**
+  ```
+  [Line Counts]
+  AuthorityMap.tsx: 11 lines (< 150)
+  IssuesNearMeMap.tsx: 38 lines (< 150)
+
+  [Playwright E2E: tests/e2e/map-refactor.spec.ts]
+  Running 3 tests using 1 worker
+  ✓ tests/e2e/map-refactor.spec.ts:3:7 › T40: Map refactor acceptance › legacy map files have dropped below 150 lines (3ms)
+  ✓ tests/e2e/map-refactor.spec.ts:13:7 › T40: Map refactor acceptance › citizen map renders correctly with BaseMap without console errors (1.2s)
+  ✓ tests/e2e/map-refactor.spec.ts:30:7 › T40: Map refactor acceptance › desk map renders correctly with BaseMap without console errors (1.4s)
+  3 passed (3.5s)
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✖ 1 problem (0 errors, 1 warning)
+  > tsc --noEmit
+  > vitest run
+  Test Files  22 passed (22)
+  Tests  135 passed (135)
+  > next build --webpack
+  ✓ Compiled successfully in 5.2s
+  ✓ Generating static pages using 15 workers (18/18) in 695ms
+  ```
+- **Feature Rows Ticked:** N6 prerequisite (T40 completed; T46 finishes N6).
+- **Notes for the Next Task:** Proceed to T41 (Routing proxy - TomTom synthetic).
 
 ### T35 · Priority Index breakdown UI & audit log · 2026-10-28
 - **Goal:** Priority explanation UI component `src/components/priority/PriorityBreakdown.tsx` featuring stacked bar of weighted factors, band chip, sentence built from `sentenceFacts`, "estimated" pill tags next to E (Exposure) and U (Usability), and SLA floor notice when applied; embedded in `/issue/[id]` public issue detail page.
