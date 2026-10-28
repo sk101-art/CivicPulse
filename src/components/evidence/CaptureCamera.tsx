@@ -280,7 +280,7 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, onDevic
       {/* Viewport Header */}
       <div className="absolute top-0 inset-x-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
         <div className="flex items-center space-x-2">
-          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/20 text-primary border border-primary/30">
+          <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-cyan/20 text-cyan border border-cyan/30">
             {role}
           </span>
           {targetCoords && (
@@ -434,7 +434,7 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, onDevic
                 <button
                   type="button"
                   onClick={resetPinToGps}
-                  className="px-2 py-1 text-primary hover:underline ml-2"
+                  className="px-2 py-1 text-cyan hover:underline ml-2"
                 >
                   Reset
                 </button>
@@ -450,9 +450,10 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, onDevic
             onClick={handleCapture}
             disabled={!isGpsLocked || !cameraActive || isProcessing}
             aria-label="Capture signed photo"
+            style={isGpsLocked && cameraActive && !isProcessing ? { background: 'var(--accent-cyan)' } : {}}
             className={`flex items-center justify-center space-x-2 px-8 py-3.5 rounded-full font-semibold transition-all shadow-lg ${
               isGpsLocked && cameraActive && !isProcessing
-                ? 'bg-primary text-black hover:bg-primary/90 active:scale-95 cursor-pointer shadow-primary/20'
+                ? 'bg-cyan text-black hover:opacity-90 active:scale-95 cursor-pointer shadow-[0_0_20px_rgba(0,245,212,0.3)]'
                 : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-60'
             }`}
           >

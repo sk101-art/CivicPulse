@@ -500,11 +500,20 @@ function FileReportContent() {
                 </div>
               </div>
 
-              <div className="pt-6 flex justify-end">
+              <div className="pt-8 flex items-center justify-between border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={prevStep}
+                  className="px-6 py-3 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition font-mono text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Back</span>
+                </button>
                 <button
                   type="button"
                   onClick={nextStep}
-                  className="px-8 py-3.5 rounded-full bg-primary text-black font-semibold text-sm hover:bg-primary/90 transition flex items-center gap-2 cursor-pointer"
+                  className="px-8 py-3.5 rounded-full font-display font-bold text-sm tracking-wider uppercase transition shadow-[0_0_25px_rgba(0,245,212,0.35)] flex items-center gap-2 cursor-pointer text-black hover:opacity-95 active:scale-95 bg-cyan"
+                  style={{ background: 'var(--accent-cyan)' }}
                 >
                   <span>Review Evidence</span>
                   <ArrowRight className="w-4 h-4" />
@@ -566,12 +575,22 @@ function FileReportContent() {
                 </div>
               </div>
 
-              <div className="flex justify-center">
+              <div className="flex items-center justify-between gap-4 pt-4 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={prevStep}
+                  disabled={loading}
+                  className="px-6 py-3 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition font-mono text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Back to Details</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleSubmit}
                   disabled={loading}
-                  className="px-10 py-4 rounded-full bg-cyan text-black font-display font-bold text-sm tracking-wider uppercase hover:bg-cyan/90 transition shadow-[0_0_25px_rgba(0,245,212,0.3)] disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                  style={{ background: 'var(--accent-cyan)' }}
+                  className="px-10 py-4 rounded-full bg-cyan text-black font-display font-bold text-sm tracking-wider uppercase hover:opacity-90 transition shadow-[0_0_25px_rgba(0,245,212,0.3)] disabled:opacity-50 flex items-center gap-2 cursor-pointer"
                 >
                   {loading ? (
                     <>
