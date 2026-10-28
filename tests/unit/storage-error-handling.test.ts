@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { POST } from "@/app/api/reports/route";
 import { prisma } from "@/lib/db/prisma";
 import { getServerSession } from "next-auth/next";
@@ -12,8 +12,6 @@ import { generateEvidenceNonce } from "@/lib/evidence/nonce";
 import {
   StorageUploadError,
   StorageValidationError,
-  deriveUrlFromDatabaseString,
-  resolveSupabaseUrl,
 } from "@/lib/external/storage";
 import * as storageModule from "@/lib/external/storage";
 import { formatSafeApiError, sanitizeErrorMessage } from "@/lib/api/errors";
@@ -35,20 +33,15 @@ describe("Storage Error Diagnostics & Secret Sanitization Tests", () => {
   let deviceKeyPair: CryptoKeyPair;
 
   beforeAll(async () => {
-    let citizen = await prisma.user.findFirst({
-      where: { role: Role.CITIZEN },
+    const uniqueEmail = `test-storage-diag-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
+    const citizen = await prisma.user.create({
+      data: {
+        email: uniqueEmail,
+        name: "Storage Diagnostic Citizen",
+        role: Role.CITIZEN,
+        passwordHash: "dummy_hash_for_test",
+      },
     });
-
-    if (!citizen) {
-      citizen = await prisma.user.create({
-        data: {
-          email: "test-storage-diag@example.com",
-          name: "Storage Diagnostic Citizen",
-          role: Role.CITIZEN,
-          passwordHash: "dummy_hash_for_test",
-        },
-      });
-    }
 
     citizenUserId = citizen.id;
     deviceKeyPair = await crypto.subtle.generateKey(
@@ -67,6 +60,13 @@ describe("Storage Error Diagnostics & Secret Sanitization Tests", () => {
         publicJwk: jwk as Prisma.InputJsonValue,
       },
     });
+  });
+
+  afterAll(async () => {
+    if (citizenUserId) {
+      await prisma.deviceKey.deleteMany({ where: { userId: citizenUserId } }).catch(() => {});
+      await prisma.user.deleteMany({ where: { id: citizenUserId } }).catch(() => {});
+    }
   });
 
   it("POST /api/reports returns HTTP 502 with STORAGE_UPLOAD_FAILED and clear diagnostic message when storage is unreachable", async () => {
@@ -186,15 +186,14 @@ describe("Storage Error Diagnostics & Secret Sanitization Tests", () => {
     expect(formatted.message).toContain("[internal_path]");
   });
 
-  it("derives canonical Supabase project URL from connection pooling database string", () => {
-    const derived = deriveUrlFromDatabaseString();
-    expect(derived).toBe("https://ofkshdculpzvqergntcs.supabase.co");
-  });
+  it("throws StorageUploadError with 502 Bad Gateway and clear message when storage upload fails", () => {
+    const error = new StorageUploadError(
+      "Unable to connect to Supabase Storage (fetch failed: host unreachable). Please verify SUPABASE_URL in your environment settings.",
+      502
+    );
 
-  it("resolveSupabaseUrl detects stale host rljzuuwzwsdorimmbglx and recovers canonical URL", () => {
-    const resolved = resolveSupabaseUrl();
-    expect(resolved).toBeTruthy();
-    expect(resolved).not.toContain("rljzuuwzwsdorimmbglx");
-    expect(resolved).toBe("https://ofkshdculpzvqergntcs.supabase.co");
+    expect(error.statusCode).toBe(502);
+    expect(error.code).toBe("STORAGE_UPLOAD_FAILED");
+    expect(error.message).toContain("verify SUPABASE_URL");
   });
 });

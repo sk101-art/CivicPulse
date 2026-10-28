@@ -4,8 +4,6 @@ import {
   uploadEvidencePhoto,
   validatePhoto,
   computePhotoSha256,
-  deriveUrlFromDatabaseString,
-  resolveSupabaseUrl,
   StorageValidationError,
   StorageUploadError,
   MAX_PHOTO_SIZE_BYTES,
@@ -100,19 +98,6 @@ describe("T13 Contract Test: Photo Storage", () => {
 
     expect(result.path).toBe("issues/iss_webp_789/rep_webp_101.webp");
     expect(result.url).toContain("issues/iss_webp_789/rep_webp_101.webp");
-  });
-
-  it("derives canonical Supabase project URL from connection pooling username", () => {
-    const derived = deriveUrlFromDatabaseString();
-    // In our test environment with APP_DATABASE_URL containing postgres.ofkshdculpzvqergntcs
-    expect(derived).toBe("https://ofkshdculpzvqergntcs.supabase.co");
-  });
-
-  it("resolves and normalizes SUPABASE_URL, falling back from dead/stale host", () => {
-    const resolved = resolveSupabaseUrl();
-    expect(resolved).toBeTruthy();
-    expect(resolved).toContain("https://");
-    expect(resolved).not.toContain("rljzuuwzwsdorimmbglx");
   });
 
   it("sanitizes error messages by redacting JWTs, connection credentials, and file paths", () => {

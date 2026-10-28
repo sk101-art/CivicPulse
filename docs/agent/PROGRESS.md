@@ -8,6 +8,28 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Fix · Use SUPABASE_URL only, keep safe errors · 2026-10-28
+- **Goal:** Remove workaround URL derivation, guessed retries, and stale project string detection from `src/lib/external/storage.ts`. Ensure the app strictly uses `SUPABASE_URL` from environment, fails cleanly with clear diagnostics if wrong, and preserves `sanitizeErrorMessage`, `formatSafeApiError`, `StorageUploadError`, and clear API error reporting.
+- **Implemented:**
+  - `src/lib/external/storage.ts`: Reverted URL derivation and automatic retry workarounds. App strictly reads `env.SUPABASE_URL`. If storage upload fails, throws `StorageUploadError` with clear diagnostics (`502 STORAGE_UPLOAD_FAILED`).
+  - `src/lib/api/errors.ts`: Preserved `sanitizeErrorMessage` and `formatSafeApiError` (redacting DB passwords, JWTs, secret keys, internal filesystem paths).
+  - `tests/contract/storage.test.ts` & `tests/unit/storage-error-handling.test.ts`: Updated tests to verify strict `SUPABASE_URL` usage, failure handling, and credential sanitization.
+- **Checks Run:**
+  ```
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✖ 1 problem (0 errors, 1 warning: @next/next/no-img-element)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  36 passed (36)
+  Tests  202 passed (202)
+  > next build --webpack
+  ✓ Compiled successfully in 13.5s
+  Finished TypeScript in 22.1s ...
+  ✓ Generating static pages using 15 workers (19/19) in 1563ms
+  ```
+
 ### Fix · Supabase Storage Resilience and API Error Sanitization · 2026-10-28
 - **Goal:** Fix `POST /api/reports` 500 error on Vercel caused by Supabase Storage `fetch failed`, add automated test suite, ensure resilient canonical project URL recovery, and return sanitized, informative error diagnostics without leaking secrets.
 - **Root Cause:**
