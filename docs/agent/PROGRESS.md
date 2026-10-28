@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T29 · Claim-gap page and desk scorecard
+Current task: Phase 2 Complete (T20–T29) · Ready for Phase 3
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,70 @@ Current task: T29 · Claim-gap page and desk scorecard
 - None
 
 ## Done
+
+### T29 · Claim-gap page and desk scorecard · 2026-10-28
+- **Goal:** Public `/claim-gap` page and `/api/claim-gap` endpoint showing claim-gap statistics (% disputed of claimed fixes, median hours to verify) per ward and per desk over 30-day and 90-day periods; choropleth severity tier cards, sortable/filterable ward and desk scorecard table, "< 5 claims" insufficient data handling, seed data disclaimer badge; GeoJSON ward import script (`scripts/import-wards.ts`) mapping PostGIS coordinates via `ST_Covers`.
+- **Verified against docs/types:**
+  - PLAN.md Section 6, 8, 10 (T29 card), Section 11 (V6, A4).
+  - Claim gap metric definition: `disputed / claimed` (dispute share).
+  - Insufficient data indicator: `< 5 claims` flagged as `insufficientData: true` with warning badge.
+  - PostGIS spatial containment: `ST_Covers(geom, ST_SetSRID(ST_MakePoint(lng, lat), 4326))`.
+  - Prisma schema relations: `Issue.wardId` mapped against `Ward` table.
+- **Changed:**
+  - Created `data/wards.geojson`: Pilot Area polygon (`PILOT-ORR`, Outer Ring Road - Bellandur / Marathahalli).
+  - Logged pilot polygon in `docs/agent/ASSUMPTIONS.md`.
+  - Created `scripts/import-wards.ts`: PostGIS `ST_Covers` ward importer populating `Ward` table and updating `Issue.wardId`.
+  - Created `src/lib/issues/claimGap.ts`: `aggregateClaimGap` and `computeMedian` calculation functions.
+  - Created `src/components/public/ClaimGapDashboard.tsx`: Interactive dashboard component with period switcher (30d / 90d), summary stats, choropleth severity tier breakdown, and comprehensive ward & desk scorecard table.
+  - Created `src/app/api/claim-gap/route.ts`: API route returning aggregated stats by ward and by desk for 30 or 90 days.
+  - Created `src/app/(public)/claim-gap/page.tsx`: Publicly accessible claim-gap page with `seed` badge for synthetic/seed data.
+  - Created `tests/unit/claim-gap.test.ts`: acceptance test suite covering median calculation, claim gap percentages, insufficient data handling, API route query periods, and page rendering.
+  - Updated `docs/plan/PLAN.md`: ticked rows A4 (Desk scorecard) and V6 (Claim-gap page) in Section 11 traceability matrix.
+- **Full Gate Execution:**
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  ✖ 1 problem (0 errors, 1 warning)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+   ✓ tests/unit/state-machine.test.ts (29 tests) 25ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 37ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 1429ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 1190ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 1137ms
+   ✓ tests/contract/storage.test.ts (6 tests) 18ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 1623ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1904ms
+   ✓ tests/unit/signing-verification.test.ts (8 tests) 1613ms
+   ✓ tests/unit/points.test.ts (8 tests) 17ms
+   ✓ tests/unit/claim-gap.test.ts (4 tests) 1431ms
+   ✓ tests/contract/merge.test.ts (5 tests) 2732ms
+   ✓ tests/unit/desk-actions.test.ts (7 tests) 2307ms
+   ✓ tests/unit/config.test.ts (3 tests) 9ms
+   ✓ tests/unit/desk-queue.test.ts (5 tests) 2205ms
+   ✓ tests/unit/report-flow.test.ts (4 tests) 2514ms
+   ✓ tests/unit/public-issue.test.ts (4 tests) 2171ms
+   ✓ tests/unit/verification.test.ts (4 tests) 4477ms
+
+   Test Files  18 passed (18)
+        Tests  117 passed (117)
+     Duration  8.22s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 21.1s
+  ✓ Generating static pages using 15 workers (18/18) in 1435ms
+  ```
+- **Feature rows ticked:** A4, V6
+- **Notes for Next Task:** Phase 2 (T20, T21, T22, T23, T24, T25, T26, T27, T28, T29) is complete and verified! All 10 tasks in Phase 2 are implemented, committed, and passing the full gate.
 
 ### T28 · Public issue page · 2026-10-28
 - **Goal:** Build public issue page (`/issue/[id]`), displaying full signed evidence photo gallery (initial report, confirmations, claim, verifications) with coordinates and role badges, chronological public ActionLog status timeline with human-readable actor labels ("Desk A", "Desk B", "System"), assigned agency and handoff counter, Priority Index breakdown, and interactive "Verify this fix (+20 XP)" modal for claimed fixes. Page is completely accessible without login and contains zero desk-only controls.

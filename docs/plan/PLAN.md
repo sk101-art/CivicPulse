@@ -1098,13 +1098,13 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [x] | A1 | Two desk accounts, shared dashboard | T11, T26 | e2e desk-a/desk-b |
 | [x] | A2 | Public action log | T25, T28 | log tests; DB blocks UPDATE/DELETE |
 | [x] | A3 | Agency label + handoff counter | T25 | reassign test |
-| [ ] | A4 | Desk scorecard | T29 | claim-gap unit test (by desk) |
+| [x] | A4 | Desk scorecard | T29 | claim-gap unit test (by desk) |
 | [x] | V1 | In-app camera only | T22 | e2e: no file input on capture |
 | [x] | V2 | Capture nonce | T21 | nonce tests |
 | [x] | V3 | Signed evidence | T20, T22 | signature tests (byte, lat, time tamper) |
 | [x] | V4 | Two-key closure | T24, T27 | state machine table tests |
 | [x] | V5 | Verifier rules | T27 | eligibility tests |
-| [ ] | V6 | Claim-gap page | T29 | unit test + page e2e |
+| [x] | V6 | Claim-gap page | T29 | unit test + page e2e |
 | [ ] | V8 | Verify-nearby push | T2A | recipient selection test |
 | [ ] | M1 | Road segments + snapping | T30 | snap test on fixture |
 | [ ] | M2 | Exposure proxies | T31 | GTFS fixture test |

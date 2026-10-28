@@ -1,0 +1,26 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "code": "PILOT-ORR",
+        "name": "Pilot Area (Outer Ring Road Corridor)"
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [77.55, 12.85],
+              [77.75, 12.85],
+              [77.75, 13.05],
+              [77.55, 13.05],
+              [77.55, 12.85]
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}
