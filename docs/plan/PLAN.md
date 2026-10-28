@@ -1131,7 +1131,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [ ] | R6 | Open hazard feed | T65 | GeoJSON contract test |
 | [ ] | R7 | Photo points | T66 | e2e |
 | [x] | G1 | Photo triage | T51 | fixture tests; never auto-changes category |
-| [ ] | G2 | Fix-check comparator | T52 | test: cannot call state machine |
+| [x] | G2 | Fix-check comparator | T52 | test: cannot call state machine |
 | [ ] | G3 | Duplicate adjudicator | T53 | merge needs desk click |
 | [ ] | G4 | Signboard extraction | T54 | hallucinated field dropped |
 | [ ] | G5 | Signal radar (news, Reddit, in-app; no X) | T55 | drop rules; expiry |

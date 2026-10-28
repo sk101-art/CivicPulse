@@ -7,7 +7,7 @@ import { authOptions } from "@/lib/auth";
 import { 
   MapPin, Clock, ArrowLeft, ShieldCheck, 
   Building2, ArrowRightLeft, 
-  Activity, CheckCircle2, Sparkles
+  Activity, CheckCircle2, Sparkles, AlertTriangle
 } from "lucide-react";
 import { VerifyFixModal } from "@/components/public/VerifyFixModal";
 import { PriorityBreakdown } from "@/components/priority/PriorityBreakdown";
@@ -167,13 +167,23 @@ export default async function PublicIssuePage({
         {/* Claimed Fixed Banner & Verification CTA */}
         {issue.status === Status.CLAIMED_FIXED && (
           <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-950/40 to-teal-950/40 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-emerald-400 font-mono font-bold text-sm">
-                <CheckCircle2 className="w-5 h-5" />
-                Work Claimed Complete by Operations Desk
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="flex items-center gap-2 text-emerald-400 font-mono font-bold text-sm">
+                  <CheckCircle2 className="w-5 h-5" />
+                  Work Claimed Complete by Operations Desk
+                </div>
+                {(issue.hazardFlag || "").includes("AI_FLAGGED_FIX_CHECK") && (
+                  <span className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono font-bold text-xs flex items-center gap-1.5 shadow-lg">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                    Needs citizen check — AI flagged
+                  </span>
+                )}
               </div>
               <p className="text-xs font-mono text-white/60">
-                Citizens within 50 metres can confirm or dispute this repair with a signed photo.
+                {(issue.hazardFlag || "").includes("AI_FLAGGED_FIX_CHECK")
+                  ? "AI vision comparison flagged potential defect visibility or location mismatch between report and claim photos. Independent citizen verification is required."
+                  : "Citizens within 50 metres can confirm or dispute this repair with a signed photo."}
               </p>
             </div>
             <VerifyFixModal

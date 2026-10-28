@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T52 · G2 Fix-Check Comparator (Track A)
+Current task: T57(A) · G7 Explainers & Drafts Track A Scope (Track A)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,43 @@ Current task: T52 · G2 Fix-Check Comparator (Track A)
 - None
 
 ## Done
+
+### T52 · G2 fix-check comparator · 2026-10-28
+- **Goal:** Implement G2 fix-check comparator on CLAIMED_FIXED reports: compare original filing photo against claim photo with Appendix D JSON schema, flag issues where defect is still visible or location differs (with confidence >= 0.7), add the "Needs citizen check — AI flagged" badge on the public issue UI, write an ActionLog audit row, and strictly ensure AI output never invokes the state machine or mutates status.
+- **Implemented:**
+  - `src/lib/ai/fixCheck.ts`:
+    - `g2FixCheckSchema` & `g2JsonSchema`: Appendix D schema (`same_location`, `defect_still_visible`, `confidence`).
+    - `processG2FixCheck(claimReportId, options)`: Compares original report and claim report photos via LLM vision; stores result in `Report.aiTriage`; if flagged, sets `hazardFlag = "AI_FLAGGED_FIX_CHECK"` and writes `AI_FIX_CHECK_FLAGGED` ActionLog row; includes explicit runtime assertion that status is never mutated.
+    - `processG2Job(jobId, options)`: Background worker processor for queued `AiJob` rows.
+  - `src/app/(public)/issue/[id]/page.tsx`:
+    - Rendered amber "Needs citizen check — AI flagged" badge with `AlertTriangle` icon in the Claimed Fixed banner when `hazardFlag` contains `AI_FLAGGED_FIX_CHECK`.
+    - Added explanatory copy clarifying that AI vision flagged potential defect visibility or location mismatch, necessitating citizen verification.
+  - `tests/fixtures/llm/synthetic-groq-g2-flagged.json`: Synthetic fixture returning `defect_still_visible = "yes"` (`_synthetic: true`).
+  - `tests/unit/fix-check.test.ts`: Acceptance suite verifying:
+    - Normal fix-check stores `aiTriage` and preserves `CLAIMED_FIXED` status.
+    - Flagged fix-check adds "Needs citizen check — AI flagged" badge without altering status.
+    - CRITICAL RULE test: Verifies that even with `same_location = "no"` and `defect_still_visible = "yes"` at 0.99 confidence, `Issue.status` remains strictly `CLAIMED_FIXED` and never transitions to `DISPUTED` or `REJECTED`.
+  - `docs/plan/PLAN.md`: Ticked Section 11 row `G2`.
+  - `docs/agent/ASSUMPTIONS.md`: Logged `synthetic-groq-g2-flagged.json` for live verification in T75.
+- **Verified Against Docs:** PLAN.md Appendix D G2 schema, Rule 17 & 20.
+- **Checks Run:**
+  ```
+  [Vitest: T52 Acceptance Suite]
+  ✓ tests/unit/fix-check.test.ts (3 tests) 2.77s
+  3 passed
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✔ 0 errors, 1 warning (img element in report page)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  31 passed (31)
+  Tests  180 passed (180)
+  > next build --webpack
+  ✓ Compiled successfully in 6.1s
+  ✓ Generating static pages (19/19) in 609ms
+  ```
 
 ### T51 · G1 photo triage · 2026-10-28
 - **Goal:** Implement G1 photo triage job on newly submitted REPORT evidence: parse photo with Appendix D JSON schema, populate `Report.aiTriage`, flag category disagreement for desk review without ever auto-changing category, flag suspected recaptures as "needs one extra verifier", feed empty `Issue.sizeClass` and trigger priority recomputation, and render the "AI-assisted" badge on the evidence gallery UI.
