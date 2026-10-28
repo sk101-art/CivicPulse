@@ -223,6 +223,17 @@ export async function POST(req: Request) {
   }
 }
 
+function formatLocationTitle(category: string, address?: string | null, lat?: number | null, lng?: number | null): string {
+  const cat = category.replace(/_/g, " ");
+  if (address && address.trim() && address.trim().toLowerCase() !== "bengaluru" && !address.toLowerCase().includes("pending")) {
+    return `${cat} at ${address}`;
+  }
+  if (typeof lat === "number" && typeof lng === "number") {
+    return `${cat} (${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E)`;
+  }
+  return `${cat} (Coordinates attached)`;
+}
+
 export async function GET(req: Request) {
   try {
     const auth = await withAuth();
@@ -249,23 +260,30 @@ export async function GET(req: Request) {
         },
       });
 
-      const formatted = userReports.map((r) => ({
-        id: r.id,
-        issueId: r.issueId,
-        title: `${r.issue.category.replace(/_/g, " ")} at ${r.issue.address || "Bengaluru"}`,
-        category: r.issue.category,
-        status: r.issue.status,
-        createdAt: r.createdAt,
-        address: r.issue.address,
-        latitude: r.lat,
-        longitude: r.lng,
-        lat: r.lat,
-        lng: r.lng,
-        priorityScore: r.issue.priority,
-        priority: r.issue.priority,
-        voteCount: r.issue._count?.reports || 0,
-        commentCount: r.issue._count?.comments || 0,
-      }));
+      const formatted = userReports.map((r) => {
+        const addr = (r.issue.address && r.issue.address.trim() && r.issue.address.toLowerCase() !== "bengaluru" && !r.issue.address.toLowerCase().includes("pending"))
+          ? r.issue.address
+          : `${r.lat.toFixed(4)}° N, ${r.lng.toFixed(4)}° E`;
+
+        return {
+          id: r.id,
+          issueId: r.issueId,
+          title: formatLocationTitle(r.issue.category, r.issue.address, r.lat, r.lng),
+          category: r.issue.category,
+          status: r.issue.status,
+          createdAt: r.createdAt,
+          address: addr,
+          latitude: r.lat,
+          longitude: r.lng,
+          lat: r.lat,
+          lng: r.lng,
+          priorityScore: r.issue.priority,
+          priority: r.issue.priority,
+          voteCount: r.issue._count?.reports || 0,
+          commentCount: r.issue._count?.comments || 0,
+          isSeed: r.issue.isSeed || r.isSeed,
+        };
+      });
 
       return NextResponse.json(
         { reports: formatted, issues: formatted },
@@ -304,15 +322,23 @@ export async function GET(req: Request) {
       take: 50,
     });
 
-    const formatted = issues.map((i) => ({
-      ...i,
-      latitude: i.lat,
-      longitude: i.lng,
-      priorityScore: i.priority,
-      title: `${i.category.replace(/_/g, " ")} at ${i.address || "Bengaluru"}`,
-      voteCount: i._count?.reports || i.reports?.length || 0,
-      commentCount: i._count?.comments || 0,
-    }));
+    const formatted = issues.map((i) => {
+      const addr = (i.address && i.address.trim() && i.address.toLowerCase() !== "bengaluru" && !i.address.toLowerCase().includes("pending"))
+        ? i.address
+        : `${i.lat.toFixed(4)}° N, ${i.lng.toFixed(4)}° E`;
+
+      return {
+        ...i,
+        address: addr,
+        latitude: i.lat,
+        longitude: i.lng,
+        priorityScore: i.priority,
+        title: formatLocationTitle(i.category, i.address, i.lat, i.lng),
+        voteCount: i._count?.reports || i.reports?.length || 0,
+        commentCount: i._count?.comments || 0,
+        isSeed: i.isSeed,
+      };
+    });
 
     return NextResponse.json(
       { issues: formatted, reports: formatted },

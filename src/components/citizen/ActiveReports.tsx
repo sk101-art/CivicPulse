@@ -20,6 +20,7 @@ interface ReportItem extends Omit<HookReport, 'priorityScore' | 'voteCount' | 'c
   priorityScore: number;
   voteCount: number;
   commentCount: number;
+  isSeed?: boolean;
 }
 
 interface ActiveReportsProps {
@@ -160,16 +161,21 @@ export function ActiveReports({ initialReports }: ActiveReportsProps) {
                     <h4 className="font-display font-bold text-base text-white uppercase tracking-tight leading-snug group-hover:text-cyan transition-colors line-clamp-2">
                       {report.title}
                     </h4>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="inline-block px-3 py-1 rounded-md text-[9px] font-mono font-black uppercase tracking-widest bg-white/5 border border-white/5 text-cyan/70">
                         {report.category ? report.category.replace(/_/g, ' ') : 'OTHER'}
                       </span>
+                      {report.isSeed && (
+                        <span data-testid="seed-tag" className="inline-block px-2 py-0.5 rounded-md text-[8px] font-mono font-black uppercase tracking-widest bg-amber-500/20 border border-amber-500/30 text-amber-300">
+                          SEED
+                        </span>
+                      )}
                     </div>
                     {report.address && (
                       <div className="flex items-start gap-1.5 text-white/25">
                         <MapPin className="w-3 h-3 mt-0.5 shrink-0" />
                         <p className="text-[10px] font-mono uppercase tracking-wider line-clamp-1">
-                          {report.address.split(',')[0]}
+                          {report.address}
                         </p>
                       </div>
                     )}

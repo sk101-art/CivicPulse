@@ -147,6 +147,11 @@ export default async function PublicIssuePage({
                 SLA BREACHED
               </span>
             )}
+            {issue.isSeed && (
+              <span data-testid="seed-tag" className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                SEED
+              </span>
+            )}
           </div>
         </div>
 
@@ -156,7 +161,9 @@ export default async function PublicIssuePage({
             {issue.category.replace(/_/g, " ")}
           </span>
           <h1 className="text-2xl sm:text-3xl font-display font-black text-white">
-            {issue.address || "Road Infrastructure Issue"}
+            {(issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending'))
+              ? issue.address
+              : `${issue.lat.toFixed(4)}° N, ${issue.lng.toFixed(4)}° E`}
           </h1>
           <p className="text-xs font-mono text-white/50 flex items-center gap-1.5">
             <MapPin className="w-4 h-4 text-cyan" />

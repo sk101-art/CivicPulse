@@ -86,20 +86,37 @@ export default async function ReportDetails({ params }: { params: Promise<{ id: 
             {/* Title Section Card */}
             <div className="p-6 md:p-8 rounded-2xl bg-card border border-white/5 space-y-6">
               <div className="space-y-4">
-                <h2 className="text-3xl md:text-4xl font-display font-black tracking-tight uppercase leading-none">
-                  {`${issue.category.replace(/_/g, ' ')} at ${issue.address || 'Bengaluru'}`}
-                </h2>
-                <div className="flex flex-wrap gap-4 text-xs font-mono uppercase tracking-widest text-slate-400">
-                  <div className="flex items-center gap-1.5">
-                    <MapPin className="w-3.5 h-3.5" /> {issue.address || 'GPS Coordinates Attached'}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" /> {new Date(issue.createdAt).toLocaleDateString()}
-                  </div>
-                  <div className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] font-bold text-white/60">
-                    {issue.category}
-                  </div>
-                </div>
+                {(() => {
+                  const displayLocation = (issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending'))
+                    ? issue.address
+                    : `${issue.lat.toFixed(4)}° N, ${issue.lng.toFixed(4)}° E`;
+
+                  return (
+                    <>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <h2 className="text-3xl md:text-4xl font-display font-black tracking-tight uppercase leading-none">
+                          {`${issue.category.replace(/_/g, ' ')} (${displayLocation})`}
+                        </h2>
+                        {issue.isSeed && (
+                          <span data-testid="seed-tag" className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            SEED
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-4 text-xs font-mono uppercase tracking-widest text-slate-400">
+                        <div className="flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5" /> {displayLocation}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5" /> {new Date(issue.createdAt).toLocaleDateString()}
+                        </div>
+                        <div className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] font-bold text-white/60">
+                          {issue.category}
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 

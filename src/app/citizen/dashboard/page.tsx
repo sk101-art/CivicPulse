@@ -123,20 +123,27 @@ export default async function CitizenDashboard() {
         {/* Active Reports */}
         <ActiveReports
           key={userReports.length > 0 ? userReports[0].id : 'empty'}
-          initialReports={userReports.map(r => ({
-          id: r.id,
-          issueId: r.issueId,
-          title: `${r.issue.category.replace(/_/g, ' ')} at ${r.issue.address || 'Bengaluru'}`,
-          category: r.issue.category,
-          status: r.issue.status,
-          createdAt: r.createdAt,
-          address: r.issue.address,
-          latitude: r.lat,
-          longitude: r.lng,
-          priorityScore: r.issue.priority,
-          voteCount: r.issue._count?.reports || 0,
-          commentCount: r.issue._count?.comments || 0,
-        }))} />
+          initialReports={userReports.map(r => {
+            const displayAddress = (r.issue.address && r.issue.address.trim() && r.issue.address.toLowerCase() !== 'bengaluru' && !r.issue.address.toLowerCase().includes('pending'))
+              ? r.issue.address
+              : `${r.lat.toFixed(4)}° N, ${r.lng.toFixed(4)}° E`;
+
+            return {
+              id: r.id,
+              issueId: r.issueId,
+              title: `${r.issue.category.replace(/_/g, ' ')} (${displayAddress})`,
+              category: r.issue.category,
+              status: r.issue.status,
+              createdAt: r.createdAt,
+              address: displayAddress,
+              latitude: r.lat,
+              longitude: r.lng,
+              priorityScore: r.issue.priority,
+              voteCount: r.issue._count?.reports || 0,
+              commentCount: r.issue._count?.comments || 0,
+              isSeed: r.issue.isSeed || r.isSeed,
+            };
+          })} />
       </div>
     </main>
   );

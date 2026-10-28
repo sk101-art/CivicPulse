@@ -55,6 +55,7 @@ export interface DeskIssueItem {
     reports: number;
     comments: number;
   };
+  isSeed?: boolean;
 }
 
 interface AgencyOption {
@@ -269,13 +270,20 @@ export function IssueDrawer({
                   SLA BREACHED
                 </span>
               )}
+              {issue.isSeed && (
+                <span data-testid="seed-tag" className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  SEED
+                </span>
+              )}
             </div>
             <h2 className="text-xl font-bold text-white tracking-tight">
               {issue.category.replace(/_/g, ' ')}
             </h2>
             <p className="text-xs font-mono text-white/50 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-              {issue.address || `Lat: ${issue.lat.toFixed(4)}, Lng: ${issue.lng.toFixed(4)}`}
+              {issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending')
+                ? issue.address
+                : `${issue.lat.toFixed(4)}° N, ${issue.lng.toFixed(4)}° E`}
             </p>
           </div>
 

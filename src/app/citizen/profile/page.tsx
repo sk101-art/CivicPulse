@@ -176,14 +176,28 @@ export default async function CitizenProfile() {
                           <span className="text-[8px] font-mono uppercase tracking-widest text-white/20">
                             {report.issue.category}
                           </span>
+                          {report.issue.isSeed && (
+                            <span data-testid="seed-tag" className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                              SEED
+                            </span>
+                          )}
                         </div>
-                        <h4 className="font-display font-bold text-base text-white group-hover:text-cyan transition-colors line-clamp-2 uppercase tracking-tight">
-                          {`${report.issue.category.replace(/_/g, ' ')} at ${report.issue.address || 'Bengaluru'}`}
-                        </h4>
-                        <div className="flex items-center gap-2 text-[9px] font-mono text-secondary uppercase tracking-widest">
-                          <MapPin className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{report.issue.address ? report.issue.address.split(',')[0] : 'GPS Tagged'}</span>
-                        </div>
+                        {(() => {
+                          const displayLoc = (report.issue.address && report.issue.address.trim() && report.issue.address.toLowerCase() !== 'bengaluru' && !report.issue.address.toLowerCase().includes('pending'))
+                            ? report.issue.address
+                            : `${report.issue.lat.toFixed(4)}° N, ${report.issue.lng.toFixed(4)}° E`;
+                          return (
+                            <>
+                              <h4 className="font-display font-bold text-base text-white group-hover:text-cyan transition-colors line-clamp-2 uppercase tracking-tight">
+                                {`${report.issue.category.replace(/_/g, ' ')} (${displayLoc})`}
+                              </h4>
+                              <div className="flex items-center gap-2 text-[9px] font-mono text-secondary uppercase tracking-widest">
+                                <MapPin className="w-3 h-3 shrink-0" />
+                                <span className="truncate">{displayLoc}</span>
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                       <div className="px-5 py-3 border-t border-white/5 flex items-center justify-between">
                         <span className="text-[9px] font-mono uppercase tracking-widest text-white/20">
