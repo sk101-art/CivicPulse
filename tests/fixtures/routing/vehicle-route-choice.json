@@ -1,0 +1,61 @@
+{
+  "_synthetic": true,
+  "description": "Vehicle route choice fixture comparing pothole-laden direct route against sidewalk-damaged detour",
+  "routes": [
+    {
+      "index": 0,
+      "name": "Route A (Direct)",
+      "travelTimeSeconds": 600,
+      "distanceMeters": 4000,
+      "trafficDelaySeconds": 60,
+      "coords": [
+        [12.9558, 77.7012],
+        [12.9480, 77.7020],
+        [12.9352, 77.6946]
+      ],
+      "issues": [
+        {
+          "id": "iss-pothole-1",
+          "category": "POTHOLES",
+          "priority": 80,
+          "priorityBand": "HIGH",
+          "lat": 12.9520,
+          "lng": 77.7016,
+          "segmentId": "seg-1"
+        },
+        {
+          "id": "iss-pothole-2",
+          "category": "POTHOLES",
+          "priority": 80,
+          "priorityBand": "HIGH",
+          "lat": 12.9450,
+          "lng": 77.7010,
+          "segmentId": "seg-1"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "name": "Route B (Bypass Detour)",
+      "travelTimeSeconds": 720,
+      "distanceMeters": 4800,
+      "trafficDelaySeconds": 20,
+      "coords": [
+        [12.9558, 77.7012],
+        [12.9500, 77.7045],
+        [12.9352, 77.6946]
+      ],
+      "issues": [
+        {
+          "id": "iss-sidewalk-1",
+          "category": "SIDEWALKS",
+          "priority": 80,
+          "priorityBand": "HIGH",
+          "lat": 12.9500,
+          "lng": 77.7045,
+          "segmentId": "seg-2"
+        }
+      ]
+    }
+  ]
+}

@@ -77,11 +77,26 @@ export function pointToPolyDist(
   return min;
 }
 
+export interface RouteFetchResult {
+  routes: Array<{
+    coords: [number, number][];
+    distance: number;
+    duration: number;
+    hazardCost?: number;
+    routeScore?: number;
+    hazardsCount?: number;
+  }>;
+  selectedRouteIndex?: number;
+  explanation?: string;
+  disabled?: boolean;
+}
+
 export async function fetchAllRoutes(
   waypoints: [number, number][],
-  alternatives: number | false = 3
-): Promise<Array<{ coords: [number, number][]; distance: number; duration: number }>> {
-  if (waypoints.length < 2) return [];
+  alternatives: number | false = 3,
+  options: { vehicle?: string; beta?: number } = {}
+): Promise<RouteFetchResult> {
+  if (waypoints.length < 2) return { routes: [] };
 
   const origin = waypoints[0];
   const destination = waypoints[waypoints.length - 1];
@@ -94,12 +109,14 @@ export async function fetchAllRoutes(
       origin: { latitude: origin[0], longitude: origin[1] },
       destination: { latitude: destination[0], longitude: destination[1] },
       waypoints: viaWaypoints.map(([lat, lon]) => ({ latitude: lat, longitude: lon })),
+      vehicle: options.vehicle || "motorcycle",
+      beta: options.beta ?? 0.15,
       maxAlternatives:
         alternatives === false ? 0 : typeof alternatives === "number" ? alternatives : 2,
     }),
   });
 
-  if (!res.ok) return [];
+  if (!res.ok) return { routes: [] };
 
   const data: unknown = await res.json();
   const parsed = data as {
@@ -107,12 +124,18 @@ export async function fetchAllRoutes(
       coords?: Array<[number, number]>;
       distance?: number;
       duration?: number;
+      hazardCost?: number;
+      routeScore?: number;
+      hazardsCount?: number;
     }>;
+    selectedRouteIndex?: number;
+    explanation?: string;
+    disabled?: boolean;
   };
 
-  if (!parsed.routes?.length) return [];
+  if (!parsed.routes?.length) return { routes: [], disabled: parsed.disabled };
 
-  return parsed.routes
+  const validRoutes = parsed.routes
     .map((r) => {
       if (
         !r.coords?.length ||
@@ -121,11 +144,23 @@ export async function fetchAllRoutes(
       ) {
         return null;
       }
-      return { coords: r.coords, distance: r.distance, duration: r.duration };
+      return {
+        coords: r.coords,
+        distance: r.distance,
+        duration: r.duration,
+        hazardCost: r.hazardCost,
+        routeScore: r.routeScore,
+        hazardsCount: r.hazardsCount,
+      };
     })
-    .filter((x): x is { coords: [number, number][]; distance: number; duration: number } =>
-      Boolean(x)
-    );
+    .filter((x): x is NonNullable<typeof x> => Boolean(x));
+
+  return {
+    routes: validRoutes,
+    selectedRouteIndex: parsed.selectedRouteIndex ?? 0,
+    explanation: parsed.explanation,
+    disabled: parsed.disabled,
+  };
 }
 
 export function buildDetourWaypoints(

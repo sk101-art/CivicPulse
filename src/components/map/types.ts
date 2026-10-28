@@ -22,4 +22,6 @@ export interface RouteOption {
   hazards: number;
   status: "safe" | "rerouted" | "warn";
   isDetour?: boolean;
+  hazardCost?: number;
+  routeScore?: number;
 }

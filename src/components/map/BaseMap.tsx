@@ -8,13 +8,12 @@ import { ReportPoint, PlacementMode, RouteOption } from "./types";
 import {
   pointToPolyDist,
   fetchAllRoutes,
-  buildDetourWaypoints,
   HAZARD_RADIUS_METERS,
 } from "./utils";
 import { MapSync, MapClickHandler, CustomZoomControls } from "./MapControls";
 import { IssueMarkersLayer } from "./IssueMarkersLayer";
 import { RouteLayer } from "./RouteLayer";
-import { RoutePanel } from "./RoutePanel";
+import { RoutePanel, VehicleMode } from "./RoutePanel";
 
 export interface BaseMapProps {
   reports: ReportPoint[];
@@ -36,6 +35,11 @@ export function BaseMap({
   const [mode, setMode] = useState<PlacementMode>(null);
   const [source, setSource] = useState<[number, number] | null>(null);
   const [destination, setDestination] = useState<[number, number] | null>(null);
+
+  const [vehicle, setVehicle] = useState<VehicleMode>("motorcycle");
+  const [beta, setBeta] = useState<number>(0.15);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [keyDisabled, setKeyDisabled] = useState<boolean>(false);
 
   const [allRoutes, setAllRoutes] = useState<RouteOption[]>([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
@@ -77,6 +81,7 @@ export function BaseMap({
     setAllRoutes([]);
     setSelectedRouteIndex(0);
     setRouteError(null);
+    setExplanation(null);
   }, []);
 
   const handlePlace = useCallback(
@@ -120,16 +125,26 @@ export function BaseMap({
     clearRoutes();
 
     try {
-      // 1. Initial direct route
-      const initialRoutes = await fetchAllRoutes([source, destination], 3);
+      // Query server safe route proxy with vehicle and safety bias (beta)
+      const fetchResult = await fetchAllRoutes([source, destination], 3, {
+        vehicle,
+        beta,
+      });
+
+      if (fetchResult.disabled) {
+        setKeyDisabled(true);
+      }
+
+      const initialRoutes = fetchResult.routes;
       if (initialRoutes.length === 0) {
         setRouteError("No driving route found between selected points.");
         setLoading(false);
         return;
       }
 
-      // Check if any initial route is hazard-free
-      const scoredInitials = initialRoutes.map((r) => {
+      setExplanation(fetchResult.explanation || null);
+
+      const scoredInitials: RouteOption[] = initialRoutes.map((r) => {
         const hz = validReports.filter(
           (h) => pointToPolyDist([h.latitude, h.longitude], r.coords) <= HAZARD_RADIUS_METERS
         );
@@ -137,75 +152,24 @@ export function BaseMap({
           coords: r.coords,
           distance: r.distance,
           duration: r.duration,
+          hazardCost: r.hazardCost,
+          routeScore: r.routeScore,
           hazards: hz.length,
           status: (hz.length === 0 ? "safe" : "warn") as "safe" | "warn",
           isDetour: false,
         };
       });
 
-      const cleanDirect = scoredInitials.find((r) => r.hazards === 0);
-      if (cleanDirect) {
-        setAllRoutes([cleanDirect]);
-        setSelectedRouteIndex(0);
-        setLoading(false);
-        return;
-      }
-
-      // 2. Detour optimization with lateral offsets
-      const baseRoute = initialRoutes[0].coords;
-      const blockingHazards = validReports.filter(
-        (h) => pointToPolyDist([h.latitude, h.longitude], baseRoute) <= HAZARD_RADIUS_METERS
-      );
-
-      const offsetLevels = [40, 80, 140, 220, 320];
-      const allTestedRoutes: RouteOption[] = [...scoredInitials];
-
-      for (const offset of offsetLevels) {
-        const detourPoints = buildDetourWaypoints(
-          source,
-          destination,
-          baseRoute,
-          blockingHazards,
-          offset
-        );
-        const detourRoutes = await fetchAllRoutes(detourPoints, false);
-
-        for (const r of detourRoutes) {
-          const hz = validReports.filter(
-            (h) => pointToPolyDist([h.latitude, h.longitude], r.coords) <= HAZARD_RADIUS_METERS
-          );
-          allTestedRoutes.push({
-            coords: r.coords,
-            distance: r.distance,
-            duration: r.duration,
-            hazards: hz.length,
-            status: hz.length === 0 ? "safe" : "rerouted",
-            isDetour: true,
-          });
-        }
-
-        const safeRoutes = allTestedRoutes.filter((r) => r.hazards === 0);
-        if (safeRoutes.length > 0) {
-          setAllRoutes([safeRoutes[0]]);
-          setSelectedRouteIndex(0);
-          setLoading(false);
-          return;
-        }
-      }
-
-      // No hazard-free route found
-      setAllRoutes([]);
-      setRouteError(
-        "No safe vehicle route found. All computed paths pass within 15m of a reported hazard. " +
-          "Try adjusting your source or destination to avoid the hazard area."
-      );
+      const bestIdx = fetchResult.selectedRouteIndex ?? 0;
+      setAllRoutes(scoredInitials);
+      setSelectedRouteIndex(bestIdx < scoredInitials.length ? bestIdx : 0);
     } catch (err) {
       console.error("Route optimization failed:", err);
       setRouteError("Route computation failed. Please try again.");
     } finally {
       setLoading(false);
     }
-  }, [source, destination, validReports, clearRoutes]);
+  }, [source, destination, validReports, clearRoutes, vehicle, beta]);
 
   const mapCenter: [number, number] =
     propCenter ||
@@ -230,6 +194,12 @@ export function BaseMap({
         selectedRouteIndex={selectedRouteIndex}
         hazards={hazards}
         routeError={routeError}
+        vehicle={vehicle}
+        setVehicle={setVehicle}
+        beta={beta}
+        setBeta={setBeta}
+        explanation={explanation}
+        keyDisabled={keyDisabled}
       />
 
       <MapContainer

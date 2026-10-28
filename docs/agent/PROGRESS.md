@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T43 · Cost-based route choice and vehicle profiles
+Current task: T46(A) · Map layers (clustered issues by band + live traffic)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,52 @@ Current task: T43 · Cost-based route choice and vehicle profiles
 - None
 
 ## Done
+
+### T43 · Cost-based route choice and vehicle profiles · 2026-10-28
+- **Goal:** Cost-based safe routing engine `src/lib/routing/cost.ts` implementing hazard cost and route scoring from Appendix A.3; vehicle profiles (motorcycle, car, pedestrian, wheelchair) with specific category sensitivity weights; safety slider ($\beta \in [0.0, 0.5]$); explanation generator ("avoids 2 hazards, +3 min"); critical blocking hazards become hard `avoidAreas`.
+- **Implemented:**
+  - `src/lib/routing/cost.ts`:
+    - Full vehicle sensitivity matrix: motorcycle (potholes 1.0, waterlogging 1.0), car (potholes 0.5, sidewalks 0.0), pedestrian (sidewalks 1.0, potholes 0.1), wheelchair (sidewalks 1.5, road cuts 1.0).
+    - Streetlights IST time window check (`isStreetlightsActiveIST`): sensitivity only applies during dark hours 19:00–06:00 IST.
+    - Hazard cost formula: `hazardCost(route) = Σ over open issues of (PI / 100) * sensitivity[vehicle][category]`.
+    - Route scoring formula: `score(route) = travelTimeSeconds * (1 + beta * hazardCost)`.
+    - Avoid areas builder: `buildAvoidAreasForCriticalHazards` with 30m padding for CRITICAL issues with `blockedShare === "full"`.
+    - Route choice adjudicator `chooseBestRoute` and explanation generator `generateRouteExplanation`.
+  - `src/app/api/routes/safe/route.ts`:
+    - Accepts `vehicle` and `beta` parameters.
+    - Auto-injects hard avoidAreas for critical blocking hazards.
+    - Matches segments along each TomTom/synthetic alternative route and evaluates open segment issues from Prisma.
+    - Returns scored route alternatives with `hazardCost`, `routeScore`, `hazardsCount`, `selectedRouteIndex`, and `explanation`.
+  - `src/components/map/RoutePanel.tsx`:
+    - Added Vehicle selector buttons (🏍️ Moto, 🚗 Car, 🚶 Walk, ♿ Wheel).
+    - Added Safety bias slider (⚡ Fast 0.0 to 🛡️ Safe 0.5) with real-time value display.
+    - Added Choice Explanation banner ("Choice: avoids 1 hazard, +2 min").
+    - Added keys-later status badge when TomTom live key is not set.
+  - `src/components/map/BaseMap.tsx`: Wired vehicle, beta, and explanation state to route optimization.
+  - `tests/fixtures/routing/vehicle-route-choice.json`: Synthetic fixture with pothole-heavy direct route and sidewalk-damaged bypass route.
+  - `tests/unit/route-choice.test.ts`: 4 unit tests verifying vehicle profiles, time of day gates, avoidAreas, and the acceptance test: same alternatives, different vehicles pick different routes (Motorcycle picks bypass Route B to avoid potholes; Car, Pedestrian, and Wheelchair pick Route A).
+  - `docs/plan/PLAN.md`: Ticked N3.
+- **Verified Against Docs:** PLAN.md Appendix A.3 formula and vehicle sensitivity table.
+- **Checks Run:**
+  ```
+  [vitest tests/unit/route-choice.test.ts]
+  ✓ tests/unit/route-choice.test.ts (4 tests) 8ms
+  Test Files  1 passed (1)
+  Tests  4 passed (4)
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✖ 1 problem (0 errors, 1 warning)
+  > tsc --noEmit
+  > vitest run
+  Test Files  26 passed (26)
+  Tests  153 passed (153)
+  > next build --webpack
+  ✓ Compiled successfully in 6.6s
+  ✓ Generating static pages using 15 workers (19/19) in 802ms
+  ```
+- **Feature Rows Ticked:** N3.
+- **Notes for the Next Task:** Proceed to T46(A) (Map layers Track A scope: clustered issues colored by band + live traffic tiles / synthetic notice).
 
 ### T42 · Segment matching (PostGIS ST_DWithin + Azimuth) · 2026-10-28
 - **Goal:** Robust segment matching module `src/lib/routing/matchSegments.ts` selecting road segments along a route LineString within 10 m whose bearing differs by < 30° from the route's local bearing; return ordered segment IDs; verify with fixtures for parallel service road and flyovers.
