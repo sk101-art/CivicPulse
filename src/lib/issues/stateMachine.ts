@@ -1,4 +1,4 @@
-import { Status } from "@prisma/client";
+import { Status, type Band, type Prisma } from "@prisma/client";
 
 export type IssueAction =
   | "CONFIRM"
@@ -51,22 +51,8 @@ export interface TransitionResult {
   toStatus: Status;
   action: IssueAction;
   actorId: string;
-  actionLogData: {
-    issueId: string;
-    actorId: string;
-    action: string;
-    note?: string;
-    reportId?: string;
-    fromStatus: Status;
-    toStatus: Status;
-  };
-  issueUpdateData: {
-    status?: Status;
-    agencyId?: string;
-    handoffCount?: { increment: number };
-    bandOverride?: string;
-    bandOverrideNote?: string;
-  };
+  actionLogData: Prisma.ActionLogUncheckedCreateInput;
+  issueUpdateData: Prisma.IssueUncheckedUpdateInput;
 }
 
 export class InvalidStateTransitionError extends Error {
@@ -284,7 +270,7 @@ export function transition(
 
   const newStatus = rule.to(issue.status);
 
-  const actionLogData = {
+  const actionLogData: Prisma.ActionLogUncheckedCreateInput = {
     issueId: issue.id,
     actorId: actor.id,
     action: action as string,
@@ -294,7 +280,7 @@ export function transition(
     toStatus: newStatus,
   };
 
-  const issueUpdateData: TransitionResult["issueUpdateData"] = {};
+  const issueUpdateData: Prisma.IssueUncheckedUpdateInput = {};
 
   if (newStatus !== issue.status) {
     issueUpdateData.status = newStatus;
@@ -306,7 +292,7 @@ export function transition(
     issueUpdateData.agencyId = context.agencyId;
     issueUpdateData.handoffCount = { increment: 1 };
   } else if (action === "OVERRIDE_BAND" && context.overrideBand) {
-    issueUpdateData.bandOverride = context.overrideBand;
+    issueUpdateData.bandOverride = context.overrideBand as Band;
     issueUpdateData.bandOverrideNote = context.note;
   }
 

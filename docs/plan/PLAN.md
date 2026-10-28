@@ -1097,7 +1097,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [ ] | F10 | New categories | T10 | schema enum; category picker e2e |
 | [ ] | A1 | Two desk accounts, shared dashboard | T11, T26 | e2e desk-a/desk-b |
 | [ ] | A2 | Public action log | T25, T28 | log tests; DB blocks UPDATE/DELETE |
-| [ ] | A3 | Agency label + handoff counter | T25 | reassign test |
+| [x] | A3 | Agency label + handoff counter | T25 | reassign test |
 | [ ] | A4 | Desk scorecard | T29 | claim-gap unit test (by desk) |
 | [x] | V1 | In-app camera only | T22 | e2e: no file input on capture |
 | [x] | V2 | Capture nonce | T21 | nonce tests |

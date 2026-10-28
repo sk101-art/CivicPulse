@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T25 · Desk actions endpoint, action log, agencies and handoffs
+Current task: T26 · Shared desk dashboard
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,60 @@ Current task: T25 · Desk actions endpoint, action log, agencies and handoffs
 - None
 
 ## Done
+
+### T25 · Desk actions endpoint, action log, agencies and handoffs · 2026-10-28
+- **Goal:** Provide authenticated desk actions endpoint (`/api/issues/[id]/actions`), public enriched action log endpoint (`/api/issues/[id]/log`), enforce append-only ActionLog integrity via DB trigger, support agency assignment, reassignment with handoffCount increment, and claim evidence handling.
+- **Verified against docs/types:**
+  - PLAN.md Section 6 & Section 8 U7 agencies: BWSSB, BESCOM, BBMP Major Roads, BBMP Ward, Traffic Police, SWD, KPTCL.
+  - Prisma 7 `Agency`, `Issue`, `ActionLog` schemas. DB trigger `trg_action_log_prevent_modify` verified in unit tests.
+- **Changed:**
+  - Modified `src/lib/issues/stateMachine.ts`: refined typing to `Prisma.ActionLogUncheckedCreateInput` and `Prisma.IssueUncheckedUpdateInput`.
+  - Created `src/app/api/issues/[id]/actions/route.ts`: authenticated desk actions handler (`CONFIRM`, `REJECT`, `ASSIGN_AGENCY`, `REASSIGN_AGENCY`, `START_WORK`, `CLAIM_FIX`, `OVERRIDE_BAND`, `REOPEN`), runs centralized state machine, handles signed CLAIM_FIX evidence photo verification, uploads to Supabase storage, creates report, and executes atomic transaction updating Issue and inserting ActionLog.
+  - Created `src/app/api/issues/[id]/log/route.ts`: public GET endpoint returning chronological action log entries with human-readable actor labels ("Desk A", "Desk B", "Citizen", "System") and evidence thumbnails.
+  - Created `tests/unit/desk-actions.test.ts`: acceptance test suite verifying CONFIRM, ASSIGN_AGENCY, REASSIGN_AGENCY with `handoffCount` increment, OVERRIDE_BAND, public GET log, 403 authorization for CITIZEN role, and verification that database trigger rejects UPDATE/DELETE on `ActionLog`.
+  - Updated `docs/plan/PLAN.md`: ticked row A3 in Section 11 traceability matrix.
+- **Full Gate Execution:**
+  Command: `cmd.exe /c "cd miniproject && npm run lint && npm run typecheck && npm test && npm run build"`
+  Real output:
+  ```
+  > miniproject@0.1.0 lint
+  > eslint
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    119:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  ✖ 1 problem (0 errors, 1 warning)
+
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+
+  > miniproject@0.1.0 test
+  > vitest run
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+   ✓ tests/unit/state-machine.test.ts (29 tests) 14ms
+   ✓ tests/unit/points.test.ts (8 tests) 9ms
+   ✓ tests/unit/config.test.ts (3 tests) 6ms
+   ✓ tests/contract/storage.test.ts (6 tests) 10ms
+   ✓ tests/unit/api-validation.test.ts (7 tests) 24ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 538ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 604ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 645ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 949ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 949ms
+   ✓ tests/unit/signing-verification.test.ts (8 tests) 1051ms
+   ✓ tests/contract/merge.test.ts (5 tests) 1948ms
+   ✓ tests/unit/report-flow.test.ts (4 tests) 1648ms
+   ✓ tests/unit/desk-actions.test.ts (7 tests) 1612ms
+
+   Test Files  14 passed (14)
+        Tests  100 passed (100)
+     Duration  3.61s
+
+  > miniproject@0.1.0 build
+  > next build --webpack
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 7.4s
+  ✓ Generating static pages using 15 workers (15/15) in 451ms
+  ```
+- **Notes for Next Task:** Next task is T26 (Shared desk dashboard). Will build unified `/desk` queue sorted by PI band then PI, filterable by status, category, agency, ward, and SLA breach, with drawer showing state-machine allowed action buttons and audit trail. Accessible identically to both `desk-a` and `desk-b`. Keep backward-compatibility redirect from `/authority` routes.
 
 ### T24 · Issue state machine · 2026-10-28
 - **Goal:** Implement the centralized issue state transition table from PLAN.md Section 6 in `src/lib/issues/stateMachine.ts`, ensuring single source of truth for transitions, actors, requirements, and ActionLog generation.
