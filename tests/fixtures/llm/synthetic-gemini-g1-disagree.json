@@ -1,0 +1,21 @@
+{
+  "_synthetic": true,
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\n  \"category\": \"DRAINAGE\",\n  \"size_class\": \"medium\",\n  \"lane_position\": \"edge\",\n  \"water_present\": \"yes\",\n  \"recapture_suspected\": \"yes\",\n  \"faces_or_plates\": \"no\",\n  \"confidence\": 0.89\n}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 220,
+    "candidatesTokenCount": 68,
+    "totalTokenCount": 288
+  }
+}

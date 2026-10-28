@@ -7,7 +7,7 @@ import { authOptions } from "@/lib/auth";
 import { 
   MapPin, Clock, ArrowLeft, ShieldCheck, 
   Building2, ArrowRightLeft, 
-  Activity, CheckCircle2
+  Activity, CheckCircle2, Sparkles
 } from "lucide-react";
 import { VerifyFixModal } from "@/components/public/VerifyFixModal";
 import { PriorityBreakdown } from "@/components/priority/PriorityBreakdown";
@@ -251,9 +251,15 @@ export default async function PublicIssuePage({
                   <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-[10px] font-mono font-bold text-white border border-white/10">
                     {getRoleLabel(report.role)}
                   </div>
+                  {report.aiTriage && typeof report.aiTriage === "object" && (
+                    <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-cyan text-black font-mono font-bold text-[10px] uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-cyan/20">
+                      <Sparkles className="w-3 h-3 text-black" />
+                      <span>AI-assisted</span>
+                    </div>
+                  )}
                 </div>
 
-                <div className="space-y-1 px-1 text-xs font-mono text-white/60">
+                <div className="space-y-2 px-1 text-xs font-mono text-white/60">
                   <div className="flex items-center justify-between">
                     <span className="text-white/80 font-bold">
                       Accuracy: {report.gpsAccuracyM.toFixed(1)}m
@@ -266,6 +272,28 @@ export default async function PublicIssuePage({
                     <p className="text-xs text-white/80 bg-white/5 p-2 rounded-lg font-sans border border-white/5">
                       &quot;{report.note}&quot;
                     </p>
+                  )}
+                  {report.aiTriage && typeof report.aiTriage === "object" && (
+                    <div className="p-2.5 rounded-xl bg-cyan/5 border border-cyan/20 space-y-1 text-[11px] font-mono">
+                      <div className="flex items-center justify-between text-cyan font-bold">
+                        <span className="flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" />
+                          AI Triage Assessment
+                        </span>
+                        <span>
+                          {typeof (report.aiTriage as Record<string, unknown>).confidence === "number"
+                            ? `${Math.round(((report.aiTriage as Record<string, unknown>).confidence as number) * 100)}% conf`
+                            : "verified"}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-white/70 text-[10px] pt-0.5">
+                        <span>Cat: <strong className="text-white">{String((report.aiTriage as Record<string, unknown>).category || "—")}</strong></span>
+                        <span>•</span>
+                        <span>Size: <strong className="text-white">{String((report.aiTriage as Record<string, unknown>).size_class || "—")}</strong></span>
+                        <span>•</span>
+                        <span>Pos: <strong className="text-white">{String((report.aiTriage as Record<string, unknown>).lane_position || "—")}</strong></span>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>

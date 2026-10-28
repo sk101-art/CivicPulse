@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T51 · G1 Photo Triage (Track A)
+Current task: T52 · G2 Fix-Check Comparator (Track A)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,43 @@ Current task: T51 · G1 Photo Triage (Track A)
 - None
 
 ## Done
+
+### T51 · G1 photo triage · 2026-10-28
+- **Goal:** Implement G1 photo triage job on newly submitted REPORT evidence: parse photo with Appendix D JSON schema, populate `Report.aiTriage`, flag category disagreement for desk review without ever auto-changing category, flag suspected recaptures as "needs one extra verifier", feed empty `Issue.sizeClass` and trigger priority recomputation, and render the "AI-assisted" badge on the evidence gallery UI.
+- **Implemented:**
+  - `src/lib/ai/triage.ts`:
+    - `g1TriageSchema` & `g1JsonSchema`: Appendix D schema (`category`, `size_class`, `lane_position`, `water_present`, `recapture_suspected`, `faces_or_plates`, `confidence`).
+    - `processG1Triage(reportId, options)`: Analyzes report photo, persists result to `Report.aiTriage`, checks category mismatch (flags `Issue.needsDuplicateReview = true` and writes `AI_FLAGGED_CATEGORY_MISMATCH` ActionLog row; strictly never mutates reported category), flags `recapture_suspected` as `NEEDS_EXTRA_VERIFIER` on `hazardFlag`, feeds `sizeClass` / `lanePosition` only when empty, and triggers `recomputeIssuePriority`.
+    - `processG1Job(jobId, options)`: Background worker processor for queued `AiJob` rows.
+  - `src/app/(public)/issue/[id]/page.tsx`:
+    - Added floating "AI-assisted" cyan chip on photo evidence card.
+    - Added detailed AI Triage Assessment breakdown (confidence percentage, suggested category, size class, lane position).
+  - `tests/fixtures/llm/synthetic-gemini-g1-disagree.json`: Synthetic fixture for category disagreement and recapture suspected (`_synthetic: true`).
+  - `tests/unit/photo-triage.test.ts`: Acceptance suite verifying:
+    - Normal triage updates `aiTriage` and feeds empty `sizeClass` ("large") and `lanePosition` ("wheel_path").
+    - Category disagreement sets `needsDuplicateReview = true`, leaves `Issue.category` intact as `POTHOLES`, and sets `NEEDS_EXTRA_VERIFIER`.
+    - Pre-existing reporter `sizeClass` ("small") is strictly preserved against AI overwrite.
+  - `docs/plan/PLAN.md`: Ticked Section 11 row `G1`.
+  - `docs/agent/ASSUMPTIONS.md`: Logged `synthetic-gemini-g1-disagree.json` for live verification in T75.
+- **Verified Against Docs:** PLAN.md Appendix D G1 schema, Rule 17 & 20.
+- **Checks Run:**
+  ```
+  [Vitest: T51 Acceptance Suite]
+  ✓ tests/unit/photo-triage.test.ts (3 tests) 2.68s
+  3 passed
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✔ 0 errors, 1 warning (img element in report page)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  30 passed (30)
+  Tests  177 passed (177)
+  > next build --webpack
+  ✓ Compiled successfully in 6.2s
+  ✓ Generating static pages (19/19) in 591ms
+  ```
 
 ### T50 · LLM provider chain, validators, audit and quotas · 2026-10-28
 - **Goal:** Implement Phase 5 LLM provider chain infrastructure (`gemini -> groq -> (ollama) -> rules`), output validators (`verbatimCheck`, `numbersGrounded`, `confidenceAtLeast`), quota governor tracking `AI_DAILY_CALL_CAP` with priority buffering for G1 & G2, deterministic input hashing (`computeInputHash`), response caching, and audit logging into `AiRun`.

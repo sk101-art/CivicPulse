@@ -33,20 +33,21 @@ describe("T17 Contract Test: Async AI Queue & Health Check", () => {
   });
 
   it("enqueues and dequeues AiJob rows asynchronously off the request path", async () => {
+    const testFeature = "T17_QUEUE_TEST";
     const targetId = `test_target_${Date.now()}`;
     const job = await enqueueAiJob({
-      feature: "G1",
+      feature: testFeature,
       targetId,
     });
     createdJobId = job.id;
 
     expect(job.id).toBeDefined();
-    expect(job.feature).toBe("G1");
+    expect(job.feature).toBe(testFeature);
     expect(job.targetId).toBe(targetId);
     expect(job.status).toBe("queued");
     expect(job.attempts).toBe(0);
 
-    const dequeued = await dequeueAiJobs("G1", 100);
+    const dequeued = await dequeueAiJobs(testFeature, 10);
     const found = dequeued.find((j) => j.id === job.id);
     expect(found).toBeDefined();
     expect(found!.targetId).toBe(targetId);
