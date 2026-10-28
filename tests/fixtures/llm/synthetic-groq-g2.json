@@ -1,0 +1,22 @@
+{
+  "_synthetic": true,
+  "id": "chatcmpl-synthetic-groq-g2",
+  "object": "chat.completion",
+  "created": 1730100000,
+  "model": "qwen/qwen3.8-27b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "{\n  \"same_location\": \"yes\",\n  \"defect_still_visible\": \"no\",\n  \"confidence\": 0.91\n}"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 320,
+    "completion_tokens": 42,
+    "total_tokens": 362
+  }
+}

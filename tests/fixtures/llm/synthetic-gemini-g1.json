@@ -1,0 +1,21 @@
+{
+  "_synthetic": true,
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\n  \"category\": \"POTHOLES\",\n  \"size_class\": \"large\",\n  \"lane_position\": \"wheel_path\",\n  \"water_present\": \"no\",\n  \"recapture_suspected\": \"no\",\n  \"faces_or_plates\": \"no\",\n  \"confidence\": 0.94\n}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP"
+    }
+  ],
+  "usageMetadata": {
+    "promptTokenCount": 210,
+    "candidatesTokenCount": 65,
+    "totalTokenCount": 275
+  }
+}

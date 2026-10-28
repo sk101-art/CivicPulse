@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T50 · LLM Provider Chain & Guardrails (Track A)
+Current task: T51 · G1 Photo Triage (Track A)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,42 @@ Current task: T50 · LLM Provider Chain & Guardrails (Track A)
 - None
 
 ## Done
+
+### T50 · LLM provider chain, validators, audit and quotas · 2026-10-28
+- **Goal:** Implement Phase 5 LLM provider chain infrastructure (`gemini -> groq -> (ollama) -> rules`), output validators (`verbatimCheck`, `numbersGrounded`, `confidenceAtLeast`), quota governor tracking `AI_DAILY_CALL_CAP` with priority buffering for G1 & G2, deterministic input hashing (`computeInputHash`), response caching, and audit logging into `AiRun`.
+- **Implemented:**
+  - `src/lib/external/llm/types.ts`: Provider interfaces and types (`LlmProviderName`, `LlmImageInput`, `LlmGenerateOptions`, `LlmGenerateResult`, `LlmAdapter`).
+  - `src/lib/external/llm/gemini.ts`: Google Gemini REST adapter supporting system instructions, image parts, `generationConfig`, JSON schema enforcement, timeout, and 429 quota handling without external SDK dependencies.
+  - `src/lib/external/llm/groq.ts`: Groq OpenAI-compatible Chat Completions adapter with automatic vision model routing (`GROQ_MODEL_VISION`), JSON mode, and 429 quota handling.
+  - `src/lib/external/llm/ollama.ts`: Local Ollama adapter for nightly batch jobs on developer laptop.
+  - `src/lib/ai/providers/rules.ts`: Safe deterministic rules fallbacks for features G1 through G8.
+  - `src/lib/ai/validators.ts`: `verbatimCheck` (case-insensitive, whitespace normalized), `numbersGrounded` (checks every number in generated text against source facts), and `confidenceAtLeast`.
+  - `src/lib/ai/quota.ts`: Quota governor capping daily calls at `AI_DAILY_CALL_CAP` (400), reserving buffer slots strictly for high-priority citizen triage (G1 & G2).
+  - `src/lib/ai/run.ts`: AI orchestrator enforcing temperature 0, Zod schema validation, SHA-256 input hashing, `AiRun` DB caching and auditing (costUsd: 0), provider chain iteration with graceful fallback, and grounding checks.
+  - `tests/fixtures/llm/synthetic-gemini-g1.json`: Synthetic Gemini response fixture (`_synthetic: true`).
+  - `tests/fixtures/llm/synthetic-groq-g2.json`: Synthetic Groq response fixture (`_synthetic: true`).
+  - Updated `docs/agent/ASSUMPTIONS.md` with new synthetic fixtures for verification in T75.
+- **Verified Against Docs:** Google Gemini `generateContent` v1beta REST specification, Groq OpenAI-compatible Chat Completions API, Prisma `AiRun` schema.
+- **Checks Run:**
+  ```
+  [Vitest: T50 Unit & Contract Tests]
+  ✓ tests/unit/ai-validators.test.ts (12 tests)
+  ✓ tests/unit/ai-quota.test.ts (3 tests)
+  ✓ tests/contract/ai-provider-chain.test.ts (6 tests)
+  21 passed in 1.83s
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✔ 0 errors, 1 warning (img element in report page)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  29 passed (29)
+  Tests  174 passed (174)
+  > next build --webpack
+  ✓ Compiled successfully in 5.9s
+  ✓ Generating static pages (19/19) in 643ms
+  ```
 
 ### T46(A) · Map layers (clustered issues by band + live traffic) · 2026-10-28
 - **Goal:** Implement Track A scope of map overlays in `src/components/map/layers/`: zoom-adaptive issue clustering colored by priority band (CRITICAL: rose, HIGH: amber, MEDIUM: sky, LOW: zinc), live TomTom traffic flow tiles with keys-later notice when unconfigured, and an overlay toggle control; verify via Playwright e2e layer toggling without console errors.
