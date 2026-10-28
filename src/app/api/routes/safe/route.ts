@@ -17,6 +17,7 @@ import {
 import { matchSegmentsToRoute } from "@/lib/routing/matchSegments";
 import { prisma } from "@/lib/db/prisma";
 import { Band } from "@prisma/client";
+import { withAuth } from "@/lib/api/auth";
 
 const pointSchema = z.union([
   z.object({
@@ -66,6 +67,12 @@ const routeRequestSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  // Routing spends the free TomTom quota, so only signed-in users may call it.
+  const auth = await withAuth();
+  if (auth.error) {
+    return auth.error;
+  }
+
   try {
     const rawBody = await req.json();
     const parsed = routeRequestSchema.safeParse(rawBody);
@@ -237,6 +244,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  const auth = await withAuth();
+  if (auth.error) {
+    return auth.error;
+  }
+
   try {
     const url = new URL(req.url);
     const originParam = url.searchParams.get("origin");

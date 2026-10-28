@@ -17,7 +17,8 @@ export class GeminiAdapter implements LlmAdapter {
     }
 
     const model = options.model || env.GEMINI_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash";
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`;
+    // API key goes in a header (never in the URL, where it could end up in logs or error messages).
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
     parts.push({ text: options.text });
@@ -53,18 +54,34 @@ export class GeminiAdapter implements LlmAdapter {
     }
 
     if (options.jsonSchema) {
-      (body.generationConfig as Record<string, unknown>).responseSchema = options.jsonSchema;
+      // responseJsonSchema accepts standard JSON Schema (incl. additionalProperties);
+      // the older responseSchema field only accepts an OpenAPI subset.
+      (body.generationConfig as Record<string, unknown>).responseJsonSchema = options.jsonSchema;
     }
 
     const timeout = options.timeoutMs ?? 15000;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(timeout),
-    });
+    const send = (payload: Record<string, unknown>) =>
+      fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(timeout),
+      });
+
+    let response = await send(body);
+
+    // If this model/API version rejects the schema field, retry once in plain JSON mode.
+    // The schema is still in the prompt and every answer is validated with zod afterwards.
+    if (response.status === 400 && options.jsonSchema) {
+      const retryBody = {
+        ...body,
+        generationConfig: { temperature: 0, responseMimeType: "application/json" },
+      };
+      response = await send(retryBody);
+    }
 
     if (!response.ok) {
       const errText = await response.text().catch(() => "");

@@ -93,7 +93,7 @@ export default function LoginPage() {
         const regRes = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password, role: role.toUpperCase() }),
+          body: JSON.stringify({ name, email, password }),
         });
 
         if (!regRes.ok) {
@@ -209,12 +209,19 @@ export default function LoginPage() {
               >
                 LOGIN
               </button>
-              <button 
-                onClick={() => setIsSignUp(true)}
-                className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/30 hover:text-white/50'}`}
-              >
-                CREATE ACCOUNT
-              </button>
+              {role === 'citizen' ? (
+                <button
+                  type="button"
+                  onClick={() => setIsSignUp(true)}
+                  className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/30 hover:text-white/50'}`}
+                >
+                  CREATE ACCOUNT
+                </button>
+              ) : (
+                <span className="text-[10px] uppercase tracking-[0.15em] text-white/30">
+                  Desk accounts are issued by the administrator
+                </span>
+              )}
             </div>
           </div>
 

@@ -29,7 +29,13 @@ export async function POST(req: Request) {
     return parsed.error;
   }
 
-  const { publicJwk } = parsed.data;
+  // Store only the public EC components; never persist any other JWK fields a client may send.
+  const publicJwk = {
+    kty: parsed.data.publicJwk.kty,
+    crv: parsed.data.publicJwk.crv,
+    x: parsed.data.publicJwk.x,
+    y: parsed.data.publicJwk.y,
+  };
 
   // Check if this public key is already registered for this user
   const existingKeys = await prisma.deviceKey.findMany({

@@ -1,4 +1,5 @@
 import "server-only";
+import { loadImageForLlm } from "./images";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -118,19 +119,9 @@ export async function processG1Triage(
 
   const reportedCategory = report.issue.category.toString();
 
-  // Parse image if it's a data URI
-  let images = undefined;
-  if (report.photoUrl && report.photoUrl.startsWith("data:image/")) {
-    const match = report.photoUrl.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-    if (match) {
-      images = [
-        {
-          mimeType: (match[1] === "image/png" ? "image/png" : "image/jpeg") as "image/jpeg" | "image/png",
-          base64: match[2],
-        },
-      ];
-    }
-  }
+  // Load the evidence photo (data URI or our own Supabase storage URL)
+  const image = await loadImageForLlm(report.photoUrl);
+  const images = image ? [image] : undefined;
 
   const runResult = await runAi<G1TriageResult>({
     feature: "G1",

@@ -8,6 +8,21 @@ import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { Status, EvidenceRole } from "@prisma/client";
 import crypto from "crypto";
 
+/**
+ * Error carrying an HTTP status and machine-readable code, so the API returns
+ * 400/403 with a clear message instead of a generic 500.
+ */
+export class VerificationError extends Error {
+  constructor(
+    public readonly statusCode: number,
+    public readonly code: string,
+    message: string
+  ) {
+    super(message);
+    this.name = "VerificationError";
+  }
+}
+
 export interface EligibilityResult {
   eligible: boolean;
   reason?: string;
@@ -147,15 +162,24 @@ export async function processVerification(input: ProcessVerificationInput) {
   } = input;
 
   // 1. Verify signed evidence payload and single-use nonce
-  const verifyResult = await verifyEvidence(userId, payload, signature, photoBuffer);
-  if (!verifyResult.valid) {
-    throw new Error(`Evidence verification failed: ${verifyResult.reason}`);
-  }
-
-  // 2. Check verifier eligibility rules
+  // 1. Check verifier eligibility first (cheap, and avoids burning the nonce on an ineligible user)
   const eligibility = await checkVerifierEligibility(issueId, userId, payload);
   if (!eligibility.eligible) {
-    throw new Error(`Verifier eligibility check failed: ${eligibility.reason}`);
+    throw new VerificationError(
+      403,
+      "NOT_ELIGIBLE_TO_VERIFY",
+      eligibility.reason || "You are not eligible to verify this fix"
+    );
+  }
+
+  // 2. Verify signed evidence payload (role VERIFY) and single-use nonce
+  const verifyResult = await verifyEvidence(userId, payload, signature, photoBuffer, "VERIFY");
+  if (!verifyResult.valid) {
+    throw new VerificationError(
+      400,
+      "EVIDENCE_VERIFICATION_FAILED",
+      `Evidence verification failed: ${verifyResult.reason}`
+    );
   }
 
   // 3. Compute verification weight based on reputation
@@ -231,7 +255,16 @@ export async function processVerification(input: ProcessVerificationInput) {
         }
       );
     } else if (verdict === "FIXED") {
-      const fixedVerifications = allVerifications.filter((v) => v.verdict === "FIXED");
+      // Only verifications made after the most recent fix claim count towards this claim.
+      const latestClaim = await tx.actionLog.findFirst({
+        where: { issueId, action: "CLAIM_FIX" },
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      });
+      const claimTime = latestClaim?.createdAt?.getTime() ?? 0;
+      const fixedVerifications = allVerifications.filter(
+        (v) => v.verdict === "FIXED" && v.createdAt.getTime() >= claimTime
+      );
       const sumFixedWeights = fixedVerifications.reduce((sum, v) => sum + v.weight, 0);
 
       if (sumFixedWeights >= 1.0) {

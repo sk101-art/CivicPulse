@@ -102,6 +102,8 @@ export async function runAi<T>(options: RunAiOptions<T>): Promise<RunAiResult<T>
           feature,
           inputHash,
           valid: true,
+          // Never reuse rules-fallback answers: once an LLM key is added, inputs must be re-evaluated.
+          NOT: { model: { startsWith: "rules" } },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -136,6 +138,12 @@ export async function runAi<T>(options: RunAiOptions<T>): Promise<RunAiResult<T>
 
   let lastFailReason: string | undefined;
 
+  // Every provider gets the exact JSON shape in the prompt. Gemini also receives it as a
+  // structured-output schema; Groq's JSON mode has no schema parameter, so the prompt carries it.
+  const promptWithSchema = jsonSchema
+    ? `${userPrompt}\n\nRespond with a single JSON object that matches this JSON Schema exactly:\n${JSON.stringify(jsonSchema)}`
+    : `${userPrompt}\n\nRespond with a single JSON object.`;
+
   // 4. Try Providers in Order
   for (const adapter of chain) {
     if (!adapter.isConfigured()) {
@@ -152,7 +160,7 @@ export async function runAi<T>(options: RunAiOptions<T>): Promise<RunAiResult<T>
     try {
       const result = await adapter.generate({
         system: systemPrompt,
-        text: userPrompt,
+        text: promptWithSchema,
         images,
         jsonSchema,
         timeoutMs,

@@ -18,6 +18,12 @@ export interface IngestReportInput {
   capturedAt?: Date;
   note?: string;
   isSeed?: boolean;
+  /** Reporter's size estimate: small | medium | large (feeds Severity). */
+  sizeClass?: string;
+  /** How much of the road is blocked: none | part lane | one lane | full (feeds Usability). */
+  blockedShare?: string;
+  /** Evidence captured offline without a live nonce (counts as half a report in Confidence). */
+  offline?: boolean;
 }
 
 export interface IngestReportResult {
@@ -57,6 +63,9 @@ export async function ingestReportWithSpatialMerge(
     capturedAt = new Date(),
     note,
     isSeed = false,
+    sizeClass,
+    blockedShare,
+    offline = false,
   } = input;
 
   // Query nearby open issues within 40 metres using PostGIS ST_DWithin on geography
@@ -99,6 +108,7 @@ export async function ingestReportWithSpatialMerge(
           capturedAt,
           note,
           isSeed,
+          offline,
         },
       });
 
@@ -163,6 +173,8 @@ export async function ingestReportWithSpatialMerge(
         slaDueAt,
         needsDuplicateReview,
         isSeed,
+        ...(sizeClass ? { sizeClass } : {}),
+        ...(blockedShare ? { blockedShare } : {}),
       },
     });
 
@@ -180,6 +192,7 @@ export async function ingestReportWithSpatialMerge(
         capturedAt,
         note,
         isSeed,
+        offline,
       },
     });
 

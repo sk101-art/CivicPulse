@@ -87,8 +87,26 @@ export async function POST(req: Request) {
       const data = signedParsed.data;
       const photoBuffer = Buffer.from(data.photoBase64, "base64");
 
+      // Every report photo must be signed with role REPORT
+      if (data.payload.role !== "REPORT") {
+        return apiError(
+          400,
+          "WRONG_EVIDENCE_ROLE",
+          `Report evidence must be signed with role REPORT (got ${data.payload.role})`
+        );
+      }
+
       // Check offline reporting requirements
       if (data.offline) {
+        const offlineHash = crypto.createHash("sha256").update(photoBuffer).digest("hex");
+        if (offlineHash !== data.payload.photoHash) {
+          return apiError(
+            400,
+            "EVIDENCE_VERIFICATION_FAILED",
+            "Evidence verification failed: PHOTO_HASH_MISMATCH"
+          );
+        }
+
         const capturedTime = new Date(data.payload.capturedAt).getTime();
         if (isNaN(capturedTime) || Date.now() - capturedTime > 24 * 60 * 60 * 1000) {
           return apiError(
@@ -146,7 +164,8 @@ export async function POST(req: Request) {
           auth.user.id,
           data.payload as EvidencePayload,
           data.signature,
-          photoBuffer
+          photoBuffer,
+          "REPORT"
         );
 
         if (!verifyResult.valid) {
@@ -177,21 +196,31 @@ export async function POST(req: Request) {
         photoSha256: uploadResult.photoSha256,
         signature: data.signature,
         gpsAccuracyM: data.payload.accuracy,
+        capturedAt: new Date(data.payload.capturedAt),
         note: data.note || data.title,
+        sizeClass: data.sizeClass,
+        blockedShare: data.blockedShare,
+        offline: data.offline === true,
       });
 
-      // Enqueue async AI job (G1 vision triage) off the request path
+      // Enqueue async AI job (G1 vision triage) off the request path, on the exact evidence row
       await enqueueAiJob({
         feature: "G1",
-        targetId: result.issue.id,
+        targetId: result.report.id,
       });
 
       return NextResponse.json(result, { status: 201 });
     }
 
-    // Branch 2: Direct/Test Report Schema
-    const directParsed = directReportSchema.safeParse(body);
-    if (directParsed.success) {
+    // Branch 2: Direct/Test Report Schema.
+    // Unsigned reports are ONLY accepted inside the automated test runner. In development and
+    // production every report must carry signed, on-site evidence (V1–V3).
+    const allowUnsignedTestReports =
+      process.env.NODE_ENV === "test" || process.env.VITEST === "true";
+    const directParsed = allowUnsignedTestReports
+      ? directReportSchema.safeParse(body)
+      : null;
+    if (directParsed && directParsed.success) {
       const data = directParsed.data;
 
       const result = await ingestReportWithSpatialMerge({
@@ -215,7 +244,14 @@ export async function POST(req: Request) {
       return NextResponse.json(result, { status: 201 });
     }
 
-    return apiError(400, "VALIDATION_ERROR", "Invalid report payload format");
+    const firstIssue = signedParsed.success ? undefined : signedParsed.error?.issues?.[0];
+    return apiError(
+      400,
+      "VALIDATION_ERROR",
+      firstIssue
+        ? `Invalid report: ${firstIssue.path.join(".")} ${firstIssue.message}`
+        : "Invalid report payload format"
+    );
   } catch (error: unknown) {
     console.error("Report ingestion failed:", error);
     const { status, code, message } = formatSafeApiError(error, "Internal server error filing report");

@@ -38,8 +38,12 @@ export function MapWrapper(props: MapWrapperProps) {
   const [submitting, setSubmitting] = useState(false);
   const { isOnline, queueReport } = useOfflineSync();
 
+  // Reports must be signed, on-site evidence (camera + GPS), so tapping the map opens the
+  // in-app capture flow instead of posting an unsigned pin from a remote location.
   const handleReportLocation = (lat: number, lng: number) => {
-    setReportModal({ lat, lng });
+    void lat;
+    void lng;
+    router.push('/citizen/report');
   };
 
   const handleSubmitReport = async () => {

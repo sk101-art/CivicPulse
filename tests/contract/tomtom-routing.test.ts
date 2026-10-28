@@ -1,4 +1,12 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+// Safe routing requires a signed-in user (protects the free TomTom quota).
+vi.mock("next-auth/next", () => ({
+  getServerSession: vi.fn().mockResolvedValue({
+    user: { id: "test-routing-user", email: "routing@example.com", role: "CITIZEN" },
+    expires: new Date(Date.now() + 3600_000).toISOString(),
+  }),
+}));
 import {
   calculateTomTomRoute,
   parseTomTomRouteResponse,

@@ -1,4 +1,5 @@
 import "server-only";
+import { loadImageForLlm } from "./images";
 import { z } from "zod";
 import { Prisma, EvidenceRole } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
@@ -75,20 +76,11 @@ export async function processG2FixCheck(
 
   const images: LlmImageInput[] = [];
 
-  // Helper to extract base64 from photoUrl if data URI
-  function tryAddImage(url: string | null) {
-    if (!url || !url.startsWith("data:image/")) return;
-    const match = url.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
-    if (match) {
-      images.push({
-        mimeType: (match[1] === "image/png" ? "image/png" : "image/jpeg") as "image/jpeg" | "image/png",
-        base64: match[2],
-      });
-    }
-  }
-
-  if (originalReport) tryAddImage(originalReport.photoUrl);
-  tryAddImage(claimReport.photoUrl);
+  // Load both photos (data URI or our own Supabase storage URL); order: original, then claim.
+  const originalImage = originalReport ? await loadImageForLlm(originalReport.photoUrl) : null;
+  const claimImage = await loadImageForLlm(claimReport.photoUrl);
+  if (originalImage) images.push(originalImage);
+  if (claimImage) images.push(claimImage);
 
   const promptText =
     `Compare the original reported road defect photo with the claimed repair photo for ` +

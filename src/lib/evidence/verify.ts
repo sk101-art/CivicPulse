@@ -27,7 +27,8 @@ export type VerifyEvidenceResult =
         | "ACCURACY_TOO_LOW"
         | "OUT_OF_BOUNDS"
         | "NO_REGISTERED_DEVICE_KEY"
-        | "INVALID_SIGNATURE";
+        | "INVALID_SIGNATURE"
+        | "WRONG_EVIDENCE_ROLE";
       details?: unknown;
     };
 
@@ -40,8 +41,19 @@ export async function verifyEvidence(
   userId: string,
   payload: EvidencePayload,
   signatureBase64: string,
-  photoBytes: Buffer
+  photoBytes: Buffer,
+  expectedRole?: EvidencePayload["role"]
 ): Promise<VerifyEvidenceResult> {
+  // 0. The signed role must match the action it is being used for, so a REPORT photo
+  //    can never be replayed as a CLAIM_FIX or VERIFY photo (and vice versa).
+  if (expectedRole && payload.role !== expectedRole) {
+    return {
+      valid: false,
+      reason: "WRONG_EVIDENCE_ROLE",
+      details: { expected: expectedRole, actual: payload.role },
+    };
+  }
+
   // 1. Recompute SHA-256 of uploaded photo bytes
   const computedHash = crypto
     .createHash("sha256")

@@ -4,6 +4,7 @@ import { apiError, formatSafeApiError } from "@/lib/api/errors";
 import { processVerification } from "@/lib/issues/verification";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { Role } from "@prisma/client";
 
 const verifySchema = z.object({
   verdict: z.enum(["FIXED", "NOT_FIXED"]),
@@ -29,7 +30,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const auth = await withAuth();
+    // Only citizens verify fixes; desk accounts can never grade their own work.
+    const auth = await withAuth(Role.CITIZEN);
     if (auth.error) {
       return auth.error;
     }

@@ -1,0 +1,66 @@
+name: Scheduled jobs
+
+# Calls the app's job endpoints on a timer. Needs two repository secrets:
+#   APP_URL    - e.g. https://civic-pulse-cyan-ten.vercel.app (no trailing slash)
+#   JOB_SECRET - the same value as JOB_SECRET in Vercel
+# GitHub runs schedules in UTC and may start them a few minutes late; every job is idempotent.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # sla-check and ai-queue, every 30 minutes
+    - cron: "15 * * * *"     # weather and priority-recompute, hourly
+  workflow_dispatch:
+    inputs:
+      job:
+        description: "Job to run now"
+        required: true
+        default: "ai-queue"
+        type: choice
+        options: [sla-check, ai-queue, weather, priority-recompute]
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check secrets are set
+        id: check
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          JOB_SECRET: ${{ secrets.JOB_SECRET }}
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$JOB_SECRET" ]; then
+            echo "APP_URL or JOB_SECRET secret not set; skipping."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pick jobs
+        if: steps.check.outputs.ready == 'true'
+        id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "list=${{ inputs.job }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "15 * * * *" ]; then
+            echo "list=weather priority-recompute" >> "$GITHUB_OUTPUT"
+          else
+            echo "list=sla-check ai-queue" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Call job endpoints
+        if: steps.check.outputs.ready == 'true'
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          JOB_SECRET: ${{ secrets.JOB_SECRET }}
+        run: |
+          status=0
+          for job in ${{ steps.pick.outputs.list }}; do
+            echo "== $job"
+            if ! curl -fsS -X POST -H "x-job-secret: $JOB_SECRET" "$APP_URL/api/jobs/$job"; then
+              echo "::warning::job $job failed"
+              status=1
+            fi
+            echo
+          done
+          exit $status
