@@ -24,13 +24,23 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  themeColor: "#0D1117",
 };
 
 export const metadata: Metadata = {
-  title: "CivicPulse | Premium Civic Intelligence Platform",
-  description: "Advanced civic engagement and city infrastructure monitoring. Empowering citizens and authorities with AI-driven urban intelligence.",
-  keywords: ["civic tech", "city management", "citizen reporting", "urban intelligence"],
-  authors: [{ name: "CivicPulse Team" }],
+  title: "CivicPulse | Road Truth Ledger & Civic Infrastructure",
+  description: "Bengaluru road truth ledger and civic infrastructure monitoring. Empowering citizens and municipal authorities with cryptographic evidence and transparent accountability.",
+  keywords: ["civic tech", "road safety", "potholes", "bengaluru", "citizen reporting", "road truth ledger"],
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "CivicPulse",
+  },
+  icons: {
+    icon: "/icons/icon-192x192.png",
+    apple: "/icons/apple-touch-icon.png",
+  },
 };
 
 import { Providers } from "@/components/providers";

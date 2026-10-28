@@ -1142,7 +1142,7 @@ The agent ticks a row only after running its proof and pasting the output in `PR
 | [ ] | P2 | Privacy by design | T2B | retention test; policy page |
 | [ ] | P3 | Tests for demo and logic | T00, T03, T73 | demo e2e passes twice |
 | [ ] | P5 | Drop "Security Grid" framing | T01, T72 | grep empty |
-| [ ] | P6 | Installable PWA | T70 | Lighthouse installability |
+| [x] | P6 | Installable PWA | T70 | Lighthouse installability |
 
 Infrastructure tasks without a feature row: T02 (env), T40 (map refactor), T50 (LLM provider chain and guardrails), T59 (AI eval), T74 (audit). They are still required.
 

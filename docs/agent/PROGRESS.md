@@ -1,5 +1,5 @@
 # Progress ledger
-Current task: T70 · Installable PWA (Track A)
+Current task: T72 · Security and Framing Audit (Track A)
 
 > Keys-later mode: see docs/plan/KEYS_LATER.md
 
@@ -7,6 +7,46 @@ Current task: T70 · Installable PWA (Track A)
 - None
 
 ## Done
+
+### T70 · Installable PWA manifest and service worker · 2026-10-28
+- **Goal:** Implement installable Progressive Web App (PWA) with valid web manifest, icons (192x192, 512x512, maskable, apple-touch), service worker (`public/sw.js`) with offline caching and shell fallback (`public/offline.html`), and in-app install prompt banner.
+- **Implemented:**
+  - `public/manifest.json`: Web app manifest configured with name ("CivicPulse - Municipal Road Truth Ledger"), short_name ("CivicPulse"), theme color `#0D1117`, background color `#020617`, display `standalone`, start URL `/`, and standard icon configurations.
+  - `scripts/generate-pwa-icons.ts`: Generated crisp SVG-rendered icons using `sharp`:
+    - `public/icons/icon-192x192.png`
+    - `public/icons/icon-512x512.png`
+    - `public/icons/icon-512x512-maskable.png`
+    - `public/icons/apple-touch-icon.png`
+  - `public/sw.js`: Service worker implementing precaching of shell assets, cache-first for static assets, network-first for HTML navigations with offline fallback, and bypass for `/api/` mutation requests.
+  - `public/offline.html`: Self-contained municipal offline fallback page explaining device key local queueing.
+  - `src/components/pwa/PwaManager.tsx`: React client component handling service worker registration, `beforeinstallprompt` handling, and dismissible install prompt banner.
+  - `src/components/providers.tsx`: Mounted `PwaManager` into global client providers.
+  - `src/app/layout.tsx`: Configured Next.js viewport (`themeColor: #0D1117`) and metadata (`manifest: /manifest.json`, `appleWebApp`, `icons`).
+  - `tests/unit/pwa.test.ts`: Vitest suite validating manifest schema, icon files, service worker event listeners, and offline template.
+  - `tests/e2e/pwa.spec.ts`: Playwright test verifying HTTP responses for manifest, offline page, icons, and presence of `<link rel="manifest">` in `<head>`.
+- **Verified Against Docs:** PLAN.md Section 10 T70 card, Section 11 P6 row.
+- **Checks Run:**
+  ```
+  [Vitest: T70 Unit Suite]
+  ✓ tests/unit/pwa.test.ts (4 tests) 13ms
+  4 passed
+
+  [Playwright: T70 E2E Acceptance]
+  ok 1 [chromium] › tests/e2e/pwa.spec.ts:4:7 › T70: PWA Installability and Static Shell (3.9s)
+  1 passed (5.0s)
+
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✔ 0 errors, 1 warning (img element in report page)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  34 passed (34)
+  Tests  193 passed (193)
+  > next build --webpack
+  ✓ Compiled successfully in 8.7s
+  ✓ Generating static pages (19/19) in 632ms
+  ```
 
 ### T60(A) · Road timeline and seeded history · 2026-10-28
 - **Goal:** Implement public road timeline page (`/road/[segmentId]`) and API endpoint (`/api/segments/[id]/timeline`) displaying chronological municipal road history for pilot Outer Ring Road segment with seed tags, agency labels, and handoffs.

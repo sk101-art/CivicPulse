@@ -1,0 +1,32 @@
+{
+  "name": "CivicPulse - Municipal Road Truth Ledger",
+  "short_name": "CivicPulse",
+  "description": "Bengaluru road truth ledger and civic infrastructure monitoring",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#0D1117",
+  "orientation": "portrait-primary",
+  "categories": ["utilities", "government", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
