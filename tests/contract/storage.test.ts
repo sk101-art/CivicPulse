@@ -4,9 +4,13 @@ import {
   uploadEvidencePhoto,
   validatePhoto,
   computePhotoSha256,
+  deriveUrlFromDatabaseString,
+  resolveSupabaseUrl,
   StorageValidationError,
+  StorageUploadError,
   MAX_PHOTO_SIZE_BYTES,
 } from "@/lib/external/storage";
+import { sanitizeErrorMessage, formatSafeApiError } from "@/lib/api/errors";
 
 describe("T13 Contract Test: Photo Storage", () => {
   // 1x1 valid sample JPEG header bytes
@@ -96,5 +100,43 @@ describe("T13 Contract Test: Photo Storage", () => {
 
     expect(result.path).toBe("issues/iss_webp_789/rep_webp_101.webp");
     expect(result.url).toContain("issues/iss_webp_789/rep_webp_101.webp");
+  });
+
+  it("derives canonical Supabase project URL from connection pooling username", () => {
+    const derived = deriveUrlFromDatabaseString();
+    // In our test environment with APP_DATABASE_URL containing postgres.ofkshdculpzvqergntcs
+    expect(derived).toBe("https://ofkshdculpzvqergntcs.supabase.co");
+  });
+
+  it("resolves and normalizes SUPABASE_URL, falling back from dead/stale host", () => {
+    const resolved = resolveSupabaseUrl();
+    expect(resolved).toBeTruthy();
+    expect(resolved).toContain("https://");
+    expect(resolved).not.toContain("rljzuuwzwsdorimmbglx");
+  });
+
+  it("sanitizes error messages by redacting JWTs, connection credentials, and file paths", () => {
+    const sensitive =
+      "Error: failed at postgresql://postgres.myuser:s3cr3t_pass@aws-0-ap-south-1.pooler.supabase.com:6543/postgres with token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.doNotLeakThisToken on file C:\\Users\\secret\\app\\storage.ts";
+
+    const sanitized = sanitizeErrorMessage(sensitive);
+    expect(sanitized).not.toContain("s3cr3t_pass");
+    expect(sanitized).not.toContain("doNotLeakThisToken");
+    expect(sanitized).not.toContain("C:\\Users\\secret");
+    expect(sanitized).toContain("[REDACTED]:[REDACTED]");
+    expect(sanitized).toContain("[REDACTED_JWT]");
+    expect(sanitized).toContain("[internal_path]");
+  });
+
+  it("formatSafeApiError formats StorageUploadError with 502 Bad Gateway and sanitized message", () => {
+    const uploadErr = new StorageUploadError(
+      "Unable to connect to Supabase Storage (fetch failed: host unreachable). Please verify SUPABASE_URL in Vercel environment settings.",
+      502
+    );
+
+    const formatted = formatSafeApiError(uploadErr);
+    expect(formatted.status).toBe(502);
+    expect(formatted.code).toBe("STORAGE_UPLOAD_FAILED");
+    expect(formatted.message).toContain("fetch failed: host unreachable");
   });
 });

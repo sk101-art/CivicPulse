@@ -1,6 +1,6 @@
 import { withAuth } from "@/lib/api/auth";
 import { parseJson } from "@/lib/api/validate";
-import { apiError } from "@/lib/api/errors";
+import { apiError, formatSafeApiError } from "@/lib/api/errors";
 import { processVerification } from "@/lib/issues/verification";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -66,7 +66,7 @@ export async function POST(
     );
   } catch (error: unknown) {
     console.error("Verification processing failed:", error);
-    const message = error instanceof Error ? error.message : "Internal verification error";
-    return apiError(400, "VERIFICATION_FAILED", message);
+    const { status, code, message } = formatSafeApiError(error, "Internal verification error");
+    return apiError(status, code, message);
   }
 }

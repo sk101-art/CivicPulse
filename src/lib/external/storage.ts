@@ -29,6 +29,52 @@ export class StorageValidationError extends Error {
   }
 }
 
+export class StorageUploadError extends Error {
+  public readonly statusCode: number;
+  public readonly code: string;
+
+  constructor(message: string, statusCode = 502, code = "STORAGE_UPLOAD_FAILED") {
+    super(message);
+    this.name = "StorageUploadError";
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+}
+
+/**
+ * Derives the canonical Supabase project URL from APP_DATABASE_URL or DIRECT_DATABASE_URL
+ * when connection pooling username follows postgres.<project_ref>.
+ */
+export function deriveUrlFromDatabaseString(): string | null {
+  const dbUrl = env.APP_DATABASE_URL || env.DIRECT_DATABASE_URL || "";
+  const match = dbUrl.match(/postgres\.([a-z0-9_-]+):/i);
+  if (match && match[1]) {
+    return `https://${match[1]}.supabase.co`;
+  }
+  return null;
+}
+
+/**
+ * Resolves the primary Supabase URL with validation and fallback to database string derivation.
+ */
+export function resolveSupabaseUrl(): string | null {
+  const rawUrl = env.SUPABASE_URL?.trim();
+  if (rawUrl && rawUrl.length > 0) {
+    let normalized = rawUrl.replace(/\/+$/, "");
+    if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
+      normalized = "https://" + normalized;
+    }
+    // If the configured URL is the known dead/stale host, prefer the active derived one
+    if (normalized.includes("rljzuuwzwsdorimmbglx")) {
+      const derived = deriveUrlFromDatabaseString();
+      if (derived) return derived;
+    }
+    return normalized;
+  }
+
+  return deriveUrlFromDatabaseString();
+}
+
 export function computePhotoSha256(buffer: Buffer): string {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
@@ -67,26 +113,57 @@ export async function uploadEvidencePhoto({
   const bucket = env.SUPABASE_EVIDENCE_BUCKET || "evidence";
 
   const isTest = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
-  const supabaseUrl = env.SUPABASE_URL;
   const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
+  const targetUrl = resolveSupabaseUrl();
 
-  if (supabaseUrl && serviceRoleKey && !isTest) {
-    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+  if (targetUrl && serviceRoleKey && !isTest) {
+    let supabase = createClient(targetUrl, serviceRoleKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
       },
     });
 
-    const { error: uploadError } = await supabase.storage
+    let { error: uploadError } = await supabase.storage
       .from(bucket)
       .upload(path, buffer, {
         contentType: mimeType,
         upsert: true,
       });
 
+    // If initial upload failed due to network/fetch failure, try derived URL if different
+    const derivedUrl = deriveUrlFromDatabaseString();
+    if (uploadError && derivedUrl && derivedUrl !== targetUrl && uploadError.message?.includes("fetch failed")) {
+      console.warn(`Supabase storage failed on ${targetUrl}, attempting derived URL ${derivedUrl}`);
+      const fallbackClient = createClient(derivedUrl, serviceRoleKey, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      });
+      const fallbackRes = await fallbackClient.storage
+        .from(bucket)
+        .upload(path, buffer, {
+          contentType: mimeType,
+          upsert: true,
+        });
+      if (!fallbackRes.error) {
+        uploadError = null;
+        supabase = fallbackClient;
+      }
+    }
+
     if (uploadError) {
-      throw new Error(`Supabase Storage upload failed: ${uploadError.message}`);
+      const isFetchFailed = uploadError.message?.toLowerCase().includes("fetch failed");
+      let diagnosticMessage = `Supabase Storage upload failed: ${uploadError.message}`;
+      if (isFetchFailed) {
+        diagnosticMessage = `Unable to connect to Supabase Storage (fetch failed: host unreachable). Please verify SUPABASE_URL in Vercel environment settings.`;
+      } else if (uploadError.statusCode === "403" || uploadError.status === 403 || uploadError.message?.includes("AccessDenied")) {
+        diagnosticMessage = `Supabase Storage access denied (${uploadError.message}). Please verify SUPABASE_SERVICE_ROLE_KEY.`;
+      } else if (uploadError.statusCode === "404" || uploadError.status === 404) {
+        diagnosticMessage = `Supabase Storage bucket '${bucket}' not found. Ensure the '${bucket}' bucket exists in your Supabase project.`;
+      }
+      throw new StorageUploadError(diagnosticMessage, 502, "STORAGE_UPLOAD_FAILED");
     }
 
     const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
@@ -102,7 +179,7 @@ export async function uploadEvidencePhoto({
 
   // Test mode or keys-later mode: construct the standard Supabase public object URL
   // Default URL format for Supabase public bucket
-  const syntheticHost = supabaseUrl || "https://ofkshdculpzvqergntcs.supabase.co";
+  const syntheticHost = targetUrl || "https://ofkshdculpzvqergntcs.supabase.co";
   const publicUrl = `${syntheticHost}/storage/v1/object/public/${bucket}/${path}`;
 
   return {

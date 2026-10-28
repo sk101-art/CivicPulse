@@ -1,6 +1,6 @@
 import { withAuth } from "@/lib/api/auth";
 import { parseJson } from "@/lib/api/validate";
-import { apiError } from "@/lib/api/errors";
+import { apiError, formatSafeApiError } from "@/lib/api/errors";
 import { prisma } from "@/lib/db/prisma";
 import {
   transition,
@@ -202,6 +202,7 @@ export async function POST(
     );
   } catch (error: unknown) {
     console.error("Desk action execution failed:", error);
-    return apiError(500, "INTERNAL_ERROR", "Internal error executing desk action");
+    const { status, code, message } = formatSafeApiError(error, "Internal error executing desk action");
+    return apiError(status, code, message);
   }
 }

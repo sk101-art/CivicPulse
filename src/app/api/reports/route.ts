@@ -1,11 +1,11 @@
 import { withAuth } from "@/lib/api/auth";
-import { apiError } from "@/lib/api/errors";
+import { apiError, formatSafeApiError } from "@/lib/api/errors";
 import { prisma } from "@/lib/db/prisma";
 import { ingestReportWithSpatialMerge } from "@/lib/issues/merge";
 import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { verifyEvidence } from "@/lib/evidence/verify";
 import { toCanonicalJson, type EvidencePayload } from "@/lib/evidence/sign";
-import { uploadEvidencePhoto } from "@/lib/external/storage";
+import * as storage from "@/lib/external/storage";
 import { NextResponse } from "next/server";
 import { Category, Status } from "@prisma/client";
 import { z } from "zod";
@@ -159,7 +159,7 @@ export async function POST(req: Request) {
       }
 
       // Upload evidence photo to Supabase storage
-      const uploadResult = await uploadEvidencePhoto({
+      const uploadResult = await storage.uploadEvidencePhoto({
         issueId: "report-evidence",
         reportId: crypto.randomUUID(),
         buffer: photoBuffer,
@@ -218,7 +218,8 @@ export async function POST(req: Request) {
     return apiError(400, "VALIDATION_ERROR", "Invalid report payload format");
   } catch (error: unknown) {
     console.error("Report ingestion failed:", error);
-    return apiError(500, "INTERNAL_ERROR", "Internal server error filing report");
+    const { status, code, message } = formatSafeApiError(error, "Internal server error filing report");
+    return apiError(status, code, message);
   }
 }
 

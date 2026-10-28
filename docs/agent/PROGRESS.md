@@ -8,6 +8,33 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Fix · Supabase Storage Resilience and API Error Sanitization · 2026-10-28
+- **Goal:** Fix `POST /api/reports` 500 error on Vercel caused by Supabase Storage `fetch failed`, add automated test suite, ensure resilient canonical project URL recovery, and return sanitized, informative error diagnostics without leaking secrets.
+- **Root Cause:**
+  1. `SUPABASE_URL` in `.env.local` / Vercel was configured with `https://rljzuuwzwsdorimmbglx.supabase.co`, which has no DNS record (`getaddrinfo ENOTFOUND`). The actual database project ref is `ofkshdculpzvqergntcs` (`https://ofkshdculpzvqergntcs.supabase.co`).
+  2. In `src/app/api/reports/route.ts`, the catch block caught storage failures and masked them with a generic `500 INTERNAL_ERROR "Internal server error filing report"`, giving the client zero actionable diagnostics.
+- **Implemented:**
+  - `src/lib/api/errors.ts`: Added `sanitizeErrorMessage` (redacts DB credentials with passwords, JWTs, API keys, internal filesystem paths) and `formatSafeApiError` (maps `StorageUploadError` to 502 Bad Gateway with diagnostic guidance, `StorageValidationError` to 400).
+  - `src/lib/external/storage.ts`: Added `StorageUploadError`, `deriveUrlFromDatabaseString` (derives canonical Supabase project URL from `APP_DATABASE_URL` pooler username `postgres.<ref>`), and `resolveSupabaseUrl` (detects and recovers from stale/dead host `rljzuuwzwsdorimmbglx`, attempts fallback if initial upload fails with network `fetch failed`).
+  - `src/app/api/reports/route.ts`, `src/app/api/issues/[id]/actions/route.ts`, `src/app/api/issues/[id]/verify/route.ts`: Switched error handlers to `formatSafeApiError` so clear sanitized messages are returned to the UI.
+  - `tests/unit/storage-error-handling.test.ts`: Added comprehensive test suite verifying 502 `STORAGE_UPLOAD_FAILED` response on storage failure, 400 on storage validation error, secret/credential sanitization, and URL derivation.
+  - `tests/contract/storage.test.ts`: Added unit tests for URL derivation and sanitization.
+- **Checks Run:**
+  ```
+  [Full Gate: npm run lint && npm run typecheck && npm test && npm run build]
+  > eslint
+  ✖ 1 problem (0 errors, 1 warning)
+  > tsc --noEmit
+  ✔ 0 errors
+  > vitest run
+  Test Files  36 passed (36)
+  Tests  205 passed (205)
+  > next build --webpack
+  ✓ Compiled successfully in 7.8s
+  Finished TypeScript in 10.0s ...
+  ✓ Generating static pages using 15 workers (19/19) in 564ms
+  ```
+
 ### Fix · Prisma generate on Vercel · 2026-10-28
 - **Goal:** Fix Vercel build failure (`Type error: Module "@prisma/client" has no exported member 'Role' (prisma/seed.ts)`).
 - **Implemented:**
