@@ -27,19 +27,31 @@ describe("T23 Acceptance: Report flow rewrite and deduplication", () => {
   const lat10mNorth = baseLat + 0.00009;
 
   beforeAll(async () => {
-    // Find or create test citizen user
-    let user = await prisma.user.findFirst({
-      where: { role: Role.CITIZEN },
+    // Clean up any lingering open issues near test coordinates from previous runs
+    const existingNear = await prisma.issue.findMany({
+      where: {
+        lat: { gte: baseLat - 0.005, lte: baseLat + 0.005 },
+        lng: { gte: baseLng - 0.005, lte: baseLng + 0.005 },
+        status: { notIn: ["REJECTED", "VERIFIED_FIXED"] },
+      },
+      select: { id: true },
     });
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          email: "test-citizen-t23@example.local",
-          role: Role.CITIZEN,
-          passwordHash: "hash_test",
-        },
+    if (existingNear.length > 0) {
+      await prisma.issue.updateMany({
+        where: { id: { in: existingNear.map((i) => i.id) } },
+        data: { status: "REJECTED" },
       });
     }
+
+    // Create dedicated test citizen user with unique email
+    const uniqueEmail = `test-citizen-rf-${Date.now()}@example.local`;
+    const user = await prisma.user.create({
+      data: {
+        email: uniqueEmail,
+        role: Role.CITIZEN,
+        passwordHash: "hash_test",
+      },
+    });
     citizenUserId = user.id;
 
     // Generate and register device key

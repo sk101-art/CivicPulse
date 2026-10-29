@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Tier, Category, Status, Band, SegmentEventType, AuditKind, AuditTaskStatus, AuditObserved } from '@prisma/client';
+import { PrismaClient, Role, Tier, Category, Status, Band, SegmentEventType, AuditKind, AuditTaskStatus, AuditObserved, DeteriorationRisk, DayType, ProfileSource } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
@@ -14,9 +14,9 @@ if (fs.existsSync(path.join(rootDir, '.env.local'))) {
   dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
 }
 
-const connectionString = process.env.DIRECT_DATABASE_URL || process.env.APP_DATABASE_URL;
+const connectionString = process.env.APP_DATABASE_URL || process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL;
 if (!connectionString) {
-  throw new Error('Database connection URL (DIRECT_DATABASE_URL or APP_DATABASE_URL) is required.');
+  throw new Error('Database connection URL (DATABASE_URL, DIRECT_DATABASE_URL, or APP_DATABASE_URL) is required.');
 }
 
 const pool = new Pool({ connectionString });
@@ -306,6 +306,16 @@ export async function seedDemoData() {
       agencyId: agencyMap['GBA'],
       segmentId: pilotSegmentId,
       recurrenceOf: fixedIssue.id,
+      deteriorationRisk: DeteriorationRisk.HIGH,
+      deteriorationScore: 84,
+      expectedDaysToWorsen: 3,
+      isHotspot: true,
+      lanePosition: 'CURB',
+      deteriorationDrivers: [
+        { name: 'Heavy rain: 38 mm past 7 d', impactScore: 28 },
+        { name: 'High bus frequency: 45 buses/h', impactScore: 25 },
+        { name: 'Stop-and-go braking: delay 62%', impactScore: 15 },
+      ] as any,
       createdAt: new Date(now.getTime() - 7 * dayMs),
       slaDueAt: new Date(now.getTime() + 48 * 3600 * 1000),
       isSeed: true,
@@ -322,6 +332,16 @@ export async function seedDemoData() {
       agencyId: agencyMap['GBA'],
       segmentId: pilotSegmentId,
       recurrenceOf: fixedIssue.id,
+      deteriorationRisk: DeteriorationRisk.HIGH,
+      deteriorationScore: 84,
+      expectedDaysToWorsen: 3,
+      isHotspot: true,
+      lanePosition: 'CURB',
+      deteriorationDrivers: [
+        { name: 'Heavy rain: 38 mm past 7 d', impactScore: 28 },
+        { name: 'High bus frequency: 45 buses/h', impactScore: 25 },
+        { name: 'Stop-and-go braking: delay 62%', impactScore: 15 },
+      ] as any,
       createdAt: new Date(now.getTime() - 7 * dayMs),
       slaDueAt: new Date(now.getTime() + 48 * 3600 * 1000),
       isSeed: true,
@@ -375,6 +395,15 @@ export async function seedDemoData() {
       band: Band.MEDIUM,
       agencyId: agencyMap['BESCOM'],
       segmentId: 'seed-demo-seg-cessna-park',
+      deteriorationRisk: DeteriorationRisk.MED,
+      deteriorationScore: 52,
+      expectedDaysToWorsen: 10,
+      isHotspot: false,
+      lanePosition: 'CENTER',
+      deteriorationDrivers: [
+        { name: 'Moderate moisture: 14 mm rain', impactScore: 15 },
+        { name: 'Collector corridor bus traffic', impactScore: 12 },
+      ] as any,
       createdAt: new Date(now.getTime() - 5 * dayMs),
       slaDueAt: new Date(now.getTime() + 18 * 3600 * 1000),
       isSeed: true,
@@ -390,6 +419,15 @@ export async function seedDemoData() {
       band: Band.MEDIUM,
       agencyId: agencyMap['BESCOM'],
       segmentId: 'seed-demo-seg-cessna-park',
+      deteriorationRisk: DeteriorationRisk.MED,
+      deteriorationScore: 52,
+      expectedDaysToWorsen: 10,
+      isHotspot: false,
+      lanePosition: 'CENTER',
+      deteriorationDrivers: [
+        { name: 'Moderate moisture: 14 mm rain', impactScore: 15 },
+        { name: 'Collector corridor bus traffic', impactScore: 12 },
+      ] as any,
       createdAt: new Date(now.getTime() - 5 * dayMs),
       slaDueAt: new Date(now.getTime() + 18 * 3600 * 1000),
       isSeed: true,
@@ -409,6 +447,14 @@ export async function seedDemoData() {
       band: Band.LOW,
       agencyId: agencyMap['GBA'],
       segmentId: 'seed-demo-seg-agara-lake',
+      deteriorationRisk: DeteriorationRisk.LOW,
+      deteriorationScore: 20,
+      expectedDaysToWorsen: 21,
+      isHotspot: false,
+      lanePosition: 'SHOULDER',
+      deteriorationDrivers: [
+        { name: 'Standard residential roadbed wear', impactScore: 10 },
+      ] as any,
       createdAt: new Date(now.getTime() - 10 * dayMs),
       slaDueAt: new Date(now.getTime() + 72 * 3600 * 1000),
       isSeed: true,
@@ -424,6 +470,14 @@ export async function seedDemoData() {
       band: Band.LOW,
       agencyId: agencyMap['GBA'],
       segmentId: 'seed-demo-seg-agara-lake',
+      deteriorationRisk: DeteriorationRisk.LOW,
+      deteriorationScore: 20,
+      expectedDaysToWorsen: 21,
+      isHotspot: false,
+      lanePosition: 'SHOULDER',
+      deteriorationDrivers: [
+        { name: 'Standard residential roadbed wear', impactScore: 10 },
+      ] as any,
       createdAt: new Date(now.getTime() - 10 * dayMs),
       slaDueAt: new Date(now.getTime() + 72 * 3600 * 1000),
       isSeed: true,
@@ -593,6 +647,39 @@ export async function seedDemoData() {
       createdAt: new Date(now.getTime() - 3 * dayMs),
     },
   });
+
+  // 9. Pre-compute PlaceTrafficProfile for pilot demo issues
+  const pilotIssueIds = [recurrenceIssueId, 'seed-demo-medium-cessna', 'seed-demo-low-agara'];
+  for (const pId of pilotIssueIds) {
+    for (const dayType of [DayType.WEEKDAY, DayType.WEEKEND]) {
+      for (let hour = 0; hour < 24; hour++) {
+        const isNight = hour >= 22 || hour < 6;
+        const isPeak = (hour >= 8 && hour <= 11) || (hour >= 17 && hour <= 21);
+        const delayRatio = isNight ? 0.04 : isPeak ? 0.65 : 0.22;
+
+        const profId = `prof_${pId}_${dayType}_${hour}`;
+        await prisma.placeTrafficProfile.upsert({
+          where: {
+            id: profId,
+          },
+          update: {
+            delayRatio,
+            source: ProfileSource.TOMTOM_HISTORIC,
+            fetchedAt: now,
+          },
+          create: {
+            id: profId,
+            issueId: pId,
+            dayType,
+            hour,
+            delayRatio,
+            source: ProfileSource.TOMTOM_HISTORIC,
+            fetchedAt: now,
+          },
+        });
+      }
+    }
+  }
 
   console.log('[Seed Demo] Demo environment seeded successfully!');
 }

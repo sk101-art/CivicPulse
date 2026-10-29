@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { DeskQueue } from "@/components/desk/DeskQueue";
 import { DeskMetricsBar } from "@/components/desk/DeskMetricsBar";
+import { DeskAnalystPanel } from "@/components/desk/DeskAnalystPanel";
 import { Band, Status } from "@prisma/client";
 
 export const revalidate = 0;
@@ -128,6 +129,8 @@ export default async function DeskPage() {
           wardLifespans={wardLifespans}
           contractorLifespans={contractorLifespans}
         />
+
+        <DeskAnalystPanel />
 
         <DeskQueue
           initialIssues={JSON.parse(JSON.stringify(issues))}

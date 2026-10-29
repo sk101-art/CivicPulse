@@ -98,7 +98,7 @@ describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
 
   describe("Daily TomTom Quota Tracking (1,200 calls/day cap)", () => {
     it("tracks and caps daily TomTom calls at 1,200", async () => {
-      const testDay = "2026-10-29";
+      const testDay = "2099-12-31";
       await resetDailyTomTomCallCount(testDay);
 
       expect(await getDailyTomTomCallCount(testDay)).toBe(0);

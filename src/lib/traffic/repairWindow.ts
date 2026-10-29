@@ -173,9 +173,9 @@ export function computeMultiFactorRepairWindows(options: {
   priorityIndex?: number;
   deteriorationRisk?: "LOW" | "MED" | "HIGH";
   wardCrewHoursMode?: "DAY_ONLY" | "NIGHT_ONLY" | "STANDARD" | "ANY";
-  hourlyProfiles: Map<string, number>; // key: `${dayType}-${hour}` -> delayRatio
-  hourlyWeather: Map<string, { precipMm: number; precipProb: number; tempC: number }>; // key: ISO string hour
-  surroundings: SurroundingsResult;
+  hourlyProfiles?: Map<string, number>; // key: `${dayType}-${hour}` -> delayRatio
+  hourlyWeather?: Map<string, { precipMm: number; precipProb: number; tempC: number }>; // key: ISO string hour
+  surroundings?: SurroundingsResult;
   incidentsResult?: TrafficIncidentsResult;
   sampleCount?: number;
   now?: Date;
@@ -187,20 +187,33 @@ export function computeMultiFactorRepairWindows(options: {
     priorityIndex = 50,
     deteriorationRisk = "LOW",
     wardCrewHoursMode = "STANDARD",
-    hourlyProfiles,
-    hourlyWeather,
+    hourlyProfiles = new Map(),
+    hourlyWeather = new Map(),
     surroundings,
     incidentsResult,
     sampleCount = 0,
   } = options;
+
+  const safeSurroundings: SurroundingsResult = surroundings || {
+    schools: [],
+    hospitals: [],
+    markets: [],
+    road: {
+      highway: "secondary",
+      lanes: 2,
+      oneway: false,
+    },
+    cached: false,
+    source: "fallback",
+  };
 
   const now = options.now ?? new Date();
   const basis: "live" | "estimated" = sampleCount > 0 ? "live" : "estimated";
 
   // Lane and Direction modeling
   const forwardDir = getCompassDirection(bearingDeg);
-  const totalLanes = Math.max(1, surroundings.road.lanes || 2);
-  const oneway = surroundings.road.oneway;
+  const totalLanes = Math.max(1, safeSurroundings.road.lanes || 2);
+  const oneway = safeSurroundings.road.oneway;
   const direction = forwardDir;
 
   const normPos = (lanePosition || "CURB").toUpperCase();
@@ -288,8 +301,8 @@ export function computeMultiFactorRepairWindows(options: {
     let hospitalStatusText = "";
 
     // School check (< 200m)
-    if (surroundings.nearestSchool && surroundings.nearestSchool.distanceM <= 200) {
-      const dist = surroundings.nearestSchool.distanceM;
+    if (safeSurroundings.nearestSchool && safeSurroundings.nearestSchool.distanceM <= 200) {
+      const dist = safeSurroundings.nearestSchool.distanceM;
       const isSchoolHour =
         dayType === DayType.WEEKDAY &&
         ((fStart.hour >= 7 && fStart.hour < 10) || (fStart.hour >= 14 && fStart.hour < 16));
@@ -303,8 +316,8 @@ export function computeMultiFactorRepairWindows(options: {
     }
 
     // Hospital check (< 200m)
-    if (surroundings.nearestHospital && surroundings.nearestHospital.distanceM <= 200) {
-      const dist = surroundings.nearestHospital.distanceM;
+    if (safeSurroundings.nearestHospital && safeSurroundings.nearestHospital.distanceM <= 200) {
+      const dist = safeSurroundings.nearestHospital.distanceM;
       const isNight = fStart.hour >= 22 || fStart.hour < 6;
       if (isNight) {
         surroundingsScore -= 50; // Noise restriction for heavy machinery/jackhammers
@@ -315,7 +328,7 @@ export function computeMultiFactorRepairWindows(options: {
     }
 
     // Market check (< 200m)
-    if (surroundings.nearestMarket && surroundings.nearestMarket.distanceM <= 200) {
+    if (safeSurroundings.nearestMarket && safeSurroundings.nearestMarket.distanceM <= 200) {
       const isMarketHour = fStart.hour >= 17 && fStart.hour < 21;
       if (isMarketHour) {
         surroundingsScore -= 40;
@@ -488,12 +501,12 @@ export function computeMultiFactorRepairWindows(options: {
     roadInfo: {
       lanes: totalLanes,
       oneway,
-      name: surroundings.road.name,
+      name: safeSurroundings.road?.name,
     },
     surroundings: {
-      nearestSchoolDistM: surroundings.nearestSchool?.distanceM,
-      nearestHospitalDistM: surroundings.nearestHospital?.distanceM,
-      nearestMarketDistM: surroundings.nearestMarket?.distanceM,
+      nearestSchoolDistM: safeSurroundings.nearestSchool?.distanceM,
+      nearestHospitalDistM: safeSurroundings.nearestHospital?.distanceM,
+      nearestMarketDistM: safeSurroundings.nearestMarket?.distanceM,
     },
     incidents: incidentsResult?.incidents?.map((i) => i.description) || [],
   };

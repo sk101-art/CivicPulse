@@ -5,7 +5,7 @@ import {
   X, CheckCircle2, XCircle, ArrowRightLeft, 
   Play, CheckCheck, RotateCcw, AlertTriangle, 
   Clock, MapPin, Building2, ShieldAlert, Loader2,
-  UserCheck, Camera, FileText
+  UserCheck, Camera, FileText, Sparkles
 } from 'lucide-react';
 import { getAllowedActions, type IssueAction } from '@/lib/issues/stateMachine';
 import { Status, Band, Category } from '@prisma/client';
@@ -63,6 +63,11 @@ export interface DeskIssueItem {
   warrantyUntil?: string | Date | null;
   lifespanDays?: number | null;
   liabilityClauseRef?: string | null;
+  deteriorationRisk?: "LOW" | "MED" | "HIGH" | null;
+  deteriorationScore?: number | null;
+  expectedDaysToWorsen?: number | null;
+  isHotspot?: boolean;
+  deteriorationDrivers?: Array<{ name: string; impactScore: number }> | null;
 }
 
 interface AgencyOption {
@@ -96,6 +101,15 @@ export function IssueDrawer({
   const [contractorName, setContractorName] = useState(issue?.contractorName || '');
   const [tenderId, setTenderId] = useState(issue?.tenderId || '');
   const [liabilityClauseRef, setLiabilityClauseRef] = useState(issue?.liabilityClauseRef || '');
+  const [analystSummary, setAnalystSummary] = useState<{
+    summary: string;
+    priorityAdjustmentRecommended: number;
+    reasoning: string;
+    keyRisks: string[];
+    suggestedAction: string;
+  } | null>(null);
+  const [analystDismissed, setAnalystDismissed] = useState(false);
+  const [priorityAccepted, setPriorityAccepted] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const issueId = issue?.id;
@@ -104,6 +118,8 @@ export function IssueDrawer({
     if (!issueId) return;
 
     let isMounted = true;
+    setAnalystDismissed(false);
+    setPriorityAccepted(false);
 
     const loadLogs = async () => {
       setLoadingLogs(true);
@@ -127,7 +143,20 @@ export function IssueDrawer({
       }
     };
 
+    const loadAnalyst = async () => {
+      try {
+        const res = await fetch(`/api/issues/${issueId}/analyst`);
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted) setAnalystSummary(data);
+        }
+      } catch {
+        // Fallback gracefully
+      }
+    };
+
     void loadLogs();
+    void loadAnalyst();
 
     return () => {
       isMounted = false;
@@ -365,6 +394,99 @@ export function IssueDrawer({
 
           {/* Live Traffic Intelligence & 24h Profile */}
           <LiveTrafficCard issueId={issue.id} variant="drawer" />
+
+          {/* Pavement Deterioration Intelligence Panel */}
+          <div data-testid="pavement-deterioration-panel" className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-400" />
+                Pavement Deterioration Intelligence
+              </span>
+              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
+                issue.deteriorationRisk === 'HIGH'
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                  : issue.deteriorationRisk === 'MED'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+              }`}>
+                {issue.deteriorationRisk || 'MODERATE'} Risk ({issue.deteriorationScore ?? 45}/100)
+              </span>
+            </div>
+            <p className="text-xs font-mono text-white/80 leading-relaxed">
+              {issue.expectedDaysToWorsen
+                ? `Pavement worsening expected in ~${issue.expectedDaysToWorsen} days under current moisture and heavy vehicle stresses.`
+                : 'Pavement stable; standard wear cycle.'}
+            </p>
+            {issue.isHotspot && (
+              <div className="text-[11px] font-mono text-rose-400 bg-rose-950/40 border border-rose-800/40 px-2.5 py-1 rounded-lg">
+                Chronic Hotspot: ≥3 defects recorded on this road corridor in 90 days.
+              </div>
+            )}
+          </div>
+
+          {/* AI Analyst Desk Co-Pilot Card */}
+          {analystSummary && !analystDismissed && (
+            <div data-testid="ai-analyst-card" className="p-4 rounded-xl bg-gradient-to-br from-purple-950/30 to-indigo-950/30 border border-purple-500/30 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  AI Analyst Assessment
+                </span>
+                {analystSummary.priorityAdjustmentRecommended !== 0 && !priorityAccepted && (
+                  <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-mono font-bold">
+                    Rec Adj: {analystSummary.priorityAdjustmentRecommended > 0 ? `+${analystSummary.priorityAdjustmentRecommended}` : analystSummary.priorityAdjustmentRecommended}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs font-mono text-purple-100/90 leading-relaxed bg-black/20 p-2.5 rounded-lg border border-purple-900/40">
+                {analystSummary.summary}
+              </p>
+              <div className="text-[11px] font-mono text-white/60 space-y-0.5">
+                <div>Reasoning: {analystSummary.reasoning}</div>
+                <div>Action: {analystSummary.suggestedAction}</div>
+              </div>
+              {!priorityAccepted ? (
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    data-testid="accept-priority-adj-btn"
+                    onClick={async () => {
+                      setPriorityAccepted(true);
+                      try {
+                        await fetch(`/api/issues/${issue.id}/actions`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            action: 'OVERRIDE_BAND',
+                            band: issue.priority + analystSummary.priorityAdjustmentRecommended >= 70 ? 'CRITICAL' : 'HIGH',
+                            note: `AI Analyst priority adjustment accepted: ${analystSummary.priorityAdjustmentRecommended > 0 ? '+' : ''}${analystSummary.priorityAdjustmentRecommended} points (${analystSummary.reasoning})`,
+                          }),
+                        });
+                        onActionComplete();
+                      } catch (err) {
+                        console.error('Failed to accept AI adjustment', err);
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-purple-500 hover:bg-purple-400 text-black text-xs font-mono font-bold transition-colors"
+                  >
+                    Accept ({analystSummary.priorityAdjustmentRecommended > 0 ? `+${analystSummary.priorityAdjustmentRecommended}` : analystSummary.priorityAdjustmentRecommended})
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="dismiss-analyst-btn"
+                    onClick={() => setAnalystDismissed(true)}
+                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-xs font-mono transition-colors"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              ) : (
+                <div className="text-xs font-mono text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> Adjustment applied to queue
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Evidence photo preview */}
           {issue.reports && issue.reports[0]?.photoUrl && (

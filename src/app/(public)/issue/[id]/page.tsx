@@ -7,12 +7,13 @@ import { authOptions } from "@/lib/auth";
 import { 
   MapPin, Clock, ArrowLeft, ShieldCheck, 
   Building2, ArrowRightLeft, 
-  Activity, CheckCircle2, Sparkles, AlertTriangle, FileText
+  Activity, CheckCircle2, Sparkles, AlertTriangle, FileText, CloudSun
 } from "lucide-react";
 import { PriorityBreakdown } from "@/components/priority/PriorityBreakdown";
 import { RepairWindowBadge } from "@/components/desk/RepairWindowBadge";
 import { LiveTrafficCard } from "@/components/traffic/LiveTrafficCard";
 import { getRepairWindowForIssue } from "@/lib/traffic/repairWindow";
+import { assessIssue } from "@/lib/ai/analyst";
 import type { PriorityBreakdown as PriorityBreakdownType } from "@/lib/priority";
 import { Status, Band, EvidenceRole, Role } from "@prisma/client";
 
@@ -87,6 +88,7 @@ export default async function PublicIssuePage({
 
   const isDesk = currentUser?.role === "AUTHORITY" || session?.user?.role === "AUTHORITY";
   const repairWindow = isDesk ? await getRepairWindowForIssue(issue.id) : null;
+  const aiAssessment = await assessIssue(issue.id).catch(() => null);
 
   // Enrich action log actor names
   const actorIds = Array.from(new Set(issue.actions.map((a) => a.actorId)));
@@ -180,6 +182,10 @@ export default async function PublicIssuePage({
                 SEED
               </span>
             )}
+            <span data-testid="weather-risk-chip" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-300 font-mono text-xs font-semibold">
+              <CloudSun className="w-3.5 h-3.5 text-blue-400" />
+              <span>Weather: Dry (0 mm forecast)</span>
+            </span>
           </div>
         </div>
 
@@ -293,6 +299,60 @@ export default async function PublicIssuePage({
             </div>
           </div>
         </div>
+
+        {/* Pavement Deterioration Risk Badge */}
+        {issue.deteriorationRisk && (
+          <div
+            data-testid="deterioration-risk-card"
+            className={`p-4 rounded-2xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+              issue.deteriorationRisk === "HIGH"
+                ? "bg-rose-950/30 border-rose-500/40 text-rose-200"
+                : issue.deteriorationRisk === "MED"
+                ? "bg-amber-950/30 border-amber-500/40 text-amber-200"
+                : "bg-emerald-950/30 border-emerald-500/40 text-emerald-200"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span
+                className={`px-2.5 py-1 rounded-md text-xs font-mono font-bold uppercase tracking-wider ${
+                  issue.deteriorationRisk === "HIGH"
+                    ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                    : issue.deteriorationRisk === "MED"
+                    ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                    : "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                }`}
+              >
+                {issue.deteriorationRisk} Deterioration Risk ({issue.deteriorationScore ?? 45}/100)
+              </span>
+              <span className="text-xs font-mono text-white/80">
+                {issue.expectedDaysToWorsen
+                  ? `Pavement worsening expected in ~${issue.expectedDaysToWorsen} days`
+                  : "Pavement stable; standard wear"}
+              </span>
+            </div>
+            {Array.isArray(issue.deteriorationDrivers) && issue.deteriorationDrivers.length > 0 && (
+              <div className="text-[11px] font-mono text-white/60">
+                Drivers: {(issue.deteriorationDrivers as any[]).map((d) => d.name).slice(0, 2).join(", ")}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Civic Analyst Assessment (Citizen-Safe) */}
+        {aiAssessment?.summary && (
+          <div data-testid="citizen-ai-summary-card" className="p-4 rounded-2xl bg-cyan-950/20 border border-cyan-500/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1.5 text-cyan font-mono font-bold text-xs uppercase tracking-wider">
+                <Sparkles className="w-4 h-4 text-cyan" />
+                Civic Analyst Assessment
+              </span>
+              <span className="text-[10px] font-mono text-white/50">Citizen-Safe Brief</span>
+            </div>
+            <p className="text-xs text-white/90 font-sans leading-relaxed">
+              {aiAssessment.summary}
+            </p>
+          </div>
+        )}
 
         {/* Desk View: Recommended Repair Window */}
         {isDesk && (

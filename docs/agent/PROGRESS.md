@@ -8,6 +8,26 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Phase 5 · Complete UI Integration, 84-Slot Heatmap, & Pilot Demonstrations · 2026-10-29
+- **Goal:** Surface traffic profiles, smart repair windows with lane closure details, deterioration intelligence, and AI analyst copilot in the UI across both the citizen public issue page and operations desk. Provide 84-slot repair calendar, ward morning briefings, interactive analyst chat, and seed realistic pilot demonstration scenarios.
+- **Implemented Work:**
+  1. Operations Desk Enhancements:
+     - `src/components/desk/RepairWindowBadge.tsx`: Rebuilt with 84-slot 7-day calendar heatmap toggle, color-coded score thresholds (≥80 emerald, 50-79 amber, <50 rose), slot click selection, lane-closure breakdown (open vs closed lanes, queue delay estimate), and human explanation text.
+     - `src/components/desk/DeskAnalystPanel.tsx`: New component rendered prominently on desk command page (`src/app/desk/page.tsx`), featuring automated morning ward brief (`GET /api/desk/analyst/brief`), recommended municipal actions, and interactive analyst chat assistant (`POST /api/desk/analyst/chat`) with grounded issue citations (`[#id]`).
+     - `src/components/desk/IssueDrawer.tsx`: Embedded Pavement Deterioration Intelligence panel (`deteriorationRisk`, `deteriorationScore`, `expectedDaysToWorsen`, hotspot badge), AI Analyst assessment card with Accept / Dismiss priority adjustment buttons, and 24h live traffic sparkline.
+  2. Citizen Public Issue Page (`src/app/(public)/issue/[id]/page.tsx`):
+     - Weather Risk Chip: Live weather forecast status (dry conditions / rain alert) for asphalt laying readiness.
+     - Pavement Deterioration Risk Card: Displays risk rating (LOW/MED/HIGH), numerical severity score, estimated days to worsening, and named engineering stress drivers.
+     - Live Traffic & 24h Profile: `LiveTrafficCard` showing current flow speed vs free-flow speed, percentage congestion, and 24h hourly delay sparkline with current hour highlighted.
+     - Citizen-Safe AI Briefing: Factual, non-technical plain language summary from the AI analyst.
+  3. Pilot Demonstration Seeding (`scripts/seed-demo.ts`):
+     - Seeded pilot issues across varied bands (CRITICAL on Bellandur ORR, MEDIUM on Cessna Business Park, LOW on Agara Lake corridor) with realistic deterioration risk scores, named stress drivers, and 48-slot historic TomTom place traffic profiles.
+     - Seeded chronic hotspot recurrence scenarios and verified repair windows vary distinctly based on road class and surrounding POIs.
+  4. Verification:
+     - Added `tests/unit/phase5-ui-integration.test.ts` (5 tests covering varied repair windows between heavy arterial vs residential corridors, lane-closure metrics, pavement deterioration decay math, structured ward briefs, and grounded analyst chat citations).
+     - Added Playwright E2E spec `tests/e2e/traffic-and-analyst.spec.ts`.
+     - Full suite passed: 57 test files, 332 tests 100% green; `npm run build` exits 0 with all 47 routes successfully compiled.
+
 ### Phase 4 · The AI Analyst (Desk Co-pilot: Gemini → Groq → Rules) · 2026-10-29
 - **Goal:** Build the Desk AI Analyst with multi-tier provider cascade (Gemini Flash → Groq Llama 3.3 70B → Rules fallback), strict numbers-grounding checks, 250 daily / 7,500 monthly quota guard, four core capabilities (`G-ASSESS`, `G-BRIEF`, `G-AUDIT-ASSIST`, and "Ask the Desk Analyst" chat), and scheduled job `ai-assess`.
 - **Implemented Work:**
