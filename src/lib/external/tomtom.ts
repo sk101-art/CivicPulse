@@ -80,18 +80,26 @@ const MAX_MONTHLY_QUOTA = 20000;
 let monthlyCounterMonth = "";
 let monthlyCallCount = 0;
 
-function checkAndIncrementQuota(): void {
+function tryIncrementMonthlyQuota(): boolean {
   const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
   if (monthlyCounterMonth !== currentMonth) {
     monthlyCounterMonth = currentMonth;
     monthlyCallCount = 0;
   }
   if (monthlyCallCount >= MAX_MONTHLY_QUOTA) {
+    return false;
+  }
+  monthlyCallCount++;
+  return true;
+}
+
+function checkAndIncrementQuota(): void {
+  const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
+  if (!tryIncrementMonthlyQuota()) {
     throw new Error(
       `TomTom monthly quota exceeded: reached ${MAX_MONTHLY_QUOTA} calls for ${currentMonth}`
     );
   }
-  monthlyCallCount++;
 }
 
 export function getMonthlyTomTomCallCount(): number {
@@ -384,3 +392,98 @@ export async function calculateTomTomRoute(
   routeCache.set(cacheKey, { data: result, timestamp: Date.now() });
   return result;
 }
+
+export interface FlowSegmentResult {
+  currentSpeed: number;
+  freeFlowSpeed: number;
+  confidence: number;
+  frc: string;
+}
+
+// 15-minute flow segment cache
+interface FlowCacheEntry {
+  data: FlowSegmentResult;
+  timestamp: number;
+}
+
+const flowCache = new Map<string, FlowCacheEntry>();
+const FLOW_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
+
+export function clearTomTomFlowCache(): void {
+  flowCache.clear();
+}
+
+/**
+ * Retrieves real-time traffic flow segment data via TomTom Traffic Flow API (absolute, zoom 10).
+ * Enforces:
+ * - India geographical bounding box
+ * - 15-minute in-memory cache
+ * - Shared monthly request quota counter (20,000 / month cap)
+ * - Returns null on missing API key, quota hit, network error, or invalid payload (never throws)
+ */
+export async function getFlowSegment(
+  lat: number,
+  lng: number
+): Promise<FlowSegmentResult | null> {
+  // India bounds check
+  if (!isLocationInIndia({ latitude: lat, longitude: lng })) {
+    return null;
+  }
+
+  // 15-minute cache check
+  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  const cached = flowCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < FLOW_CACHE_TTL_MS) {
+    return cached.data;
+  }
+
+  // Key check
+  if (!isConfigured("TOMTOM_API_KEY")) {
+    return null;
+  }
+
+  // Quota check
+  if (!tryIncrementMonthlyQuota()) {
+    return null;
+  }
+
+  try {
+    const apiKey = env.TOMTOM_API_KEY!;
+    const url = `https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?key=${encodeURIComponent(apiKey)}&point=${lat},${lng}&unit=KMPH`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      return null;
+    }
+    const json = (await res.json()) as {
+      flowSegmentData?: {
+        currentSpeed?: number;
+        freeFlowSpeed?: number;
+        confidence?: number;
+        frc?: string;
+      };
+    };
+    const flow = json?.flowSegmentData;
+    if (
+      !flow ||
+      typeof flow.currentSpeed !== "number" ||
+      typeof flow.freeFlowSpeed !== "number" ||
+      !Number.isFinite(flow.currentSpeed) ||
+      !Number.isFinite(flow.freeFlowSpeed)
+    ) {
+      return null;
+    }
+
+    const result: FlowSegmentResult = {
+      currentSpeed: flow.currentSpeed,
+      freeFlowSpeed: flow.freeFlowSpeed,
+      confidence: typeof flow.confidence === "number" ? flow.confidence : 0,
+      frc: typeof flow.frc === "string" ? flow.frc : "FRC4",
+    };
+
+    flowCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    return result;
+  } catch {
+    return null;
+  }
+}
+

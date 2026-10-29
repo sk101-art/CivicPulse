@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { computePriority, PriorityInputs } from "@/lib/priority";
 import { PRIORITY_CONFIG } from "@/config/priority";
 import { Band } from "@prisma/client";
+import { calculateMedianCongestionR, mapFrcToRoadClass } from "@/lib/traffic/congestion";
 
 /**
  * Recomputes the Priority Index (PI), Band, Breakdown, and Sentence Facts for a single issue.
@@ -60,13 +61,37 @@ export async function recomputeIssuePriority(issueId: string): Promise<number> {
     hasOpenDarkStreetlight50m = darkNearby.length > 0;
   }
 
+  // Fetch traffic samples from the last 14 days
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 3600 * 1000);
+  const trafficSamples = await prisma.trafficSample.findMany({
+    where: {
+      issueId: issue.id,
+      sampledAt: { gte: fourteenDaysAgo },
+    },
+    orderBy: { sampledAt: "desc" },
+    select: { congestionR: true, frc: true },
+  });
+
+  // Calculate median congestion ratio from last 14 days (or null if none)
+  const congestionR = calculateMedianCongestionR(trafficSamples);
+
+  // Map TomTom FRC to roadClass when roadClass is empty
+  let roadClass = issue.segment?.roadClass;
+  if (!roadClass || roadClass.trim() === "") {
+    const sampleWithFrc = trafficSamples.find((s) => s.frc && s.frc.trim() !== "");
+    if (sampleWithFrc?.frc) {
+      roadClass = mapFrcToRoadClass(sampleWithFrc.frc);
+    }
+  }
+
   const priorityInputs: PriorityInputs = {
     category: issue.category,
     sizeClass: issue.sizeClass,
     lanePosition: issue.lanePosition,
     blockedShare: issue.blockedShare,
-    roadClass: issue.segment?.roadClass,
+    roadClass,
     lanes: issue.segment?.lanes,
+    congestionR,
     busesPerHour: issue.segment?.busesPerHour,
     nearSchoolOrHospital: issue.segment?.nearSchoolOrHospital,
     soleAccess: issue.segment?.soleAccess,
@@ -84,6 +109,15 @@ export async function recomputeIssuePriority(issueId: string): Promise<number> {
 
   const result = computePriority(priorityInputs, PRIORITY_CONFIG, now);
 
+  // Record "traffic: live|estimated" in priority explanation
+  const trafficStatus = congestionR !== null ? "live" : "estimated";
+  const trafficExplanation = `traffic: ${trafficStatus}`;
+  const summaryWithTraffic = `${result.sentenceFacts.summary} · ${trafficExplanation}`;
+  result.sentenceFacts.summary = summaryWithTraffic;
+  result.sentenceFacts.details.push(
+    `Traffic: ${trafficStatus} (${trafficExplanation}${congestionR !== null ? `, r=${congestionR.toFixed(2)}` : ""})`
+  );
+
   // Map Band string to Prisma Band enum
   const bandEnum = result.band as Band;
 
@@ -92,8 +126,12 @@ export async function recomputeIssuePriority(issueId: string): Promise<number> {
     data: {
       priority: result.pi,
       band: bandEnum,
-      piBreakdown: result.breakdown as unknown as object,
-      piText: result.sentenceFacts.summary,
+      piBreakdown: {
+        ...(result.breakdown as object),
+        traffic: trafficStatus,
+        congestionR,
+      },
+      piText: summaryWithTraffic,
     },
   });
 

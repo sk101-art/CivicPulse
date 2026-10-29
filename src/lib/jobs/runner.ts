@@ -6,6 +6,7 @@ import { processG1Job } from "@/lib/ai/triage";
 import { processG2Job } from "@/lib/ai/fixCheck";
 import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { syncWeatherForecast } from "@/lib/jobs/weather";
+import { runTrafficSample } from "@/lib/jobs/trafficSample";
 import { sanitizeErrorMessage } from "@/lib/api/errors";
 
 /** Each run must finish well inside a serverless function's time limit. */
@@ -23,7 +24,13 @@ const SLA_ACTIVE_STATUSES: Status[] = [
   Status.DISPUTED,
 ];
 
-export const JOB_NAMES = ["sla-check", "ai-queue", "weather", "priority-recompute"] as const;
+export const JOB_NAMES = [
+  "sla-check",
+  "ai-queue",
+  "weather",
+  "priority-recompute",
+  "traffic-sample",
+] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
 export interface JobResult {
@@ -191,6 +198,9 @@ export async function runJob(name: JobName): Promise<JobResult> {
       break;
     case "priority-recompute":
       result = await runPriorityRecompute(startedAt);
+      break;
+    case "traffic-sample":
+      result = await runTrafficSample(startedAt, TIME_BUDGET_MS);
       break;
     default:
       throw new Error(`Unknown job: ${String(name)}`);

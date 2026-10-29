@@ -25,8 +25,14 @@ function call(name: string, secret?: string) {
 }
 
 describe("Scheduled job endpoint (/api/jobs/[name])", () => {
-  it("lists the four scheduled jobs", () => {
-    expect([...JOB_NAMES]).toEqual(["sla-check", "ai-queue", "weather", "priority-recompute"]);
+  it("lists the scheduled jobs", () => {
+    expect([...JOB_NAMES]).toEqual([
+      "sla-check",
+      "ai-queue",
+      "weather",
+      "priority-recompute",
+      "traffic-sample",
+    ]);
   });
 
   it("rejects a missing or wrong secret with 401", async () => {

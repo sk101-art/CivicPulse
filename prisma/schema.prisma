@@ -163,6 +163,7 @@ model Issue {
   actions              ActionLog[]
   comments             Comment[]
   assignments          Assignment[]
+  trafficSamples       TrafficSample[]
   segment              RoadSegment?                        @relation(fields: [segmentId], references: [id])
   agency               Agency?                             @relation(fields: [agencyId], references: [id])
 }
@@ -249,16 +250,24 @@ model SegmentEvent {
 }
 
 model TrafficSample {
-  id            String      @id @default(cuid())
-  segmentId     String
+  id            String       @id @default(cuid())
+  issueId       String?
+  segmentId     String?
   sampledAt     DateTime
+  hourOfWeek    Int          @default(0)
   currentSpeed  Float
   freeFlowSpeed Float
+  congestionR   Float        @default(0)
+  frc           String?
   confidence    Float?
-  isSeed        Boolean     @default(false)
-  segment       RoadSegment @relation(fields: [segmentId], references: [id])
+  isSeed        Boolean      @default(false)
+  issue         Issue?       @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  segment       RoadSegment? @relation(fields: [segmentId], references: [id])
 
+  @@index([issueId, hourOfWeek])
+  @@index([issueId, sampledAt])
   @@index([segmentId, sampledAt])
+  @@index([sampledAt])
 }
 
 model WeatherForecast {

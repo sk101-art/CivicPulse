@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { VerifyFixModal } from "@/components/public/VerifyFixModal";
 import { PriorityBreakdown } from "@/components/priority/PriorityBreakdown";
+import { RepairWindowBadge } from "@/components/desk/RepairWindowBadge";
+import { getRepairWindowForIssue } from "@/lib/traffic/repairWindow";
 import type { PriorityBreakdown as PriorityBreakdownType } from "@/lib/priority";
 import { Status, Band, EvidenceRole } from "@prisma/client";
 
@@ -90,6 +92,9 @@ export default async function PublicIssuePage({
       (issue.reports.some((r) => r.role === EvidenceRole.CLAIM_FIX && r.userId === currentUser.id) ||
        issue.actions.some((a) => a.action === "CLAIM_FIX" && a.actorId === currentUser.id))
   );
+
+  const isDesk = currentUser?.role === "AUTHORITY" || session?.user?.role === "AUTHORITY";
+  const repairWindow = isDesk ? await getRepairWindowForIssue(issue.id) : null;
 
   const accountCreatedAt = currentUser ? currentUser.createdAt.toISOString() : null;
 
@@ -273,6 +278,17 @@ export default async function PublicIssuePage({
             </div>
           </div>
         </div>
+
+        {/* Desk View: Recommended Repair Window */}
+        {isDesk && (
+          <div className="space-y-2">
+            <RepairWindowBadge
+              issueId={issue.id}
+              initialResult={repairWindow}
+              variant="page"
+            />
+          </div>
+        )}
 
         {/* Evidence Photo Gallery */}
         <div className="space-y-4">

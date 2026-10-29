@@ -8,6 +8,75 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Review 29 Oct · Real Traffic in Priority & Recommended Repair Window · 2026-10-29
+- **Goal:** Implement real traffic flow integration (TomTom free tier, India only) to influence Priority Index exposure calculations and provide recommended 2-hour repair windows for desk operators with rain forecast exclusion.
+- **Implemented Changes:**
+  1. `src/lib/external/tomtom.ts`:
+     - Added `getFlowSegment(lat, lng)` querying TomTom Traffic Flow Segment API (absolute, zoom 10).
+     - Returns `{ currentSpeed, freeFlowSpeed, confidence, frc }`.
+     - Enforces India bounding box (`isLocationInIndia`), shared monthly quota counter (`MAX_MONTHLY_QUOTA = 20000`), and 15-minute in-memory cache.
+     - Null-safe: returns `null` on missing key, quota exceeded, or network error (never throws).
+  2. Prisma Schema:
+     - Updated `model TrafficSample` with `issueId`, `hourOfWeek` (0-167 IST), `currentSpeed`, `freeFlowSpeed`, `congestionR = 1 - current/freeFlow` (clamped `[0, 1]`), `frc`, `confidence`, and relations to `Issue` and `RoadSegment`.
+     - Updated `model Issue` with `trafficSamples TrafficSample[]`.
+     - Ran `npx prisma db push` and `npx prisma generate`.
+  3. Scheduled Job `traffic-sample`:
+     - Implemented `src/lib/jobs/trafficSample.ts` (`runTrafficSample`).
+     - Samples top 40 open issues by Priority Index plus any `ASSIGNED` or `CLAIMED_FIXED` issues.
+     - Enforces daily budget of 1,500 TomTom calls (`DAILY_TOMTOM_BUDGET = 1500`).
+     - Skips issues sampled for the same `hourOfWeek` in the last 7 days.
+     - Registered in `JOB_NAMES` in `src/lib/jobs/runner.ts`, `/api/jobs/[name]`, and `.github/workflows/jobs.yml` (cron `0 */2 * * *`).
+  4. Priority Recomputation:
+     - In `src/lib/jobs/priorityRecompute.ts`, queries traffic samples from the last 14 days and computes median `congestionR`.
+     - Maps TomTom `frc` to `roadClass` (`FRC0`→`trunk`, `FRC1`→`primary`, `FRC2`→`secondary`, `FRC3`→`tertiary`, `FRC4`/`FRC5`→`residential`, `FRC6`→`service`) when `roadClass` is empty.
+     - Passes `congestionR` to `computePriority` (exposure factor).
+     - Records `"traffic: live|estimated"` in priority explanation (`piText` and `piBreakdown`).
+  5. Repair Window Calculation & API:
+     - Created `src/lib/traffic/repairWindow.ts` calculating 168-hour congestion profiles from live samples with road-class fallback profile featuring daytime peaks (8-11 & 17-21 IST) and night lows.
+     - Excludes hours on days with forecast rain ≥ 5.0 mm using Open-Meteo `WeatherForecast` data.
+     - Returns top 3 non-overlapping 2-hour windows in next 7 days with expected congestion, condition, and data basis (`live` with sample count or `estimated`).
+     - Created `GET /api/issues/[id]/repair-window` restricted to desk users (`Role.AUTHORITY`).
+  6. Desk UI:
+     - Created `src/components/desk/RepairWindowBadge.tsx` displaying `"Best repair window: Tue 01:00-03:00 (low traffic, dry) · based on N samples"` with `live` vs `estimated` badges.
+     - Added repair window display to desk queue cards in `src/components/desk/DeskQueue.tsx`.
+     - Added detailed repair window view with alternative windows to `src/components/desk/IssueDrawer.tsx`.
+     - Added repair window view for desk operators in `src/app/(public)/issue/[id]/page.tsx`.
+  7. Test Coverage:
+     - `tests/unit/traffic-congestion.test.ts`: congestion math clamping `[0, 1]`, median calculation, `frc`→`roadClass` mapping, and IST hour of week calculation.
+     - `tests/unit/traffic-repair-window.test.ts`: road-class fallback profile peak curves, window selection with rain exclusion, and live vs estimated data basis.
+     - `tests/unit/traffic-sample-job.test.ts`: 1,500 daily budget limiting, top 40 open + claimed/assigned selection, skipping 7-day duplicates.
+     - `tests/unit/traffic-priority-recompute.test.ts`: median congestion injection, FRC mapping, and `"traffic: live|estimated"` recorded in `piText`.
+     - `tests/unit/traffic-endpoint-and-tomtom.test.ts`: desk-only auth enforcement (401/403/200), null-safety when key unset or quota hit, 15-minute caching.
+- **Full Gate Results:**
+  ```
+  $ npm run lint
+  > miniproject@0.1.0 lint
+  > eslint
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    136:20  warning  Using `<img>` could result in slower LCP and higher bandwidth.  @next/next/no-img-element
+  ✖ 1 problem (0 errors, 1 warning)
+
+  $ npm run typecheck
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+  [exit 0]
+
+  $ npm test
+  > miniproject@0.1.0 test
+  > vitest run
+   Test Files  50 passed (50)
+        Tests  274 passed (274)
+     Duration  8.23s
+
+  $ npm run build
+  > miniproject@0.1.0 build
+  > next build --webpack
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 17.1s
+  Finished TypeScript in 9.1s ...
+  ✓ Generating static pages using 15 workers (21/21) in 642ms
+  ```
+
 ### Review 29 Oct · AI Queue Error Diagnostics & Deleted Target Handling · 2026-10-29
 - **Goal:** Fix production `ai-queue` job failure (`{"processed":0,"failed":20}`) where jobs were failing silently. Add error logging in catch blocks (`console.error("[ai-queue] job failed", jobId, err)`), return sanitized `firstError` in `runJob("ai-queue")`, handle deleted target reports/issues by marking `status: "failed"` with `attempts: 3` (no retry) and moving on without reporting an error, add reproduction unit tests, reset failed jobs with `attempts < 3` to `queued`, and run full gate.
 - **Root Cause:**

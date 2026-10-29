@@ -12,6 +12,7 @@ import { Status, Band, Category } from '@prisma/client';
 import Image from 'next/image';
 import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/CaptureCamera';
 import { formatPriority } from '@/lib/priority';
+import { RepairWindowBadge } from './RepairWindowBadge';
 
 interface ActionLogEntry {
   id: string;
@@ -341,6 +342,9 @@ export function IssueDrawer({
               </div>
             </div>
           </div>
+
+          {/* Recommended Repair Windows */}
+          <RepairWindowBadge issueId={issue.id} variant="drawer" />
 
           {/* Evidence photo preview */}
           {issue.reports && issue.reports[0]?.photoUrl && (

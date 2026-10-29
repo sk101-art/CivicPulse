@@ -7,6 +7,7 @@ import {
   ShieldAlert, CheckCircle2
 } from 'lucide-react';
 import { IssueDrawer, type DeskIssueItem } from './IssueDrawer';
+import { RepairWindowBadge } from './RepairWindowBadge';
 import { Status, Category, Band } from '@prisma/client';
 import { formatPriority } from '@/lib/priority';
 
@@ -324,6 +325,9 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                         ? issue.address
                         : `${issue.lat.toFixed(4)}° N, ${issue.lng.toFixed(4)}° E`}
                     </p>
+                    <div className="pt-1.5">
+                      <RepairWindowBadge issueId={issue.id} variant="card" />
+                    </div>
                   </div>
                 </div>
 
