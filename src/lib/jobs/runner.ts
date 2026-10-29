@@ -9,6 +9,7 @@ import { syncWeatherForecast } from "@/lib/jobs/weather";
 import { runTrafficSample } from "@/lib/jobs/trafficSample";
 import { runDurability } from "@/lib/jobs/durability";
 import { runTrafficProfileJob } from "@/lib/jobs/trafficProfile";
+import { runDailyInsightsJob } from "@/lib/insights/deterioration";
 import { sanitizeErrorMessage } from "@/lib/api/errors";
 
 /** Each run must finish well inside a serverless function's time limit. */
@@ -34,6 +35,7 @@ export const JOB_NAMES = [
   "traffic-sample",
   "durability",
   "traffic-profile",
+  "insights",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -212,6 +214,11 @@ export async function runJob(name: JobName): Promise<JobResult> {
     case "traffic-profile":
       result = await runTrafficProfileJob(startedAt, TIME_BUDGET_MS);
       break;
+    case "insights": {
+      const insightsResult = await runDailyInsightsJob();
+      result = { processed: insightsResult.assessedIssuesCount, failed: 0 };
+      break;
+    }
     default:
       throw new Error(`Unknown job: ${String(name)}`);
   }

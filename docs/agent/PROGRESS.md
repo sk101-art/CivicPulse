@@ -8,6 +8,36 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Phase 3 · Deterioration Risk & Severity Intelligence · 2026-10-29
+- **Goal:** Pavement deterioration risk modeling (0-100 score + LOW/MED/HIGH + expectedDaysToWorsen), named engineering drivers (moisture, heavy axle loads, braking shear, repeat failure), schema migration, and daily `insights` scheduled job detecting hotspots (>=3 defects in 90 days) and contractor warranty expiration risks.
+- **Implemented Work:**
+  1. Data Model (`prisma/schema.prisma` & migration `20261029190000_deterioration_intelligence`):
+     - Added `enum DeteriorationRisk { LOW, MED, HIGH }`.
+     - Added `deteriorationRisk`, `deteriorationScore`, `expectedDaysToWorsen`, `isHotspot`, `deteriorationDrivers` to `Issue`.
+     - Added `isHotspot` to `RoadSegment`.
+     - Deployed migration to Supabase production (`public` schema) and synchronized to isolated `test` schema.
+  2. Deterioration Engine (`src/lib/insights/deterioration.ts`):
+     - `computeDeterioration(options)` pure function:
+       - Category decay physics: `POTHOLES`, `WATERLOGGING`, `ROAD_CUT` experience subgrade erosion; `TRASH` and `DEBRIS` do not deteriorate (`expectedDaysToWorsen: null`).
+       - Size geometry: `LARGE` adds +20 impact score; `SMALL` reduces score by -10.
+       - Moisture factor: Open-Meteo past 7-day rainfall sum + next 72h forecast. >= 20 mm rain doubles decay rate and flags named driver (`Heavy rain: X mm past 7 d`).
+       - Heavy vehicle fatigue: `busesPerHour` on road segment flags high bus frequency (>20 or >40 buses/h).
+       - Stop-and-go shear: `delayRatio >= 0.40` flags repeated braking stresses.
+       - Repeat failure history: >= 2 issues on same segment in last 12 months flags chronic structural deficiency.
+       - Outputs `risk` (`LOW`, `MED`, `HIGH`), `score` (0-100), `expectedDaysToWorsen` (3, 5, 10, 21, or null), structured drivers, and human explanation.
+     - `assessIssueDeterioration(issueId)`:
+       - Queries issue, segment bus volume, past 7d rain from `WeatherForecast`, segment 12-month defect history, and updates `Issue` record.
+  3. Daily Insights Scheduled Job (`src/lib/insights/deterioration.ts` & `src/lib/jobs/runner.ts`):
+     - Registered `"insights"` job in `JOB_NAMES` and runner.
+     - Assesses deterioration for active issues (`OPEN`, `CONFIRMED`, `IN_PROGRESS`).
+     - Detects recurring defect hotspots: segments with >= 3 issues in 90 days, updating `RoadSegment.isHotspot = true` and `Issue.isHotspot = true`.
+     - Flags contractor warranty risks: repairs within 30 days of `warrantyUntil` with `deteriorationScore > 50`.
+  4. Verification:
+     - Added `tests/unit/deterioration.test.ts` (5 tests covering debris non-decay, high-risk potholes with rain, low-risk small defects, repeat failure subgrade driver, and bus volume scaling).
+     - Updated `tests/unit/jobs-route.test.ts` to include `"insights"` in `JOB_NAMES`.
+     - Full gate passed: 55 test files passed (319/319 tests green).
+
+
 ### Phase 2 · Smart Repair Window & Lane-Closure Impact Analysis · 2026-10-29
 - **Goal:** Replace static window logic with an 84-slot multi-factor model (traffic 40%, weather 25%, surroundings 20%, crew hours 15%), directional lane closure estimation, Overpass 30-day tile caching, TomTom traffic incidents, and human explanation generation.
 - **Implemented Work:**

@@ -95,6 +95,12 @@ enum ProfileSource {
   ESTIMATED
 }
 
+enum DeteriorationRisk {
+  LOW
+  MED
+  HIGH
+}
+
 enum SegmentEventType {
   REPORTED
   VERIFIED_FIX
@@ -157,6 +163,7 @@ model RoadSegment {
   soleAccess           Boolean                                   @default(false)
   wardId               String?
   tracked              Boolean                                   @default(false)
+  isHotspot            Boolean                                   @default(false)
   geom                 Unsupported("geography(LineString,4326)")?
   issues               Issue[]
   events               SegmentEvent[]
@@ -197,6 +204,11 @@ model Issue {
   tenderId             String?
   lifespanDays         Int?
   liabilityClauseRef   String?
+  deteriorationRisk    DeteriorationRisk?
+  deteriorationScore   Int?
+  expectedDaysToWorsen Int?
+  isHotspot            Boolean                             @default(false)
+  deteriorationDrivers Json?
   createdAt            DateTime                            @default(now())
   updatedAt            DateTime                            @updatedAt
   reports              Report[]
