@@ -6,6 +6,7 @@ import {
   getEstimatedHourlyDelay,
   getNextTargetDate,
   calculateDistanceM,
+  formatTomTomDepartAt,
 } from "@/lib/traffic/profile";
 import {
   tryIncrementDailyQuota,
@@ -45,6 +46,19 @@ describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
   });
 
   describe("Profile Geometry & Math", () => {
+    it("formats departAt for local hour 9 as ...T09:00:00+05:30 with Indian Standard Time", () => {
+      const testDate = new Date("2026-11-03T00:00:00.000Z");
+      const departAt = formatTomTomDepartAt(testDate, 9);
+      expect(departAt).toMatch(/T09:00:00\+05:30$/);
+      expect(departAt).toBe("2026-11-03T09:00:00+05:30");
+
+      const departAt0 = formatTomTomDepartAt(testDate, 0);
+      expect(departAt0).toBe("2026-11-03T00:00:00+05:30");
+
+      const departAt18 = formatTomTomDepartAt(testDate, 18);
+      expect(departAt18).toBe("2026-11-03T18:00:00+05:30");
+    });
+
     it("computes bearing correctly between coordinates", () => {
       // Due North
       const p1 = { latitude: 12.90, longitude: 77.70 };

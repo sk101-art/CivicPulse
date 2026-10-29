@@ -123,7 +123,7 @@ export function RepairWindowBadge({
             Best: {bestWindow.display}
           </span>
           <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-            Score: {bestWindow.score ?? 90}/100
+            Score: {bestWindow.score > 100 ? bestWindow.score : `${bestWindow.score ?? 90}/100`}
           </span>
         </div>
 
@@ -159,7 +159,7 @@ export function RepairWindowBadge({
               >
                 <div className="flex items-center justify-between">
                   <span className="text-white/90 font-bold">{win.display}</span>
-                  <span className="text-[10px] font-bold text-cyan-400">{win.score ?? 75}/100</span>
+                  <span className="text-[10px] font-bold text-cyan-400">{win.score > 100 ? `Score: ${win.score}` : `${win.score ?? 75}/100`}</span>
                 </div>
                 <div className="text-[10px] text-white/50 truncate">
                   {win.condition}
@@ -212,7 +212,7 @@ export function RepairWindowBadge({
                     <button
                       key={idx}
                       type="button"
-                      title={`${slot.display} (Score: ${s}/100)`}
+                      title={`${slot.display} (Score: ${s > 100 ? s : `${s}/100`})`}
                       onClick={() => {
                         setSelectedSlot(slot);
                         if (onSlotSelect) onSlotSelect(slot);
@@ -230,7 +230,7 @@ export function RepairWindowBadge({
                 <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs font-mono space-y-1">
                   <div className="flex items-center justify-between text-white font-bold">
                     <span>{selectedSlot.display}</span>
-                    <span className="text-cyan-400">Score: {selectedSlot.score}/100</span>
+                    <span className="text-cyan-400">{selectedSlot.score > 100 ? `Score: ${selectedSlot.score}` : `Score: ${selectedSlot.score}/100`}</span>
                   </div>
                   <p className="text-[11px] text-white/70 leading-relaxed">
                     {selectedSlot.explanation}

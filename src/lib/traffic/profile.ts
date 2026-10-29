@@ -120,6 +120,17 @@ export function getNextTargetDate(targetDayOfWeek: number, baseDate: Date = new 
   return result;
 }
 
+/**
+ * Formats a local date and hour into an ISO string with Indian Standard Time (+05:30).
+ */
+export function formatTomTomDepartAt(date: Date, hour: number): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  const hh = String(hour).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}T${hh}:00:00+05:30`;
+}
+
 export interface BuildPlaceProfileInput {
   id: string;
   lat: number;
@@ -335,11 +346,7 @@ export async function buildPlaceProfile(
 
         if (canUseTomTom) {
           try {
-            const yyyy = targetDate.getFullYear();
-            const mm = String(targetDate.getMonth() + 1).padStart(2, "0");
-            const dd = String(targetDate.getDate()).padStart(2, "0");
-            const hh = String(hour).padStart(2, "0");
-            const departAtIso = `${yyyy}-${mm}-${dd}T${hh}:00:00`;
+            const departAtIso = formatTomTomDepartAt(targetDate, hour);
 
             const routeResult = await calculateTomTomRoute({
               origin,

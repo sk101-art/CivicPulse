@@ -132,6 +132,7 @@ export function formatIstTime(date: Date): {
   time: string;
   dateStr: string;
   hour: number;
+  minute: number;
 } {
   const istOffsetMs = 5.5 * 3600 * 1000;
   const ist = new Date(date.getTime() + istOffsetMs);
@@ -148,6 +149,7 @@ export function formatIstTime(date: Date): {
     time: `${hh}:${mm}`,
     dateStr: `${yyyy}-${month}-${dd}`,
     hour: ist.getUTCHours(),
+    minute: ist.getUTCMinutes(),
   };
 }
 
@@ -172,6 +174,7 @@ export function getCompassDirection(bearingDeg: number): string {
  */
 export function computeMultiFactorRepairWindows(options: {
   issueId: string;
+  category?: string | null;
   lanePosition?: string | null;
   bearingDeg?: number;
   priorityIndex?: number;
@@ -187,7 +190,8 @@ export function computeMultiFactorRepairWindows(options: {
 }): RepairWindowResult {
   const {
     issueId,
-    lanePosition = "CURB",
+    category,
+    lanePosition,
     bearingDeg = 0,
     priorityIndex = 50,
     roadClass,
@@ -241,7 +245,14 @@ export function computeMultiFactorRepairWindows(options: {
   const oneway = safeSurroundings.road.oneway;
   const direction = forwardDir;
 
-  const normPos = (lanePosition || "CURB").toUpperCase();
+  // Streetlight/sign/graffiti/trash repairs default to SHOULDER/kerb work (no lane closure) unless desk specifies
+  const isShoulderWorkCategory =
+    category &&
+    ["STREETLIGHTS", "TRAFFIC_SIGNS", "GRAFFITI", "TRASH", "SIDEWALKS", "FOOTPATH"].includes(
+      category.toUpperCase()
+    );
+  const defaultPos = isShoulderWorkCategory ? "SHOULDER" : "CURB";
+  const normPos = (lanePosition || defaultPos).toUpperCase();
   let blockedLaneDesc = `${direction} curb lane`;
   let remainingLanes = Math.max(1, totalLanes - 1);
   let capacityDropPercent = Math.round(((totalLanes - remainingLanes) / totalLanes) * 100);
@@ -251,7 +262,7 @@ export function computeMultiFactorRepairWindows(options: {
     remainingLanes = Math.max(1, totalLanes - 1);
     capacityDropPercent = Math.round(((totalLanes - remainingLanes) / totalLanes) * 100);
   } else if (normPos === "SHOULDER") {
-    blockedLaneDesc = `${direction} shoulder`;
+    blockedLaneDesc = `${direction} shoulder (kerb work)`;
     remainingLanes = totalLanes;
     capacityDropPercent = 0;
   } else if (normPos === "UNKNOWN") {
@@ -284,7 +295,10 @@ export function computeMultiFactorRepairWindows(options: {
     // 1. Traffic Factor (40%)
     const delay1 = hourlyProfiles.get(`${dayType}-${fStart.hour}`) ?? 0.15;
     const delay2 = hourlyProfiles.get(`${dayType}-${fMid.hour}`) ?? 0.15;
-    const avgDelayRatio = Math.round(((delay1 + delay2) / 2) * 100) / 100;
+    const delay3 = hourlyProfiles.get(`${dayType}-${fEnd.hour}`) ?? 0.15;
+    const avgDelayRatio = fStart.minute > 0
+      ? Math.round(((delay1 * 0.5 + delay2 * 1.0 + delay3 * 0.5) / 2) * 100) / 100
+      : Math.round(((delay1 + delay2) / 2) * 100) / 100;
     // Lower delay = higher score (0 delay -> 100; 0.75+ delay -> 0)
     const trafficScore = Math.max(
       0,
@@ -402,6 +416,27 @@ export function computeMultiFactorRepairWindows(options: {
       }
     }
 
+    // Peak commute period penalties: Work spilling into or during morning (08:00-11:00) or evening (17:00-21:00) peak
+    const endsInMorningPeak =
+      dayType === DayType.WEEKDAY &&
+      (fEnd.hour > 8 || (fEnd.hour === 8 && fEnd.minute > 0)) &&
+      fStart.hour < 11;
+    const endsInEveningPeak =
+      dayType === DayType.WEEKDAY &&
+      (fEnd.hour > 17 || (fEnd.hour === 17 && fEnd.minute > 0)) &&
+      fStart.hour < 21;
+    const overlapsPeak =
+      (fStart.hour >= 8 && fStart.hour < 11) ||
+      (fStart.hour >= 17 && fStart.hour < 21) ||
+      endsInMorningPeak ||
+      endsInEveningPeak;
+
+    if (dayType === DayType.WEEKDAY && overlapsPeak) {
+      if (isHighSpeed) {
+        rawCompositeScore -= 25; // Arterial peak period closure penalty: shutting lanes inside or spilling past 08:00 morning rush
+      }
+    }
+
     // Urgency override: if priority index >= 80 or high deterioration, boost next 24h slots
     const isWithinNext24h = slotIdx < 12; // first 12 two-hour slots = 24h
     let urgencyBoosted = false;
@@ -470,18 +505,16 @@ export function computeMultiFactorRepairWindows(options: {
       incidentText = " Congestion already present nearby.";
     }
 
-    const explanation = `${timeDisplay} (score ${compositeScore}/100): ${trafficDesc}, ${rainDesc}. ${closureText}${surroundingText}${incidentText}`.trim();
+    const scoreDisplay = compositeScore > 100 ? `Score ${compositeScore}` : `score ${compositeScore}/100`;
+    const explanation = `${timeDisplay} (${scoreDisplay}): ${trafficDesc}, ${rainDesc}. ${closureText}${surroundingText}${incidentText}`.trim();
 
     const condition = `${avgDelayRatio < 0.20 ? "low traffic" : avgDelayRatio < 0.45 ? "moderate traffic" : "heavy traffic"}, ${maxPrecip > 0 ? "rain likely" : "dry"}`;
 
     const isWeekendDay = dayType === DayType.WEEKEND && !isNight;
-    const isPeak =
-      dayType === DayType.WEEKDAY &&
-      ((fStart.hour >= 8 && fStart.hour < 11) || (fStart.hour >= 17 && fStart.hour < 21));
     const windowType: "NIGHT" | "DAY_OFF_PEAK" | "DAY_PEAK" | "WEEKEND_DAY" =
       isNight
         ? "NIGHT"
-        : (isWeekendDay ? "WEEKEND_DAY" : (isPeak ? "DAY_PEAK" : "DAY_OFF_PEAK"));
+        : (isWeekendDay ? "WEEKEND_DAY" : (overlapsPeak ? "DAY_PEAK" : "DAY_OFF_PEAK"));
 
     allSlots.push({
       slotIndex: slotIdx,
@@ -544,7 +577,8 @@ export function computeMultiFactorRepairWindows(options: {
 
   let displayText: string;
   if (bestWindow) {
-    displayText = `Best repair window: ${bestWindow.display} (score ${bestWindow.score}/100) · ${bestWindow.condition} · based on ${sampleCount} samples · ${basis}`;
+    const bestScoreDisplay = bestWindow.score > 100 ? `Score ${bestWindow.score}` : `score ${bestWindow.score}/100`;
+    displayText = `Best repair window: ${bestWindow.display} (${bestScoreDisplay}) · ${bestWindow.condition} · based on ${sampleCount} samples · ${basis}`;
   } else {
     displayText = "No repair window available";
   }
@@ -659,6 +693,7 @@ export async function getRepairWindowForIssue(
     where: { id: issueId },
     select: {
       id: true,
+      category: true,
       lat: true,
       lng: true,
       priority: true,
@@ -727,6 +762,7 @@ export async function getRepairWindowForIssue(
 
   return computeMultiFactorRepairWindows({
     issueId: issue.id,
+    category: issue.category,
     lanePosition: issue.lanePosition,
     bearingDeg: 0,
     priorityIndex: issue.priority ?? 50,

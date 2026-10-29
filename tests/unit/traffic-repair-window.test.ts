@@ -379,6 +379,36 @@ describe("Phase 2: Smart Repair Window & Lane-Closure Impact Analysis", () => {
       expect(result.bestWindow?.score).toBeGreaterThan(0);
     });
 
+    it("defaults streetlight/sign/graffiti/trash repairs to SHOULDER/kerb work with no lane closure", () => {
+      const cessnaSurroundings: SurroundingsResult = {
+        schools: [],
+        hospitals: [],
+        markets: [],
+        road: { lanes: 4, oneway: false, name: "Cessna Business Park Main Access Corridor", highway: "tertiary" },
+        cached: true,
+        source: "pilot_osm",
+      };
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "seed-demo-medium-cessna",
+        category: "STREETLIGHTS",
+        roadClass: "tertiary",
+        priorityIndex: 48,
+        hourlyProfiles: new Map(),
+        hourlyWeather: new Map(),
+        surroundings: cessnaSurroundings,
+        now: fixedNow,
+      });
+
+      expect(result.bestWindow).not.toBeNull();
+      expect(result.bestWindow?.laneClosure.lanePosition).toBe("SHOULDER");
+      expect(result.bestWindow?.laneClosure.remainingLanes).toBe(4);
+      expect(result.bestWindow?.laneClosure.totalLanes).toBe(4);
+      expect(result.bestWindow?.laneClosure.capacityDropPercent).toBe(0);
+      expect(result.bestWindow?.laneClosure.estimatedQueueDelayMin).toBe("< 1 min");
+      expect(result.bestWindow?.laneClosure.blockedLane).toContain("shoulder (kerb work)");
+    });
+
     it("uses continuous scores without clamping at 100 and breaks ties without identical 100/100 slots", () => {
       const hourlyProfiles = new Map<string, number>();
       for (let h = 0; h < 24; h++) {
