@@ -14,6 +14,7 @@ import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
 import { NextResponse } from "next/server";
 import { Role, EvidenceRole } from "@prisma/client";
+import { assignBlindAuditTasks } from "@/lib/audit/blindAudit";
 import { z } from "zod";
 import crypto from "crypto";
 
@@ -27,10 +28,14 @@ const actionSchema = z.object({
     "CLAIM_FIX",
     "OVERRIDE_BAND",
     "REOPEN",
+    "REOPEN_IN_WARRANTY",
   ]),
   note: z.string().optional(),
   agencyId: z.string().optional(),
   overrideBand: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+  contractorName: z.string().optional(),
+  tenderId: z.string().optional(),
+  warrantyUntil: z.string().optional(),
   evidence: z
     .object({
       reportId: z.string().optional(),
@@ -44,7 +49,7 @@ const actionSchema = z.object({
           lng: z.number(),
           nonce: z.string(),
           photoHash: z.string(),
-          role: z.enum(["REPORT", "CONFIRM", "CLAIM_FIX", "VERIFY"]),
+          role: z.enum(["REPORT", "CONFIRM", "CLAIM_FIX", "VERIFY", "AUDIT"]),
         })
         .optional(),
       signature: z.string().optional(),
@@ -205,9 +210,21 @@ export async function POST(
         reportId = claimReport.id;
       }
 
+      const issueUpdateData = { ...transitionResult.issueUpdateData };
+      if (body.action === "CLAIM_FIX") {
+        const claimDate = new Date();
+        const warrantyDate = body.warrantyUntil
+          ? new Date(body.warrantyUntil)
+          : new Date(claimDate.getTime() + 365 * 24 * 3600 * 1000);
+        issueUpdateData.repairClaimedAt = claimDate;
+        issueUpdateData.warrantyUntil = warrantyDate;
+        if (body.contractorName) issueUpdateData.contractorName = body.contractorName;
+        if (body.tenderId) issueUpdateData.tenderId = body.tenderId;
+      }
+
       const updated = await tx.issue.update({
         where: { id: issue.id },
-        data: transitionResult.issueUpdateData,
+        data: issueUpdateData,
       });
 
       const log = await tx.actionLog.create({
@@ -216,6 +233,13 @@ export async function POST(
 
       return { updatedIssue: updated, createdLog: log, claimReportId: reportId };
     });
+
+    if (body.action === "CLAIM_FIX") {
+      // Assign 3 random eligible citizens to blind audit tasks
+      await assignBlindAuditTasks(issue.id).catch((err) =>
+        console.error("Failed to assign blind audit tasks:", err)
+      );
+    }
 
     if (claimReportId) {
       // G2 AI fix-check (report photo vs claim photo); never changes status.

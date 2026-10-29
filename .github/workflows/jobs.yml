@@ -17,7 +17,7 @@ on:
         required: true
         default: "ai-queue"
         type: choice
-        options: [sla-check, ai-queue, weather, priority-recompute, traffic-sample]
+        options: [sla-check, ai-queue, weather, priority-recompute, traffic-sample, durability]
 
 jobs:
   run:
@@ -46,7 +46,7 @@ jobs:
           elif [ "${{ github.event.schedule }}" = "0 */2 * * *" ]; then
             echo "list=traffic-sample" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "15 * * * *" ]; then
-            echo "list=weather priority-recompute" >> "$GITHUB_OUTPUT"
+            echo "list=weather priority-recompute durability" >> "$GITHUB_OUTPUT"
           else
             echo "list=sla-check ai-queue" >> "$GITHUB_OUTPUT"
           fi

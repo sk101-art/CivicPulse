@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ReputationCard } from "@/components/citizen/ReputationCard";
 import { ActiveReports } from "@/components/citizen/ActiveReports";
 import Link from "next/link";
-import { Zap, Plus } from "lucide-react";
+import { Zap, Plus, Compass } from "lucide-react";
 import { AppHeader } from "@/components/layout/AppHeader";
 
 export const revalidate = 0;
@@ -43,6 +43,13 @@ export default async function CitizenDashboard() {
   const totalReportsCount = await prisma.report.count({ where: { userId, role: 'REPORT' } });
   const confirmationsCount = await prisma.report.count({ where: { userId, role: 'CONFIRM' } });
   const resolvedCount = userReports.filter(r => ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(r.issue.status)).length;
+  const openAuditTasksCount = await prisma.auditTask.count({
+    where: {
+      status: 'OPEN',
+      dueAt: { gt: new Date() },
+      OR: [{ assigneeId: userId }, { assigneeId: null }],
+    },
+  });
 
   const stats = {
     reported: totalReportsCount,
@@ -68,6 +75,35 @@ export default async function CitizenDashboard() {
       />
 
       <div className="p-6 md:p-8 space-y-12 max-w-7xl mx-auto">
+        {/* Blind Audit Missions CTA */}
+        {openAuditTasksCount > 0 && (
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-cyan-950/40 to-blue-950/40 border border-cyan-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
+                <Compass className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <div className="text-sm font-bold font-mono text-white flex items-center gap-2">
+                  <span>{openAuditTasksCount} Blind Audit Mission(s) Active</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                    +25 XP per audit
+                  </span>
+                </div>
+                <div className="text-xs font-mono text-white/50">
+                  Verify nearby road repairs with cryptographic challenge bearings.
+                </div>
+              </div>
+            </div>
+            <Link
+              href="/citizen/audit"
+              className="px-4 py-2 rounded-xl bg-cyan-500 text-black font-bold text-xs font-mono hover:bg-cyan-400 transition-colors inline-flex items-center justify-center gap-2"
+            >
+              <Compass className="w-4 h-4" />
+              Open Audit Missions
+            </Link>
+          </div>
+        )}
+
         {/* Top Row: Reputation + Stats */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
           {/* Reputation Card */}

@@ -10,7 +10,8 @@ export type IssueAction =
   | "VERIFY_FIX"
   | "DISPUTE_FIX"
   | "REOPEN"
-  | "OVERRIDE_BAND";
+  | "OVERRIDE_BAND"
+  | "REOPEN_IN_WARRANTY";
 
 export type ActorRole = "AUTHORITY" | "SYSTEM" | "CITIZEN";
 
@@ -99,9 +100,9 @@ const TRANSITION_RULES: TransitionRule[] = [
     },
   },
 
-  // 3. CONFIRMED -> ASSIGNED (Desk, requires agency label)
+  // 3. CONFIRMED / DISPUTED / REOPENED_IN_WARRANTY -> ASSIGNED (Desk, requires agency label)
   {
-    from: [Status.CONFIRMED],
+    from: [Status.CONFIRMED, Status.DISPUTED, Status.REOPENED_IN_WARRANTY],
     action: "ASSIGN_AGENCY",
     to: () => Status.ASSIGNED,
     allowedRoles: ["AUTHORITY"],
@@ -127,17 +128,17 @@ const TRANSITION_RULES: TransitionRule[] = [
     },
   },
 
-  // 4. ASSIGNED / DISPUTED -> IN_PROGRESS (Desk)
+  // 4. ASSIGNED / DISPUTED / REOPENED_IN_WARRANTY -> IN_PROGRESS (Desk)
   {
-    from: [Status.ASSIGNED, Status.DISPUTED],
+    from: [Status.ASSIGNED, Status.DISPUTED, Status.REOPENED_IN_WARRANTY],
     action: "START_WORK",
     to: () => Status.IN_PROGRESS,
     allowedRoles: ["AUTHORITY"],
   },
 
-  // 5. CONFIRMED, ASSIGNED, IN_PROGRESS, DISPUTED -> CLAIMED_FIXED (Desk, requires signed photo <= 50m)
+  // 5. CONFIRMED, ASSIGNED, IN_PROGRESS, DISPUTED, REOPENED_IN_WARRANTY -> CLAIMED_FIXED (Desk, requires signed photo <= 50m)
   {
-    from: [Status.CONFIRMED, Status.ASSIGNED, Status.IN_PROGRESS, Status.DISPUTED],
+    from: [Status.CONFIRMED, Status.ASSIGNED, Status.IN_PROGRESS, Status.DISPUTED, Status.REOPENED_IN_WARRANTY],
     action: "CLAIM_FIX",
     to: () => Status.CLAIMED_FIXED,
     allowedRoles: ["AUTHORITY"],
@@ -202,6 +203,14 @@ const TRANSITION_RULES: TransitionRule[] = [
     },
   },
 
+  // 8b. VERIFIED_FIXED -> REOPENED_IN_WARRANTY (System when durability check fails during warranty)
+  {
+    from: [Status.VERIFIED_FIXED],
+    action: "REOPEN_IN_WARRANTY",
+    to: () => Status.REOPENED_IN_WARRANTY,
+    allowedRoles: ["SYSTEM"],
+  },
+
   // 9. Band Override (Desk, allowed in any non-terminal state, requires note)
   {
     from: [
@@ -211,6 +220,7 @@ const TRANSITION_RULES: TransitionRule[] = [
       Status.IN_PROGRESS,
       Status.CLAIMED_FIXED,
       Status.DISPUTED,
+      Status.REOPENED_IN_WARRANTY,
     ],
     action: "OVERRIDE_BAND",
     to: (from) => from,

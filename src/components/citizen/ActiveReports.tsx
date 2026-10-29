@@ -36,6 +36,7 @@ const statusConfig: Record<Status, { color: string; bg: string; label: string; d
   VERIFIED_FIXED: { color: 'var(--status-resolved)',      bg: 'rgba(196,254,0,0.1)',    label: 'Verified Fixed',dot: '#C4FE00' },
   DISPUTED:       { color: 'var(--accent-magenta)',       bg: 'rgba(255,46,99,0.1)',    label: 'Disputed',      dot: '#FF2E63' },
   REJECTED:       { color: 'var(--accent-magenta)',       bg: 'rgba(255,46,99,0.1)',    label: 'Rejected',      dot: '#FF2E63' },
+  REOPENED_IN_WARRANTY: { color: 'var(--accent-magenta)', bg: 'rgba(255,46,99,0.1)',    label: 'Reopened In Warranty', dot: '#FF2E63' },
 };
 
 const categoryIcons: Record<Category, { emoji: string; color: string }> = {

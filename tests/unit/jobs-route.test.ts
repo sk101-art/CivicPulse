@@ -32,6 +32,7 @@ describe("Scheduled job endpoint (/api/jobs/[name])", () => {
       "weather",
       "priority-recompute",
       "traffic-sample",
+      "durability",
     ]);
   });
 

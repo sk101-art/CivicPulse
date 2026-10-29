@@ -5,7 +5,7 @@ import {
   X, CheckCircle2, XCircle, ArrowRightLeft, 
   Play, CheckCheck, RotateCcw, AlertTriangle, 
   Clock, MapPin, Building2, ShieldAlert, Loader2,
-  UserCheck, Camera
+  UserCheck, Camera, FileText
 } from 'lucide-react';
 import { getAllowedActions, type IssueAction } from '@/lib/issues/stateMachine';
 import { Status, Band, Category } from '@prisma/client';
@@ -605,6 +605,18 @@ export function IssueDrawer({
                     <XCircle className="w-3.5 h-3.5" />
                     Reject Issue
                   </button>
+                )}
+
+                {issue.status === 'REOPENED_IN_WARRANTY' && (
+                  <a
+                    href={`/api/issues/${issue.id}/liability`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Defect Liability Package
+                  </a>
                 )}
 
                 {allowedActions.length === 0 && (

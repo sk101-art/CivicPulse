@@ -1,0 +1,109 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { GET } from "@/app/api/issues/[id]/liability/route";
+import { prisma } from "@/lib/db/prisma";
+import { Role, Status, Category, Band } from "@prisma/client";
+import * as authModule from "@/lib/api/auth";
+import { apiError } from "@/lib/api/errors";
+
+describe("GET /api/issues/[id]/liability (Contractor Liability Package)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("returns 401 when user is not authenticated", async () => {
+    vi.spyOn(authModule, "withAuth").mockResolvedValue({
+      user: null,
+      error: apiError(401, "UNAUTHORIZED", "Authentication required"),
+    });
+
+    const res = await GET(new Request("http://localhost:3000/api/issues/issue-1/liability"), {
+      params: Promise.resolve({ id: "issue-1" }),
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 when user is authenticated as CITIZEN", async () => {
+    vi.spyOn(authModule, "withAuth").mockResolvedValue({
+      user: null,
+      error: apiError(403, "FORBIDDEN", "Authority required"),
+    });
+
+    const res = await GET(new Request("http://localhost:3000/api/issues/issue-1/liability"), {
+      params: Promise.resolve({ id: "issue-1" }),
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 200 with printable HTML when user is authenticated as AUTHORITY", async () => {
+    vi.spyOn(authModule, "withAuth").mockResolvedValue({
+      user: { id: "desk-1", email: "desk-a@civicpulse.local", role: Role.AUTHORITY },
+      error: null,
+    });
+
+    const mockIssue = {
+      id: "issue-liability-test",
+      category: Category.POTHOLES,
+      status: Status.REOPENED_IN_WARRANTY,
+      lat: 12.9355,
+      lng: 77.6890,
+      address: "ORR Ecospace Frontage, Bengaluru",
+      priority: 85.0,
+      band: Band.CRITICAL,
+      contractorName: "Cauvery Infrastructure Ltd.",
+      tenderId: "BBMP/EE/RRD/2026-27/W-4192",
+      repairClaimedAt: new Date("2026-08-01"),
+      warrantyUntil: new Date("2027-08-01"),
+      lifespanDays: 42,
+      reports: [
+        {
+          id: "rep-claim-1",
+          role: "CLAIM_FIX",
+          photoUrl: "https://storage.civicpulse.org/claim.jpg",
+          photoSha256: "abcdef1234567890",
+          capturedAt: new Date("2026-08-01"),
+          lat: 12.9355,
+          lng: 77.6890,
+          gpsAccuracyM: 4.5,
+          headingDeg: 180,
+        },
+      ],
+      auditTasks: [
+        {
+          id: "task-dur-1",
+          kind: "DURABILITY",
+          votes: [
+            {
+              id: "vote-1",
+              observed: "DAMAGED",
+              weight: 0.9,
+              createdAt: new Date("2026-09-12"),
+              user: {
+                auditorScore: { reliability: 0.9 },
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    vi.spyOn(prisma.issue, "findUnique").mockResolvedValue(mockIssue as never);
+
+    const res = await GET(new Request("http://localhost:3000/api/issues/issue-liability-test/liability"), {
+      params: Promise.resolve({ id: "issue-liability-test" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/html");
+
+    const html = await res.text();
+    expect(html).toContain("Defect Liability Notice Under Contract Clause 38");
+    expect(html).toContain("Cauvery Infrastructure Ltd.");
+    expect(html).toContain("BBMP/EE/RRD/2026-27/W-4192");
+    expect(html).toContain("42 days");
+    expect(html).toContain("DAMAGED");
+    expect(html).toContain("abcdef1234567890");
+    expect(html).toContain("https://www.google.com/maps?q=12.9355,77.689");
+  });
+});

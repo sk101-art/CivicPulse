@@ -1,4 +1,4 @@
-export type EvidenceRole = "REPORT" | "CONFIRM" | "CLAIM_FIX" | "VERIFY";
+export type EvidenceRole = "REPORT" | "CONFIRM" | "CLAIM_FIX" | "VERIFY" | "AUDIT";
 
 export interface EvidencePayload {
   accuracy: number;

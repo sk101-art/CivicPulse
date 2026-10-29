@@ -7,14 +7,14 @@ import { authOptions } from "@/lib/auth";
 import { 
   MapPin, Clock, ArrowLeft, ShieldCheck, 
   Building2, ArrowRightLeft, 
-  Activity, CheckCircle2, Sparkles, AlertTriangle
+  Activity, CheckCircle2, Sparkles, AlertTriangle, FileText
 } from "lucide-react";
 import { VerifyFixModal } from "@/components/public/VerifyFixModal";
 import { PriorityBreakdown } from "@/components/priority/PriorityBreakdown";
 import { RepairWindowBadge } from "@/components/desk/RepairWindowBadge";
 import { getRepairWindowForIssue } from "@/lib/traffic/repairWindow";
 import type { PriorityBreakdown as PriorityBreakdownType } from "@/lib/priority";
-import { Status, Band, EvidenceRole } from "@prisma/client";
+import { Status, Band, EvidenceRole, Role } from "@prisma/client";
 
 export const revalidate = 0;
 
@@ -150,6 +150,8 @@ export default async function PublicIssuePage({
         return "Desk Fix Claim";
       case "VERIFY":
         return "Citizen Verification";
+      case "AUDIT":
+        return "Citizen Audit";
       default:
         return role;
     }
@@ -204,6 +206,33 @@ export default async function PublicIssuePage({
             Lat: {issue.lat.toFixed(5)}, Lng: {issue.lng.toFixed(5)}
           </p>
         </div>
+
+        {/* Reopened In Warranty Banner & Liability Package Link */}
+        {issue.status === Status.REOPENED_IN_WARRANTY && (
+          <div className="p-6 rounded-2xl bg-gradient-to-r from-rose-950/40 to-amber-950/40 border border-rose-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-rose-400 font-mono font-bold text-sm">
+                <AlertTriangle className="w-5 h-5" />
+                Defect Reopened Under Warranty (Failed Durability Audit)
+              </div>
+              <p className="text-xs font-mono text-white/70">
+                This repair degraded or failed durability checks during the active defect liability period.
+                {issue.lifespanDays ? ` Measured lifespan before deterioration: ${issue.lifespanDays} days.` : ""}
+              </p>
+            </div>
+            {currentUser?.role === Role.AUTHORITY && (
+              <a
+                href={`/api/issues/${issue.id}/liability`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 font-mono text-xs font-bold flex items-center gap-2 transition-colors whitespace-nowrap"
+              >
+                <FileText className="w-4 h-4" />
+                Defect Liability Package
+              </a>
+            )}
+          </div>
+        )}
 
         {/* Claimed Fixed Banner & Verification CTA */}
         {issue.status === Status.CLAIMED_FIXED && (

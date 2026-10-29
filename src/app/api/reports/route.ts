@@ -18,7 +18,7 @@ const evidencePayloadSchema = z.object({
   lng: z.number().min(76.5).max(78.5),
   nonce: z.string().min(1),
   photoHash: z.string().min(1),
-  role: z.enum(["REPORT", "CONFIRM", "CLAIM_FIX", "VERIFY"]),
+  role: z.enum(["REPORT", "CONFIRM", "CLAIM_FIX", "VERIFY", "AUDIT"]),
 });
 
 const signedReportSchema = z.object({

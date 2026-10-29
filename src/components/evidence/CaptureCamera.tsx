@@ -17,11 +17,12 @@ export interface CaptureCameraProps {
   onCapture: (evidence: CapturedEvidence) => void;
   onCancel?: () => void;
   targetCoords?: { lat: number; lng: number };
+  overrideNonce?: string;
   onDeviceUpload?: () => void;
   onSkip?: () => void;
 }
 
-export function CaptureCamera({ role, onCapture, onCancel, targetCoords, onDeviceUpload, onSkip }: CaptureCameraProps) {
+export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrideNonce, onDeviceUpload, onSkip }: CaptureCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -230,16 +231,18 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, onDevic
         );
       });
 
-      // Fetch 128-bit single-use nonce (or fallback to offline)
-      let nonce = 'offline';
-      try {
-        const nonceRes = await fetch('/api/evidence/nonce', { method: 'POST' });
-        if (nonceRes.ok) {
-          const nonceData = await nonceRes.json();
-          nonce = nonceData.nonce || 'offline';
+      // Fetch 128-bit single-use nonce (or fallback to offline / overrideNonce)
+      let nonce = overrideNonce || 'offline';
+      if (!overrideNonce) {
+        try {
+          const nonceRes = await fetch('/api/evidence/nonce', { method: 'POST' });
+          if (nonceRes.ok) {
+            const nonceData = await nonceRes.json();
+            nonce = nonceData.nonce || 'offline';
+          }
+        } catch {
+          nonce = 'offline';
         }
-      } catch {
-        nonce = 'offline';
       }
 
       setCaptureStatusMessage('Computing SHA-256 hash and cryptographic signature...');

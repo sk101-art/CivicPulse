@@ -109,14 +109,18 @@ export async function verifyEvidence(
     };
   }
 
-  // 5. Consume single-use nonce
-  const nonceResult = await consumeEvidenceNonce(userId, payload.nonce);
-  if (!nonceResult.valid) {
-    return {
-      valid: false,
-      reason: "INVALID_NONCE",
-      details: nonceResult.reason,
-    };
+  // 5. Consume single-use nonce (AUDIT tasks use server-issued challengeNonce checked and consumed by AuditTask)
+  let nonceId = "audit-challenge";
+  if (payload.role !== "AUDIT") {
+    const nonceResult = await consumeEvidenceNonce(userId, payload.nonce);
+    if (!nonceResult.valid) {
+      return {
+        valid: false,
+        reason: "INVALID_NONCE",
+        details: nonceResult.reason,
+      };
+    }
+    nonceId = nonceResult.nonceId;
   }
 
   // 6. Look up registered active device keys for the user
@@ -178,6 +182,6 @@ export async function verifyEvidence(
     valid: true,
     deviceKeyId: verifiedKeyId,
     photoHash: computedHash,
-    nonceId: nonceResult.nonceId,
+    nonceId,
   };
 }

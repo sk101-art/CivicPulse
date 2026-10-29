@@ -42,6 +42,7 @@ enum Status {
   VERIFIED_FIXED
   DISPUTED
   REJECTED
+  REOPENED_IN_WARRANTY
 }
 
 enum AssignmentStatus {
@@ -62,6 +63,25 @@ enum EvidenceRole {
   CONFIRM
   CLAIM_FIX
   VERIFY
+  AUDIT
+}
+
+enum AuditKind {
+  CLAIM_CHECK
+  DURABILITY
+  CONTROL
+}
+
+enum AuditTaskStatus {
+  OPEN
+  DONE
+  EXPIRED
+}
+
+enum AuditObserved {
+  INTACT
+  DAMAGED
+  CANNOT_SEE
 }
 
 enum SegmentEventType {
@@ -83,6 +103,9 @@ model User {
   name           String?
   citizenProfile CitizenProfile?
   comments       Comment[]
+  auditTasks     AuditTask[]
+  auditVotes     AuditVote[]
+  auditorScore   AuditorScore?
 }
 
 model CitizenProfile {
@@ -156,6 +179,11 @@ model Issue {
   slaDueAt             DateTime
   slaBreached          Boolean                             @default(false)
   isSeed               Boolean                             @default(false)
+  repairClaimedAt      DateTime?
+  warrantyUntil        DateTime?
+  contractorName       String?
+  tenderId             String?
+  lifespanDays         Int?
   createdAt            DateTime                            @default(now())
   updatedAt            DateTime                            @updatedAt
   reports              Report[]
@@ -164,6 +192,7 @@ model Issue {
   comments             Comment[]
   assignments          Assignment[]
   trafficSamples       TrafficSample[]
+  auditTasks           AuditTask[]
   segment              RoadSegment?                        @relation(fields: [segmentId], references: [id])
   agency               Agency?                             @relation(fields: [agencyId], references: [id])
 }
@@ -187,10 +216,12 @@ model Report {
   note         String?
   noteLang     String?
   noteEnglish  String?
+  headingDeg   Float?
   aiTriage     Json?
   isSeed       Boolean      @default(false)
   createdAt    DateTime     @default(now())
   issue        Issue        @relation(fields: [issueId], references: [id])
+  auditTasks   AuditTask[]
 }
 
 model DeviceKey {
@@ -391,4 +422,56 @@ model ApiUsage {
 
   @@unique([provider, month])
   @@index([provider, month])
+}
+
+model AuditTask {
+  id                  String          @id @default(cuid())
+  issueId             String
+  assigneeId          String?
+  kind                AuditKind
+  dueAt               DateTime
+  challengeBearingDeg Int             // 0-359
+  challengeNonce      String
+  status              AuditTaskStatus @default(OPEN)
+  createdAt           DateTime        @default(now())
+  completedAt         DateTime?
+  reportId            String?
+  isSeed              Boolean         @default(false)
+
+  issue               Issue           @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  assignee            User?           @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  report              Report?         @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  votes               AuditVote[]
+
+  @@index([issueId, status])
+  @@index([assigneeId, status])
+  @@index([status, dueAt])
+  @@index([kind, status])
+}
+
+model AuditVote {
+  id        String        @id @default(cuid())
+  taskId    String
+  userId    String
+  observed  AuditObserved
+  weight    Float
+  createdAt DateTime      @default(now())
+
+  task      AuditTask     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([taskId])
+  @@index([userId])
+}
+
+model AuditorScore {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  controlsPassed Int      @default(0)
+  controlsTotal  Int      @default(0)
+  reliability    Float    @default(0.6)
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

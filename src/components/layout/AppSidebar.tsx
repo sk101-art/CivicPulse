@@ -2,14 +2,15 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LogOut, Radio, TrendingUp, User, Map, FileText, LayoutDashboard } from 'lucide-react';
+import { LogOut, Radio, TrendingUp, User, Map, FileText, LayoutDashboard, Compass } from 'lucide-react';
 
 const iconMap = {
   TrendingUp,
   User,
   Map,
   FileText,
-  LayoutDashboard
+  LayoutDashboard,
+  Compass,
 };
 
 interface SidebarLink {

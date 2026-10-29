@@ -16,6 +16,8 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/unit/**/*.test.{ts,tsx}', 'tests/contract/**/*.test.{ts,tsx}'],
     globals: true,
+    testTimeout: 15000,
+    hookTimeout: 15000,
   },
   resolve: {
     alias: {

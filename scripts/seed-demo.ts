@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Tier, Category, Status, Band, SegmentEventType } from '@prisma/client';
+import { PrismaClient, Role, Tier, Category, Status, Band, SegmentEventType, AuditKind, AuditTaskStatus, AuditObserved } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
@@ -70,6 +70,12 @@ export async function seedDemoData() {
     create: { email: 'citizen-b@civicpulse.local', name: 'Priya Sharma (Beta)', passwordHash: hashedPassword, role: Role.CITIZEN, createdAt: new Date(now.getTime() - 48 * dayMs) },
   });
 
+  const citizenC = await prisma.user.upsert({
+    where: { email: 'citizen-c@civicpulse.local' },
+    update: { name: 'Kavita Rao (Gamma)', role: Role.CITIZEN, createdAt: new Date(now.getTime() - 15 * dayMs) },
+    create: { email: 'citizen-c@civicpulse.local', name: 'Kavita Rao (Gamma)', passwordHash: hashedPassword, role: Role.CITIZEN, createdAt: new Date(now.getTime() - 15 * dayMs) },
+  });
+
   await prisma.citizenProfile.upsert({
     where: { userId: citizenA.id },
     update: { tier: Tier.CITIZEN, reputation: 50, verified: true },
@@ -80,6 +86,12 @@ export async function seedDemoData() {
     where: { userId: citizenB.id },
     update: { tier: Tier.CONTRIBUTOR, reputation: 250, verified: true },
     create: { userId: citizenB.id, tier: Tier.CONTRIBUTOR, reputation: 250, verified: true },
+  });
+
+  await prisma.citizenProfile.upsert({
+    where: { userId: citizenC.id },
+    update: { tier: Tier.GUARDIAN, reputation: 600, verified: true },
+    create: { userId: citizenC.id, tier: Tier.GUARDIAN, reputation: 600, verified: true },
   });
 
   // 3. Ensure ~10 segments with traffic samples along ORR corridor
@@ -415,6 +427,170 @@ export async function seedDemoData() {
       createdAt: new Date(now.getTime() - 10 * dayMs),
       slaDueAt: new Date(now.getTime() + 72 * 3600 * 1000),
       isSeed: true,
+    },
+  });
+
+  // 4. Track B Blind Repair Audit Seeds
+  console.log('[Seed Demo] Seeding Track B Blind Repair Audit demo scenarios...');
+
+  // Scenario 1: One claimed fix with open audit tasks
+  const claimedAuditIssue = await prisma.issue.upsert({
+    where: { id: 'seed-demo-claimed-audit' },
+    update: {
+      category: Category.POTHOLES,
+      status: Status.CLAIMED_FIXED,
+      lat: 12.9355,
+      lng: 77.6890,
+      address: 'Outer Ring Road near Ecospace East Gate',
+      priority: 68.5,
+      band: Band.HIGH,
+      agencyId: agencyMap['GBA'],
+      segmentId: 'seed-demo-seg-ecospace',
+      repairClaimedAt: new Date(now.getTime() - 4 * 3600 * 1000),
+      warrantyUntil: new Date(now.getTime() + 365 * dayMs),
+      contractorName: 'Cauvery Infrastructure Ltd.',
+      tenderId: 'BBMP/EE/RRD/2026-27/W-4192',
+      isSeed: true,
+      slaDueAt: new Date(now.getTime() + 24 * 3600 * 1000),
+    },
+    create: {
+      id: 'seed-demo-claimed-audit',
+      category: Category.POTHOLES,
+      status: Status.CLAIMED_FIXED,
+      lat: 12.9355,
+      lng: 77.6890,
+      address: 'Outer Ring Road near Ecospace East Gate',
+      priority: 68.5,
+      band: Band.HIGH,
+      agencyId: agencyMap['GBA'],
+      segmentId: 'seed-demo-seg-ecospace',
+      repairClaimedAt: new Date(now.getTime() - 4 * 3600 * 1000),
+      warrantyUntil: new Date(now.getTime() + 365 * dayMs),
+      contractorName: 'Cauvery Infrastructure Ltd.',
+      tenderId: 'BBMP/EE/RRD/2026-27/W-4192',
+      isSeed: true,
+      slaDueAt: new Date(now.getTime() + 24 * 3600 * 1000),
+    },
+  });
+
+  // Create 3 open audit tasks assigned to the 3 demo citizens
+  const citizens = [citizenA, citizenB, citizenC];
+  for (let i = 0; i < 3; i++) {
+    const taskId = `seed-audit-task-${i + 1}`;
+    await prisma.auditTask.upsert({
+      where: { id: taskId },
+      update: {
+        issueId: claimedAuditIssue.id,
+        assigneeId: citizens[i].id,
+        kind: AuditKind.CLAIM_CHECK,
+        dueAt: new Date(now.getTime() + 44 * 3600 * 1000),
+        challengeBearingDeg: (45 * (i + 1) * 2) % 360,
+        challengeNonce: `seed-nonce-challenge-${i + 1}`,
+        status: AuditTaskStatus.OPEN,
+        isSeed: true,
+      },
+      create: {
+        id: taskId,
+        issueId: claimedAuditIssue.id,
+        assigneeId: citizens[i].id,
+        kind: AuditKind.CLAIM_CHECK,
+        dueAt: new Date(now.getTime() + 44 * 3600 * 1000),
+        challengeBearingDeg: (45 * (i + 1) * 2) % 360,
+        challengeNonce: `seed-nonce-challenge-${i + 1}`,
+        status: AuditTaskStatus.OPEN,
+        isSeed: true,
+      },
+    });
+  }
+
+  // Scenario 2: One REOPENED_IN_WARRANTY issue with a liability package
+  const reopenedWarrantyIssue = await prisma.issue.upsert({
+    where: { id: 'seed-demo-reopened-warranty' },
+    update: {
+      category: Category.ROAD_CUT,
+      status: Status.REOPENED_IN_WARRANTY,
+      lat: 12.9280,
+      lng: 77.6780,
+      address: 'Outer Ring Road, Bellandur South Underpass',
+      priority: 82.0,
+      band: Band.CRITICAL,
+      agencyId: agencyMap['BWSSB'],
+      segmentId: 'seed-demo-seg-bellandur',
+      repairClaimedAt: new Date(now.getTime() - 45 * dayMs),
+      warrantyUntil: new Date(now.getTime() + 320 * dayMs),
+      contractorName: 'Cauvery Infrastructure Ltd.',
+      tenderId: 'BBMP/EE/RRD/2026-27/W-4192',
+      lifespanDays: 42,
+      isSeed: true,
+      slaDueAt: new Date(now.getTime() + 12 * 3600 * 1000),
+    },
+    create: {
+      id: 'seed-demo-reopened-warranty',
+      category: Category.ROAD_CUT,
+      status: Status.REOPENED_IN_WARRANTY,
+      lat: 12.9280,
+      lng: 77.6780,
+      address: 'Outer Ring Road, Bellandur South Underpass',
+      priority: 82.0,
+      band: Band.CRITICAL,
+      agencyId: agencyMap['BWSSB'],
+      segmentId: 'seed-demo-seg-bellandur',
+      repairClaimedAt: new Date(now.getTime() - 45 * dayMs),
+      warrantyUntil: new Date(now.getTime() + 320 * dayMs),
+      contractorName: 'Cauvery Infrastructure Ltd.',
+      tenderId: 'BBMP/EE/RRD/2026-27/W-4192',
+      lifespanDays: 42,
+      isSeed: true,
+      slaDueAt: new Date(now.getTime() + 12 * 3600 * 1000),
+    },
+  });
+
+  // Seed durability task & votes for the reopened warranty issue
+  const durabilityTaskId = 'seed-durability-task-bellandur';
+  const durabilityTask = await prisma.auditTask.upsert({
+    where: { id: durabilityTaskId },
+    update: {
+      issueId: reopenedWarrantyIssue.id,
+      assigneeId: citizenA.id,
+      kind: AuditKind.DURABILITY,
+      dueAt: new Date(now.getTime() - 2 * dayMs),
+      challengeBearingDeg: 180,
+      challengeNonce: 'seed-nonce-durability-done',
+      status: AuditTaskStatus.DONE,
+      completedAt: new Date(now.getTime() - 3 * dayMs),
+      isSeed: true,
+    },
+    create: {
+      id: durabilityTaskId,
+      issueId: reopenedWarrantyIssue.id,
+      assigneeId: citizenA.id,
+      kind: AuditKind.DURABILITY,
+      dueAt: new Date(now.getTime() - 2 * dayMs),
+      challengeBearingDeg: 180,
+      challengeNonce: 'seed-nonce-durability-done',
+      status: AuditTaskStatus.DONE,
+      completedAt: new Date(now.getTime() - 3 * dayMs),
+      isSeed: true,
+    },
+  });
+
+  // Seed audit vote indicating DAMAGED
+  await prisma.auditVote.upsert({
+    where: {
+      taskId_userId: { taskId: durabilityTask.id, userId: citizenA.id },
+    },
+    update: {
+      observed: AuditObserved.DAMAGED,
+      weight: 1.0,
+      createdAt: new Date(now.getTime() - 3 * dayMs),
+    },
+    create: {
+      id: 'seed-vote-durability-damaged-1',
+      taskId: durabilityTask.id,
+      userId: citizenA.id,
+      observed: AuditObserved.DAMAGED,
+      weight: 1.0,
+      createdAt: new Date(now.getTime() - 3 * dayMs),
     },
   });
 

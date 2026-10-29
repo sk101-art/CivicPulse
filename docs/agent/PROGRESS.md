@@ -8,6 +8,45 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Feature · Track B Blind Repair Audit & Contractor Liability Package · 2026-10-29
+- **Goal:** Implement Track B Core novelty: a repair counts as `VERIFIED_FIXED` only after a blind, randomised citizen audit, repairs are re-audited across the warranty period, durability failures trigger `REOPENED_IN_WARRANTY` and compute `lifespanDays`, and desk officers have access to a printable Clause 38 Contractor Liability Package.
+- **Implemented Work:**
+  1. Data Model & Migration:
+     - Added models `AuditTask`, `AuditVote`, and `AuditorScore`.
+     - Added `repairClaimedAt`, `warrantyUntil`, `contractorName`, `tenderId`, `lifespanDays` to `Issue`.
+     - Added `REOPENED_IN_WARRANTY` to `Status` enum.
+     - Added `AUDIT` to `EvidenceRole` enum.
+     - Created and deployed migration `prisma/migrations/20261029093000_blind_repair_audit/migration.sql` with `npx prisma migrate deploy` and confirmed 0 drift with `prisma migrate diff`.
+  2. State Machine:
+     - Added `REOPEN_IN_WARRANTY` transition rule (`VERIFIED_FIXED` -> `REOPENED_IN_WARRANTY`, allowed for `Role.SYSTEM`).
+     - Allowed `REOPENED_IN_WARRANTY` in `ASSIGN_AGENCY`, `START_WORK`, `CLAIM_FIX`, and `OVERRIDE_BAND`.
+  3. Core Blind Audit Engine (`src/lib/audit/blindAudit.ts`):
+     - `assignBlindAuditTasks`: selects 3 random eligible citizens (account > 24h old, not reporter, not desk, active in 30d, location within 3 km -> 10 km -> open public queue).
+     - Every 1 in 5 tasks sent to an auditor is a `CONTROL` task on a known-state issue.
+     - `submitAuditVote`: checks challenge nonce, heading (tolerance ±45°), GPS accuracy (≤ 30m), uploads evidence photo, awards points, updates `AuditorScore` with Laplace smoothing `(passed + 1) / (total + 2)`, and evaluates decision thresholds:
+       - Weighted `INTACT` ≥ 1.5 and > `DAMAGED` -> `VERIFIED_FIXED`.
+       - Weighted `DAMAGED` ≥ 1.0 -> `DISPUTED`.
+       - Durability `DAMAGED` -> `REOPENED_IN_WARRANTY` and calculates `lifespanDays`.
+     - Logs all decisions to immutable `ActionLog`.
+  4. Durability Scheduled Job (`src/lib/jobs/durability.ts`):
+     - Checks issues in `VERIFIED_FIXED` within warranty for milestones (+7, +30, +90 days) or rain ≥ 20 mm in past 48 hours (via Open-Meteo).
+     - Generates `DURABILITY` audit tasks.
+     - Registered in `JOB_NAMES`, `src/lib/jobs/runner.ts`, `/api/jobs/[name]`, and `.github/workflows/jobs.yml`.
+  5. Contractor Liability Package (`src/app/api/issues/[id]/liability/route.ts`):
+     - Desk-only (`Role.AUTHORITY`) printable HTML notice under Contract Clause 38.
+     - Includes contractor name, tender reference, location, map link, claim dates, warranty window, signed evidence photos with SHA-256 hashes, timestamps, GPS accuracy, and audit votes.
+     - Added "Defect Liability Notice" button on desk issue drawer and public issue page when status is `REOPENED_IN_WARRANTY`.
+  6. Citizen & Desk Dashboards:
+     - Created mobile-first Citizen Audit Missions page (`/citizen/audit`) with challenge bearing guide, live compass, camera capture, and verdict submission.
+     - Added "Audit Tasks" tab in citizen navigation (`MobileNav.tsx`, `AppSidebar.tsx`).
+     - Added "Repair lifespan" (overall, by ward, by contractor) and "Reopened in warranty" metrics to desk view (`DeskMetricsBar.tsx`).
+     - Created public ward page (`/ward/[id]`) displaying ward claim gap % and median repair lifespan.
+  7. Test Coverage & Full Quality Gate:
+     - Unit tests: `tests/unit/blind-audit-unit.test.ts` (11 tests), `tests/unit/liability-package.test.ts` (3 tests).
+     - E2E Playwright test: `tests/e2e/blind-repair-audit.spec.ts` (claim fix -> 3 blind audit tasks -> citizen votes -> `VERIFIED_FIXED` -> durability `DAMAGED` -> `REOPENED_IN_WARRANTY` -> printable liability package).
+     - Full gate passed: `lint` (0 errors), `typecheck` (0 errors), `test` (52 suites, 290 tests passing), `build` (all routes compiled).
+
+
 ### Review 29 Oct · Traffic Sample Fixes, Persistent Quota & Migration · 2026-10-29
 - **Goal:** Exclude seed issues (`isSeed: false`) and cap assigned/claimed issues at 40 in `trafficSample.ts`, make TomTom monthly quota counter persistent in the database (`ApiUsage` table keyed by provider+month) shared across routing and flow calls (20k/month cap), add and deploy a Prisma migration for `TrafficSample` and `ApiUsage` via `prisma migrate deploy`, and verify production DB schema matches.
 - **Implemented Fixes:**

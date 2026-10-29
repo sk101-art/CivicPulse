@@ -19,10 +19,11 @@ export default async function CitizenLayout({ children }: { children: React.Reac
 
   const links: Array<{
     href: string;
-    icon: 'TrendingUp' | 'User' | 'Map' | 'FileText' | 'LayoutDashboard';
+    icon: 'TrendingUp' | 'User' | 'Map' | 'FileText' | 'LayoutDashboard' | 'Compass';
     label: string;
   }> = [
     { href: '/citizen/dashboard', icon: 'TrendingUp', label: 'Dashboard' },
+    { href: '/citizen/audit', icon: 'Compass', label: 'Audit Tasks' },
     { href: '/citizen/profile', icon: 'User', label: 'Profile' },
     { href: '/citizen/report', icon: 'FileText', label: 'Report' },
     { href: '/citizen/map', icon: 'Map', label: 'Map View' },

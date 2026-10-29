@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { format, differenceInMinutes } from 'date-fns';
 
-type Status = 'OPEN' | 'CONFIRMED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLAIMED_FIXED' | 'VERIFIED_FIXED' | 'DISPUTED' | 'REJECTED';
+type Status = 'OPEN' | 'CONFIRMED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLAIMED_FIXED' | 'VERIFIED_FIXED' | 'DISPUTED' | 'REJECTED' | 'REOPENED_IN_WARRANTY';
 
 interface StatusTrackerProps {
   status: Status;
