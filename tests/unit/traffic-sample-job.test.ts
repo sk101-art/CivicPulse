@@ -22,7 +22,6 @@ describe("Traffic Sample Job & Budget Limiting", () => {
   });
 
   it("skips execution when daily budget of 1500 calls has already been reached", async () => {
-    // Mock prisma.trafficSample.count to return 1500
     vi.spyOn(prisma.trafficSample, "count").mockResolvedValue(1500);
     const flowSpy = vi.spyOn(tomtom, "getFlowSegment");
 
@@ -33,8 +32,7 @@ describe("Traffic Sample Job & Budget Limiting", () => {
     expect(flowSpy).not.toHaveBeenCalled();
   });
 
-  it("samples eligible open and claimed/assigned issues, skipping recently sampled ones", async () => {
-    // 100 calls made today -> 1400 left
+  it("samples eligible open and claimed/assigned issues excluding seeds and capping at 40 each", async () => {
     vi.spyOn(prisma.trafficSample, "count").mockResolvedValue(100);
 
     const mockOpenIssues = [
@@ -45,7 +43,9 @@ describe("Traffic Sample Job & Budget Limiting", () => {
       { id: "issue-assigned-3", lat: 12.9570, lng: 77.7020, segmentId: "seg-2", priority: 50, status: Status.ASSIGNED },
     ];
 
+    const findManyCalls: unknown[] = [];
     vi.spyOn(prisma.issue, "findMany").mockImplementation((args) => {
+      findManyCalls.push(args);
       const where = args?.where as { status?: unknown } | undefined;
       if (where?.status === Status.OPEN) {
         return Promise.resolve(mockOpenIssues) as unknown as ReturnType<typeof prisma.issue.findMany>;
@@ -69,11 +69,30 @@ describe("Traffic Sample Job & Budget Limiting", () => {
 
     const result = await runTrafficSample(Date.now());
 
+    // Verify both queries strictly exclude seed issues (isSeed: false) and take at most 40 ordered by priority desc
+    expect(findManyCalls).toHaveLength(2);
+    expect(findManyCalls[0]).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: Status.OPEN, isSeed: false }),
+        take: 40,
+        orderBy: { priority: "desc" },
+      })
+    );
+    expect(findManyCalls[1]).toEqual(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: { in: [Status.ASSIGNED, Status.CLAIMED_FIXED] },
+          isSeed: false,
+        }),
+        take: 40,
+        orderBy: { priority: "desc" },
+      })
+    );
+
     // Should sample issue-open-1 and issue-assigned-3 (skipping issue-open-2)
     expect(result.processed).toBe(2);
     expect(flowSpy).toHaveBeenCalledTimes(2);
     expect(createSpy).toHaveBeenCalledTimes(2);
-    // Verified congestion calculation: 1 - 30/50 = 0.4
     expect(createSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

@@ -380,3 +380,15 @@ model Assignment {
   personnel   Personnel        @relation(fields: [personnelId], references: [id])
   issue       Issue            @relation(fields: [issueId], references: [id])
 }
+
+model ApiUsage {
+  id        String   @id @default(cuid())
+  provider  String
+  month     String
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, month])
+  @@index([provider, month])
+}

@@ -1,5 +1,6 @@
 import "server-only";
 import { env, isConfigured } from "@/lib/env";
+import { prisma } from "@/lib/db/prisma";
 import fs from "fs";
 import path from "path";
 
@@ -75,40 +76,101 @@ interface CacheEntry {
 const routeCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Monthly request quota tracking (20,000 / month free tier cap)
-const MAX_MONTHLY_QUOTA = 20000;
-let monthlyCounterMonth = "";
-let monthlyCallCount = 0;
+// Monthly request quota tracking (20,000 / month free tier cap, persisted in ApiUsage)
+export const MAX_MONTHLY_QUOTA = 20000;
+const PROVIDER_NAME = "tomtom";
 
-function tryIncrementMonthlyQuota(): boolean {
+export async function tryIncrementMonthlyQuota(): Promise<boolean> {
   const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
-  if (monthlyCounterMonth !== currentMonth) {
-    monthlyCounterMonth = currentMonth;
-    monthlyCallCount = 0;
-  }
-  if (monthlyCallCount >= MAX_MONTHLY_QUOTA) {
+  try {
+    const usage = await prisma.apiUsage.findUnique({
+      where: {
+        provider_month: {
+          provider: PROVIDER_NAME,
+          month: currentMonth,
+        },
+      },
+      select: { count: true },
+    });
+
+    if (usage && usage.count >= MAX_MONTHLY_QUOTA) {
+      return false;
+    }
+
+    await prisma.apiUsage.upsert({
+      where: {
+        provider_month: {
+          provider: PROVIDER_NAME,
+          month: currentMonth,
+        },
+      },
+      create: {
+        provider: PROVIDER_NAME,
+        month: currentMonth,
+        count: 1,
+      },
+      update: {
+        count: { increment: 1 },
+      },
+    });
+
+    return true;
+  } catch (err) {
+    console.error("[tomtom] Failed to check/increment ApiUsage quota:", err);
     return false;
   }
-  monthlyCallCount++;
-  return true;
 }
 
-function checkAndIncrementQuota(): void {
+async function checkAndIncrementQuota(): Promise<void> {
   const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
-  if (!tryIncrementMonthlyQuota()) {
+  const ok = await tryIncrementMonthlyQuota();
+  if (!ok) {
     throw new Error(
       `TomTom monthly quota exceeded: reached ${MAX_MONTHLY_QUOTA} calls for ${currentMonth}`
     );
   }
 }
 
-export function getMonthlyTomTomCallCount(): number {
-  return monthlyCallCount;
+export async function getMonthlyTomTomCallCount(): Promise<number> {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  try {
+    const usage = await prisma.apiUsage.findUnique({
+      where: {
+        provider_month: {
+          provider: PROVIDER_NAME,
+          month: currentMonth,
+        },
+      },
+      select: { count: true },
+    });
+    return usage?.count ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
-export function resetMonthlyTomTomCallCount(): void {
-  monthlyCallCount = 0;
-  monthlyCounterMonth = new Date().toISOString().slice(0, 7);
+export async function resetMonthlyTomTomCallCount(): Promise<void> {
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  try {
+    await prisma.apiUsage.upsert({
+      where: {
+        provider_month: {
+          provider: PROVIDER_NAME,
+          month: currentMonth,
+        },
+      },
+      create: {
+        provider: PROVIDER_NAME,
+        month: currentMonth,
+        count: 0,
+      },
+      update: {
+        count: 0,
+      },
+    });
+  } catch {
+    // ignore
+  }
 }
 
 export function clearTomTomRouteCache(): void {
@@ -286,7 +348,7 @@ export async function calculateTomTomRoute(
   }
 
   // Quota enforcement
-  checkAndIncrementQuota();
+  await checkAndIncrementQuota();
 
   const apiKey = env.TOMTOM_API_KEY!;
   const allPoints = [
@@ -443,7 +505,7 @@ export async function getFlowSegment(
   }
 
   // Quota check
-  if (!tryIncrementMonthlyQuota()) {
+  if (!(await tryIncrementMonthlyQuota())) {
     return null;
   }
 

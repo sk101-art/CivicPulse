@@ -4,17 +4,21 @@ import {
   getFlowSegment,
   clearTomTomFlowCache,
   resetMonthlyTomTomCallCount,
+  getMonthlyTomTomCallCount,
+  tryIncrementMonthlyQuota,
+  MAX_MONTHLY_QUOTA,
 } from "@/lib/external/tomtom";
 import { Role } from "@prisma/client";
+import { prisma } from "@/lib/db/prisma";
 import * as authModule from "@/lib/api/auth";
 import * as repairWindowModule from "@/lib/traffic/repairWindow";
 import * as envModule from "@/lib/env";
 
 describe("Repair Window Endpoint (Desk Only) & TomTom Flow Null-Safety", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
     clearTomTomFlowCache();
-    resetMonthlyTomTomCallCount();
+    await resetMonthlyTomTomCallCount();
   });
 
   describe("GET /api/issues/[id]/repair-window (desk only)", () => {
@@ -107,6 +111,58 @@ describe("Repair Window Endpoint (Desk Only) & TomTom Flow Null-Safety", () => {
     });
   });
 
+  describe("Persistent TomTom Quota Tracking in ApiUsage Table", () => {
+    it("persists calls to ApiUsage and respects 20,000 monthly cap", async () => {
+      vi.spyOn(prisma.apiUsage, "findUnique").mockResolvedValue({
+        id: "usage-1",
+        provider: "tomtom",
+        month: "2026-10",
+        count: 19999,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const upsertSpy = vi.spyOn(prisma.apiUsage, "upsert").mockResolvedValue({} as never);
+
+      // Call 20,000 should succeed
+      const allowed = await tryIncrementMonthlyQuota();
+      expect(allowed).toBe(true);
+      expect(upsertSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          update: { count: { increment: 1 } },
+        })
+      );
+
+      // When quota has reached 20,000, subsequent calls are rejected
+      vi.spyOn(prisma.apiUsage, "findUnique").mockResolvedValue({
+        id: "usage-1",
+        provider: "tomtom",
+        month: "2026-10",
+        count: MAX_MONTHLY_QUOTA,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const blocked = await tryIncrementMonthlyQuota();
+      expect(blocked).toBe(false);
+    });
+
+    it("getFlowSegment returns null when persistent monthly quota is exhausted", async () => {
+      vi.spyOn(envModule, "isConfigured").mockReturnValue(true);
+      vi.spyOn(prisma.apiUsage, "findUnique").mockResolvedValue({
+        id: "usage-1",
+        provider: "tomtom",
+        month: "2026-10",
+        count: 20000,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      expect(await getMonthlyTomTomCallCount()).toBe(20000);
+      const result = await getFlowSegment(12.9558, 77.7012);
+      expect(result).toBeNull();
+    });
+  });
+
   describe("getFlowSegment (null-safety & caching)", () => {
     it("returns null safely when TOMTOM_API_KEY is not configured (never throws)", async () => {
       vi.spyOn(envModule, "isConfigured").mockImplementation((key) =>
@@ -127,6 +183,8 @@ describe("Repair Window Endpoint (Desk Only) & TomTom Flow Null-Safety", () => {
 
     it("parses valid TomTom flowSegmentData response and caches for 15 minutes", async () => {
       vi.spyOn(envModule, "isConfigured").mockReturnValue(true);
+      vi.spyOn(prisma.apiUsage, "findUnique").mockResolvedValue(null);
+      vi.spyOn(prisma.apiUsage, "upsert").mockResolvedValue({} as never);
 
       const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
         new Response(
@@ -162,6 +220,8 @@ describe("Repair Window Endpoint (Desk Only) & TomTom Flow Null-Safety", () => {
 
     it("returns null safely on network failure or HTTP error", async () => {
       vi.spyOn(envModule, "isConfigured").mockReturnValue(true);
+      vi.spyOn(prisma.apiUsage, "findUnique").mockResolvedValue(null);
+      vi.spyOn(prisma.apiUsage, "upsert").mockResolvedValue({} as never);
       vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("Network timeout"));
 
       const result = await getFlowSegment(12.9558, 77.7012);

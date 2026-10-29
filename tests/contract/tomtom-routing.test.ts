@@ -20,9 +20,9 @@ import fs from "fs";
 import path from "path";
 
 describe("T41 Contract Test: TomTom Routing Adapter & Safe Routes API", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     clearTomTomRouteCache();
-    resetMonthlyTomTomCallCount();
+    await resetMonthlyTomTomCallCount();
   });
 
   it("verifies synthetic TomTom fixture exists and conforms to official schema with _synthetic: true", () => {

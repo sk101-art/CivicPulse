@@ -8,6 +8,56 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Review 29 Oct · Traffic Sample Fixes, Persistent Quota & Migration · 2026-10-29
+- **Goal:** Exclude seed issues (`isSeed: false`) and cap assigned/claimed issues at 40 in `trafficSample.ts`, make TomTom monthly quota counter persistent in the database (`ApiUsage` table keyed by provider+month) shared across routing and flow calls (20k/month cap), add and deploy a Prisma migration for `TrafficSample` and `ApiUsage` via `prisma migrate deploy`, and verify production DB schema matches.
+- **Implemented Fixes:**
+  1. `src/lib/jobs/trafficSample.ts`:
+     - Excluded seed issues (`where: { isSeed: false }`) from both the open issues query and the assigned/claimed issues query.
+     - Capped the assigned/claimed query at 40 (highest priority first), bounding each run to at most ~80 candidate issues.
+  2. Persistent Quota Tracking (`src/lib/external/tomtom.ts` & `ApiUsage` table):
+     - Added `ApiUsage` table in `prisma/schema.prisma` with `@@unique([provider, month])`.
+     - Replaced in-memory counter with atomic check/upsert against `ApiUsage` for provider `"tomtom"` and current month (e.g. `"2026-10"`).
+     - Both TomTom Routing and Traffic Flow Segment calls share this persistent 20,000 calls/month budget.
+     - Added `resetMonthlyTomTomCallCount()` and `getMonthlyTomTomCallCount()` database helpers.
+  3. Prisma Migration & Production Schema Verification:
+     - Created migration `prisma/migrations/20261029085500_traffic_sample_and_api_usage/migration.sql`.
+     - Applied to production database using `npx prisma migrate deploy`.
+     - Verified with `npx prisma migrate status` (3 migrations found, database schema is up to date).
+     - Confirmed schema parity using `npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma` ("No difference detected").
+  4. Test Suite Updates:
+     - `tests/unit/traffic-sample-job.test.ts`: verified `isSeed: false` and `take: 40` on both queries.
+     - `tests/unit/traffic-endpoint-and-tomtom.test.ts`: verified persistent `ApiUsage` quota tracking and cap enforcement at 20,000 calls/month.
+     - `tests/contract/tomtom-routing.test.ts`: updated `beforeEach` to await database quota reset.
+- **Full Gate Results:**
+  ```
+  $ npm run lint
+  > miniproject@0.1.0 lint
+  > eslint
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    136:20  warning  Using `<img>` could result in slower LCP and higher bandwidth.  @next/next/no-img-element
+  ✖ 1 problem (0 errors, 1 warning)
+
+  $ npm run typecheck
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+  [exit 0]
+
+  $ npm test
+  > miniproject@0.1.0 test
+  > vitest run
+   Test Files  50 passed (50)
+        Tests  276 passed (276)
+     Duration  8.71s
+
+  $ npm run build
+  > miniproject@0.1.0 build
+  > next build --webpack
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 7.1s
+  Finished TypeScript in 9.7s ...
+  ✓ Generating static pages using 15 workers (21/21) in 685ms
+  ```
+
 ### Review 29 Oct · Real Traffic in Priority & Recommended Repair Window · 2026-10-29
 - **Goal:** Implement real traffic flow integration (TomTom free tier, India only) to influence Priority Index exposure calculations and provide recommended 2-hour repair windows for desk operators with rain forecast exclusion.
 - **Implemented Changes:**
