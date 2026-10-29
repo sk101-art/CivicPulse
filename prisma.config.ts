@@ -11,6 +11,11 @@ if (fs.existsSync(path.join(rootDir, ".env.local"))) {
   dotenv.config({ path: path.join(rootDir, ".env.local"), override: true });
 }
 
+const isTestTarget = process.env.PRISMA_TARGET === "test";
+const dbUrl = isTestTarget
+  ? (process.env["DIRECT_DATABASE_URL_TEST"] || process.env["DATABASE_URL_TEST"] || "")
+  : (process.env["DIRECT_DATABASE_URL"] || process.env["APP_DATABASE_URL"] || "");
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
@@ -19,6 +24,7 @@ export default defineConfig({
   },
   datasource: {
     // Migrations run against DIRECT_DATABASE_URL (Supabase session pooler on port 5432)
-    url: process.env["DIRECT_DATABASE_URL"] || process.env["APP_DATABASE_URL"] || "",
+    // When PRISMA_TARGET=test, migrations deploy to DIRECT_DATABASE_URL_TEST (schema=test)
+    url: dbUrl,
   },
 });

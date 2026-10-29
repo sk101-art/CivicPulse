@@ -8,9 +8,27 @@ const globalForPrisma = globalThis as unknown as {
   newPool: Pool | undefined;
 };
 
+const isTestEnv =
+  process.env.NODE_ENV === 'test' ||
+  Boolean(process.env.VITEST) ||
+  Boolean(process.env.PLAYWRIGHT_TEST);
+
+if (isTestEnv) {
+  const testUrl = process.env.DATABASE_URL_TEST;
+  const prodUrl = process.env.PROD_DATABASE_URL;
+  if (!testUrl) {
+    throw new Error('DATABASE_URL_TEST must be defined in test environment');
+  }
+  if (prodUrl && testUrl === prodUrl) {
+    throw new Error(
+      'DATABASE_URL_TEST cannot equal production APP_DATABASE_URL! Tests must never write to production database.'
+    );
+  }
+}
+
 function resolveConnectionString(rawUrl?: string): string {
   if (!rawUrl) {
-    throw new Error("APP_DATABASE_URL is missing in environment");
+    throw new Error("Database URL is missing in environment");
   }
   let url = rawUrl;
   if (url.includes(':6543') && !url.includes('pgbouncer=true')) {
@@ -22,7 +40,11 @@ function resolveConnectionString(rawUrl?: string): string {
   return url;
 }
 
-const connectionString = resolveConnectionString(env.APP_DATABASE_URL);
+const rawTargetUrl = isTestEnv
+  ? (process.env.DATABASE_URL_TEST || env.APP_DATABASE_URL)
+  : env.APP_DATABASE_URL;
+
+const connectionString = resolveConnectionString(rawTargetUrl);
 
 function getOrCreatePool(): Pool {
   if (globalForPrisma.newPool) {
@@ -31,6 +53,7 @@ function getOrCreatePool(): Pool {
 
   const pool = new Pool({
     connectionString,
+    ...(isTestEnv ? { options: '-c search_path=test,public' } : {}),
     max: 10,
     idleTimeoutMillis: 20000,
     connectionTimeoutMillis: 10000,
@@ -49,7 +72,10 @@ function getOrCreatePool(): Pool {
 }
 
 const pool = getOrCreatePool();
-const adapter = new PrismaPg(pool);
+const adapter = new PrismaPg(
+  pool,
+  isTestEnv ? { schema: 'test' } : undefined
+);
 
 export const prisma =
   globalForPrisma.newPrisma ??

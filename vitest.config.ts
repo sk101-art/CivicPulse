@@ -11,6 +11,31 @@ if (fs.existsSync(path.join(rootDir, '.env.local'))) {
   dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
 }
 
+// Fail-fast test database isolation check
+process.env.NODE_ENV = 'test';
+process.env.VITEST = 'true';
+
+const rawProdUrl = process.env.PROD_DATABASE_URL || process.env.APP_DATABASE_URL;
+const testDbUrl = process.env.DATABASE_URL_TEST;
+
+if (!testDbUrl) {
+  throw new Error(
+    'DATABASE_URL_TEST must be configured in .env.local for running tests. Tests must never write to the production database.'
+  );
+}
+if (rawProdUrl && testDbUrl === rawProdUrl) {
+  throw new Error(
+    'DATABASE_URL_TEST cannot equal production APP_DATABASE_URL! Tests must never write to the production database.'
+  );
+}
+
+// Store production URL in PROD_DATABASE_URL and point APP_DATABASE_URL to DATABASE_URL_TEST
+process.env.PROD_DATABASE_URL = rawProdUrl;
+process.env.APP_DATABASE_URL = testDbUrl;
+if (process.env.DIRECT_DATABASE_URL_TEST) {
+  process.env.DIRECT_DATABASE_URL = process.env.DIRECT_DATABASE_URL_TEST;
+}
+
 export default defineConfig({
   test: {
     environment: 'node',

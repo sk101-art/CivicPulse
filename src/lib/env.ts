@@ -5,6 +5,8 @@ const serverSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_DATABASE_URL: z.string().optional(),
   DIRECT_DATABASE_URL: z.string().optional(),
+  DATABASE_URL_TEST: z.string().optional(),
+  DIRECT_DATABASE_URL_TEST: z.string().optional(),
   NEXTAUTH_URL: z.string().default("http://localhost:3000"),
   NEXTAUTH_SECRET: z.string().optional(),
   SEED_DESK_PASSWORD: z.string().optional(),
