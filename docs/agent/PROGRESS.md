@@ -8,6 +8,28 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Phase 0 · Diagnosis: TomTom Flow, Routing, ApiUsage, and Repair Window Analysis · 2026-10-29
+- **Goal:** Probe live TomTom Flow and Routing APIs with the production key for the pilot point (12.9575, 77.7011), inspect ApiUsage and TrafficSample distribution across issues and hours of week, and document why repair windows were uniformly returning 00:30–02:30 / 04:00–06:00.
+- **Empirical Findings:**
+  1. TomTom Flow Segment Data (Point: 12.9575, 77.7011):
+     - HTTP Status: `200 OK` (649ms latency)
+     - Fields: `frc: FRC2`, `currentSpeed: 26 km/h`, `freeFlowSpeed: 26 km/h`, `currentTravelTime: 50s`, `freeFlowTravelTime: 50s`, `confidence: 1`, `roadClosure: false`, `coordinates`: 18 points spanning ~330m from (12.95703, 77.70099) to (12.96006, 77.70130).
+  2. TomTom Calculate Route (Pilot road probe 12.9565, 77.7001 -> 12.9585, 77.7021):
+     - HTTP Status: `200 OK` (212ms latency) with `computeTravelTimeFor=all`
+     - Fields: `lengthInMeters: 1447`, `travelTimeInSeconds: 579`, `trafficDelayInSeconds: 191`, `trafficLengthInMeters: 933`, `departureTime: 2026-10-29T16:05:33+05:30`, `noTrafficTravelTimeInSeconds: 345`, `historicTrafficTravelTimeInSeconds: 471`, `liveTrafficIncidentsTravelTimeInSeconds: 579`.
+     - Derived `delayRatio = (579 - 345) / 345 = 0.678` (67.8% traffic delay ratio).
+  3. ApiUsage Quota Tracking:
+     - `Provider: tomtom`, Month: `2026-10`, Count: `3` (out of 20,000 monthly quota).
+  4. TrafficSample Distribution:
+     - Total samples in database: 590 rows across 212 distinct issues (and 310 unassigned legacy samples).
+     - Distinct `hourOfWeek` buckets represented: only 3 out of 168 hours! (`hourOfWeek=0` has 310, `hourOfWeek=104` has 200, `hourOfWeek=112` has 80).
+     - 165 out of 168 hour buckets have 0 samples in the database.
+  5. Explanation of Flat 00:30–02:30 / 04:00–06:00 Repair Windows:
+     - Because 165 of 168 hours have no live samples, `repairWindow.ts` falls back to `getDefaultRoadClassProfile()` for almost all hours.
+     - In `getDefaultRoadClassProfile()`, hours 00:00 to 06:00 IST are hardcoded to a flat baseline of `0.05` congestion for every road, while daytime/evening hours are all $\ge 0.15$.
+     - Candidate 2-hour slots are sorted by `avgCongestion` ascending, breaking ties by earlier start time.
+     - Consequently, the first non-overlapping window picked is always the earliest post-midnight slot (`00:30–02:30` or `01:00–03:00`), followed immediately by the next non-overlapping slot in that same night valley (`04:00–06:00`), giving every single issue in Bengaluru identical repair windows regardless of its actual local traffic patterns.
+
 ### Fixes · Citizen Account Registration & Validation Feedback · 2026-10-29
 - **Goal:** Resolve issues preventing users from creating accounts on `/login`, fix silent UI failures, and provide clear password length and email collision guidance.
 - **Implemented Work:**
