@@ -33,7 +33,7 @@ export function DeskMetricsBar({
           <span className="text-xs font-mono text-white/40">defects failed</span>
         </div>
         <div className="text-[11px] font-mono text-white/40">
-          Invoking Clause 38 liability rectification
+          Invoking the defect liability clause of the contract
         </div>
       </div>
 

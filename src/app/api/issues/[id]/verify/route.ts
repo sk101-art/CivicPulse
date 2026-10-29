@@ -4,7 +4,8 @@ import { apiError, formatSafeApiError } from "@/lib/api/errors";
 import { processVerification } from "@/lib/issues/verification";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { Role } from "@prisma/client";
+import { Role, Status } from "@prisma/client";
+import { prisma } from "@/lib/db/prisma";
 
 const verifySchema = z.object({
   verdict: z.enum(["FIXED", "NOT_FIXED"]),
@@ -37,6 +38,21 @@ export async function POST(
     }
 
     const { id } = await params;
+
+    const issue = await prisma.issue.findUnique({
+      where: { id },
+      select: { id: true, status: true },
+    });
+    if (!issue) {
+      return apiError(404, "NOT_FOUND", "Issue not found");
+    }
+    if (issue.status === Status.CLAIMED_FIXED) {
+      return apiError(
+        409,
+        "AUDIT_IN_PROGRESS",
+        "This repair is being independently audited."
+      );
+    }
 
     const parsed = await parseJson(req, verifySchema);
     if (parsed.error) {

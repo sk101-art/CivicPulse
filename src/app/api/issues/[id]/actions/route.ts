@@ -36,6 +36,7 @@ const actionSchema = z.object({
   contractorName: z.string().optional(),
   tenderId: z.string().optional(),
   warrantyUntil: z.string().optional(),
+  liabilityClauseRef: z.string().optional(),
   evidence: z
     .object({
       reportId: z.string().optional(),
@@ -210,7 +211,7 @@ export async function POST(
         reportId = claimReport.id;
       }
 
-      const issueUpdateData = { ...transitionResult.issueUpdateData };
+      const issueUpdateData: Record<string, unknown> = { ...transitionResult.issueUpdateData };
       if (body.action === "CLAIM_FIX") {
         const claimDate = new Date();
         const warrantyDate = body.warrantyUntil
@@ -220,6 +221,18 @@ export async function POST(
         issueUpdateData.warrantyUntil = warrantyDate;
         if (body.contractorName) issueUpdateData.contractorName = body.contractorName;
         if (body.tenderId) issueUpdateData.tenderId = body.tenderId;
+      }
+      if (body.liabilityClauseRef !== undefined) {
+        issueUpdateData.liabilityClauseRef = body.liabilityClauseRef;
+      }
+      if (body.contractorName && body.action !== "CLAIM_FIX") {
+        issueUpdateData.contractorName = body.contractorName;
+      }
+      if (body.tenderId && body.action !== "CLAIM_FIX") {
+        issueUpdateData.tenderId = body.tenderId;
+      }
+      if (body.warrantyUntil && body.action !== "CLAIM_FIX") {
+        issueUpdateData.warrantyUntil = new Date(body.warrantyUntil);
       }
 
       const updated = await tx.issue.update({

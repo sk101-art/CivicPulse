@@ -161,6 +161,21 @@ export async function processVerification(input: ProcessVerificationInput) {
     note,
   } = input;
 
+  const issueRecord = await prisma.issue.findUnique({
+    where: { id: issueId },
+    select: { id: true, status: true },
+  });
+  if (!issueRecord) {
+    throw new VerificationError(404, "NOT_FOUND", "Issue not found");
+  }
+  if (issueRecord.status === Status.CLAIMED_FIXED) {
+    throw new VerificationError(
+      409,
+      "AUDIT_IN_PROGRESS",
+      "This repair is being independently audited."
+    );
+  }
+
   // 1. Verify signed evidence payload and single-use nonce
   // 1. Check verifier eligibility first (cheap, and avoids burning the nonce on an ineligible user)
   const eligibility = await checkVerifierEligibility(issueId, userId, payload);

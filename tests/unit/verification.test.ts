@@ -5,12 +5,6 @@ import {
   processVerification,
 } from "@/lib/issues/verification";
 import { POST as verifyRoute } from "@/app/api/issues/[id]/verify/route";
-import { generateEvidenceNonce } from "@/lib/evidence/nonce";
-import {
-  computePhotoHash,
-  signEvidencePayload,
-  type EvidencePayload,
-} from "@/lib/evidence/sign";
 import { prisma } from "@/lib/db/prisma";
 import { getServerSession } from "next-auth/next";
 import { Category, Role, Status, EvidenceRole, type Prisma } from "@prisma/client";
@@ -26,7 +20,6 @@ describe("T27 Acceptance: Claim fix and citizen verification", () => {
   let originalReporter: { id: string; email: string };
   let newCitizenUser: { id: string; email: string };
   let eligibleCitizen1: { id: string; email: string; keyPair: CryptoKeyPair };
-  let eligibleCitizen2: { id: string; email: string; keyPair: CryptoKeyPair };
 
   const createdIssueIds: string[] = [];
   const createdUserIds: string[] = [];
@@ -127,7 +120,6 @@ describe("T27 Acceptance: Claim fix and citizen verification", () => {
     await prisma.deviceKey.create({
       data: { userId: cit2.id, publicJwk: jwk2 as Prisma.InputJsonValue },
     });
-    eligibleCitizen2 = { id: cit2.id, email: cit2.email, keyPair: keyPair2 };
   });
 
   afterAll(async () => {
@@ -295,7 +287,7 @@ describe("T27 Acceptance: Claim fix and citizen verification", () => {
     expect(validCheck.eligible).toBe(true);
   });
 
-  it("Acceptance scenario 1: Citizen disputes fix -> status transitions to DISPUTED", async () => {
+  it("verify route is blocked for CLAIMED_FIXED issues and returns 409 AUDIT_IN_PROGRESS", async () => {
     // Create issue in CLAIMED_FIXED
     const issue = await prisma.issue.create({
       data: {
@@ -308,24 +300,6 @@ describe("T27 Acceptance: Claim fix and citizen verification", () => {
     });
     createdIssueIds.push(issue.id);
 
-    // Prepare signed VERIFY evidence payload
-    const nonce = await generateEvidenceNonce(eligibleCitizen1.id);
-    const photoBuffer = Buffer.from("dispute_photo_bytes_test_evidence");
-    const photoHash = await computePhotoHash(photoBuffer);
-
-    const payload: EvidencePayload = {
-      accuracy: 8.0,
-      capturedAt: new Date().toISOString(),
-      lat: 12.9716,
-      lng: 77.5946,
-      nonce: nonce.nonce,
-      photoHash,
-      role: "VERIFY",
-    };
-
-    const signature = await signEvidencePayload(payload, eligibleCitizen1.keyPair.privateKey);
-
-    // Call verify route as citizen 1 with NOT_FIXED
     vi.mocked(getServerSession).mockResolvedValueOnce(
       createMockSession({
         id: eligibleCitizen1.id,
@@ -337,36 +311,20 @@ describe("T27 Acceptance: Claim fix and citizen verification", () => {
     const req = new Request(`http://localhost:3000/api/issues/${issue.id}/verify`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        verdict: "NOT_FIXED",
-        note: "Pothole is still completely open and filled with water",
-        evidence: {
-          payload,
-          signature,
-          photoBase64: photoBuffer.toString("base64"),
-          mimeType: "image/jpeg",
-        },
-      }),
+      body: JSON.stringify({}),
     });
 
     const res = await verifyRoute(req, {
       params: Promise.resolve({ id: issue.id }),
     });
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
     const data = await res.json();
-    expect(data.success).toBe(true);
-    expect(data.verification.verdict).toBe("NOT_FIXED");
-    expect(data.verification.weight).toBe(0.5);
-    // Key state machine check: Transitions to DISPUTED
-    expect(data.issue.status).toBe(Status.DISPUTED);
-    expect(data.actionLog.action).toBe("DISPUTE_FIX");
-    expect(data.actionLog.fromStatus).toBe(Status.CLAIMED_FIXED);
-    expect(data.actionLog.toStatus).toBe(Status.DISPUTED);
+    expect(data.error.code).toBe("AUDIT_IN_PROGRESS");
+    expect(data.error.message).toContain("This repair is being independently audited.");
   });
 
-  it("Acceptance scenario 2: Cumulative verification weights meet 1.0 -> transitions to VERIFIED_FIXED", async () => {
-    // Create issue in CLAIMED_FIXED
+  it("processVerification throws 409 AUDIT_IN_PROGRESS when called on CLAIMED_FIXED issue", async () => {
     const issue = await prisma.issue.create({
       data: {
         category: Category.DRAINAGE,
@@ -378,70 +336,26 @@ describe("T27 Acceptance: Claim fix and citizen verification", () => {
     });
     createdIssueIds.push(issue.id);
 
-    // Citizen 1 submits FIXED verification (weight = 0.5)
-    const nonce1 = await generateEvidenceNonce(eligibleCitizen1.id);
-    const photoBuffer1 = Buffer.from("fix_photo_1");
-    const photoHash1 = await computePhotoHash(photoBuffer1);
-
-    const payload1: EvidencePayload = {
-      accuracy: 10.0,
-      capturedAt: new Date().toISOString(),
-      lat: 12.9716,
-      lng: 77.5946,
-      nonce: nonce1.nonce,
-      photoHash: photoHash1,
-      role: "VERIFY",
-    };
-    const signature1 = await signEvidencePayload(payload1, eligibleCitizen1.keyPair.privateKey);
-
-    const res1 = await processVerification({
-      issueId: issue.id,
-      userId: eligibleCitizen1.id,
-      verdict: "FIXED",
-      payload: payload1,
-      signature: signature1,
-      photoBuffer: photoBuffer1,
-      note: "Drain cover is securely installed",
+    await expect(
+      processVerification({
+        issueId: issue.id,
+        userId: eligibleCitizen1.id,
+        verdict: "FIXED",
+        payload: {
+          accuracy: 10,
+          capturedAt: new Date().toISOString(),
+          lat: 12.9716,
+          lng: 77.5946,
+          nonce: "test",
+          photoHash: "test",
+          role: "VERIFY",
+        },
+        signature: "sig",
+        photoBuffer: Buffer.from("test"),
+      })
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: "AUDIT_IN_PROGRESS",
     });
-
-    // Sum is < 1.0 -> status should still be CLAIMED_FIXED
-    expect(res1.verification.weight).toBeGreaterThanOrEqual(0.5);
-    expect(res1.verification.weight).toBeLessThan(1.0);
-    expect(res1.issue.status).toBe(Status.CLAIMED_FIXED);
-    expect(res1.actionLog).toBeNull();
-
-    // Citizen 2 submits FIXED verification (weight = 0.75, sum = 0.5 + 0.75 = 1.25 >= 1.0)
-    const nonce2 = await generateEvidenceNonce(eligibleCitizen2.id);
-    const photoBuffer2 = Buffer.from("fix_photo_2");
-    const photoHash2 = await computePhotoHash(photoBuffer2);
-
-    const payload2: EvidencePayload = {
-      accuracy: 12.0,
-      capturedAt: new Date().toISOString(),
-      lat: 12.9716,
-      lng: 77.5946,
-      nonce: nonce2.nonce,
-      photoHash: photoHash2,
-      role: "VERIFY",
-    };
-    const signature2 = await signEvidencePayload(payload2, eligibleCitizen2.keyPair.privateKey);
-
-    const res2 = await processVerification({
-      issueId: issue.id,
-      userId: eligibleCitizen2.id,
-      verdict: "FIXED",
-      payload: payload2,
-      signature: signature2,
-      photoBuffer: photoBuffer2,
-      note: "Confirmed fixed and clean",
-    });
-
-    // Sum meets 1.0 -> transitions to VERIFIED_FIXED!
-    expect(res2.verification.weight).toBe(0.75);
-    expect(res2.issue.status).toBe(Status.VERIFIED_FIXED);
-    expect(res2.actionLog).not.toBeNull();
-    expect(res2.actionLog?.action).toBe("VERIFY_FIX");
-    expect(res2.actionLog?.fromStatus).toBe(Status.CLAIMED_FIXED);
-    expect(res2.actionLog?.toStatus).toBe(Status.VERIFIED_FIXED);
   });
 });

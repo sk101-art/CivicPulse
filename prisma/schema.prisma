@@ -184,6 +184,7 @@ model Issue {
   contractorName       String?
   tenderId             String?
   lifespanDays         Int?
+  liabilityClauseRef   String?
   createdAt            DateTime                            @default(now())
   updatedAt            DateTime                            @updatedAt
   reports              Report[]

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import PublicIssuePage from "@/app/(public)/issue/[id]/page";
 import { Category, Role, Status, EvidenceRole, Band } from "@prisma/client";
 import { getServerSession } from "next-auth/next";
+import { renderToStaticMarkup } from "react-dom/server";
 
 vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
@@ -55,7 +56,7 @@ describe("T28 Acceptance: Public issue page, photo gallery, action log and logge
         address: "100 Feet Road, Indiranagar",
         priority: 68.5,
         band: Band.HIGH,
-        piBreakdown: { S: 0.8, E: 0.7, V: 0.6, U: 0.5 },
+        piBreakdown: { s: 0.8, e: 0.7, v: 0.6, u: 0.5, p: 0.4, rawPi: 68.5, pi: 68.5 },
         agencyId: testAgency.id,
         handoffCount: 2,
         slaDueAt: new Date(Date.now() + 48 * 3600 * 1000),
@@ -213,6 +214,64 @@ describe("T28 Acceptance: Public issue page, photo gallery, action log and logge
     expect(issue?.handoffCount).toBe(2);
     expect(issue?.priority).toBe(68.5);
     expect(issue?.band).toBe(Band.HIGH);
-    expect(issue?.piBreakdown).toEqual({ S: 0.8, E: 0.7, V: 0.6, U: 0.5 });
+    expect(issue?.piBreakdown).toEqual({ s: 0.8, e: 0.7, v: 0.6, u: 0.5, p: 0.4, rawPi: 68.5, pi: 68.5 });
+  });
+
+  it("renders 'This repair is being independently audited.' and no verify button for regular users on CLAIMED_FIXED issue", async () => {
+    vi.mocked(getServerSession).mockResolvedValueOnce({
+      user: { id: citizenUser.id, email: citizenUser.email, role: Role.CITIZEN },
+      expires: new Date(Date.now() + 3600 * 1000).toISOString(),
+    });
+
+    const pageElement = await PublicIssuePage({
+      params: Promise.resolve({ id: publicIssueId }),
+    });
+
+    const html = renderToStaticMarkup(pageElement);
+    expect(html).toContain("This repair is being independently audited.");
+    expect(html).not.toContain("Verify fix");
+    expect(html).not.toContain("Confirm fixed");
+  });
+
+  it("hides status, claim, claim photos, and action log when the viewer has an OPEN audit task for this issue", async () => {
+    const auditTask = await prisma.auditTask.create({
+      data: {
+        issueId: publicIssueId,
+        assigneeId: citizenUser.id,
+        kind: "CLAIM_CHECK",
+        dueAt: new Date(Date.now() + 3600 * 1000),
+        challengeBearingDeg: 120,
+        challengeNonce: "task-nonce-blind-test-999",
+        status: "OPEN",
+      },
+    });
+
+    try {
+      vi.mocked(getServerSession).mockResolvedValueOnce({
+        user: { id: citizenUser.id, email: citizenUser.email, role: Role.CITIZEN },
+        expires: new Date(Date.now() + 3600 * 1000).toISOString(),
+      });
+
+      const pageElement = await PublicIssuePage({
+        params: Promise.resolve({ id: publicIssueId }),
+      });
+
+      const html = renderToStaticMarkup(pageElement);
+
+      // Status must not be revealed
+      expect(html).not.toContain("CLAIMED_FIXED");
+      // Claim notice must not be revealed
+      expect(html).not.toContain("Work Claimed Complete by Operations Desk");
+      // Claim fix photo must not be revealed in gallery
+      expect(html).not.toContain("repaired-slab.jpg");
+      expect(html).not.toContain("Desk Fix Claim");
+      // Initial report photo is still visible
+      expect(html).toContain("original-drain.jpg");
+      // Action log is withheld
+      expect(html).toContain("Action log is temporarily withheld while you have an active independent audit assignment for this location.");
+      expect(html).not.toContain("Contractor completed slab replacement");
+    } finally {
+      await prisma.auditTask.delete({ where: { id: auditTask.id } }).catch(() => {});
+    }
   });
 });

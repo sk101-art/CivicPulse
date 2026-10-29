@@ -102,7 +102,7 @@ export function PriorityBreakdown({
         <div className="space-y-2">
           <div className="text-[10px] font-mono text-white/50 uppercase tracking-wider flex justify-between">
             <span>Factor Composition</span>
-            <span>Raw PI: {breakdown.rawPi.toFixed(1)}</span>
+            <span>Raw PI: {(breakdown.rawPi ?? priority).toFixed(1)}</span>
           </div>
 
           <div
@@ -140,12 +140,12 @@ export function PriorityBreakdown({
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1 text-[11px] font-mono">
             <div className="flex items-center gap-1.5 text-purple-300">
               <span className="w-2 h-2 rounded-full bg-purple-500 inline-block" />
-              <span>S: {breakdown.s.toFixed(2)}</span>
+              <span>S: {breakdown.s?.toFixed(2) ?? "—"}</span>
             </div>
 
             <div className="flex items-center gap-1.5 text-sky-300">
               <span className="w-2 h-2 rounded-full bg-sky-500 inline-block" />
-              <span>E: {breakdown.e.toFixed(2)}</span>
+              <span>E: {breakdown.e?.toFixed(2) ?? "—"}</span>
               <span
                 data-testid="e-estimated"
                 className="text-[9px] uppercase px-1 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/30"
@@ -156,12 +156,12 @@ export function PriorityBreakdown({
 
             <div className="flex items-center gap-1.5 text-amber-300">
               <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
-              <span>V: {breakdown.v.toFixed(2)}</span>
+              <span>V: {breakdown.v?.toFixed(2) ?? "—"}</span>
             </div>
 
             <div className="flex items-center gap-1.5 text-rose-300">
               <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" />
-              <span>U: {breakdown.u.toFixed(2)}</span>
+              <span>U: {breakdown.u?.toFixed(2) ?? "—"}</span>
               <span
                 data-testid="u-estimated"
                 className="text-[9px] uppercase px-1 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30"
@@ -172,27 +172,29 @@ export function PriorityBreakdown({
 
             <div className="flex items-center gap-1.5 text-emerald-300">
               <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />
-              <span>P: {breakdown.p.toFixed(2)}</span>
+              <span>P: {breakdown.p?.toFixed(2) ?? "—"}</span>
             </div>
           </div>
         </div>
       )}
 
       {/* Multipliers Bar */}
-      {breakdown && (
+      {breakdown && breakdown.c !== undefined && (
         <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-white/5 text-[11px] font-mono text-white/60">
           <span>
             Confidence (C):{" "}
-            <strong className="text-white">{breakdown.c.toFixed(2)}</strong>
+            <strong className="text-white">{breakdown.c?.toFixed(2)}</strong>
           </span>
-          <span>
-            Season/Rain (Σ):{" "}
-            <strong className="text-white">
-              {breakdown.seasonMultiplier.toFixed(2)}x
-            </strong>{" "}
-            ({breakdown.season}
-            {breakdown.rainMultiplier > 1 ? `, rain: ${breakdown.rainMultiplier}x` : ""})
-          </span>
+          {breakdown.seasonMultiplier !== undefined && (
+            <span>
+              Season/Rain (Σ):{" "}
+              <strong className="text-white">
+                {breakdown.seasonMultiplier?.toFixed(2)}x
+              </strong>{" "}
+              ({breakdown.season}
+              {breakdown.rainMultiplier && breakdown.rainMultiplier > 1 ? `, rain: ${breakdown.rainMultiplier}x` : ""})
+            </span>
+          )}
         </div>
       )}
 

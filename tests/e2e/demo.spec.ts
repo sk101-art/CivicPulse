@@ -296,8 +296,69 @@ test.describe('T73: End-to-End CivicPulse Demo Story', () => {
       photoBase64: sampleBase64,
     });
 
-    expect(disputeRes.status).toBe(200);
-    expect(disputeRes.json.issue.status).toBe('DISPUTED');
+    // Direct verify route is blocked for CLAIMED_FIXED issues
+    expect(disputeRes.status).toBe(409);
+    expect(disputeRes.json.error.code).toBe('AUDIT_IN_PROGRESS');
+
+    // Complete dispute via blind audit task
+    let auditTask = await prisma.auditTask.findFirst({
+      where: { issueId: demoIssueId, status: 'OPEN' },
+    });
+    if (!auditTask) {
+      auditTask = await prisma.auditTask.create({
+        data: {
+          issueId: demoIssueId,
+          assigneeId: citizenUser2.id,
+          kind: 'CLAIM_CHECK',
+          dueAt: new Date(Date.now() + 3600 * 1000),
+          challengeBearingDeg: 90,
+          challengeNonce: crypto.randomUUID(),
+          status: 'OPEN',
+        },
+      });
+    } else if (auditTask.assigneeId !== citizenUser2.id) {
+      await prisma.auditTask.update({
+        where: { id: auditTask.id },
+        data: { assigneeId: citizenUser2.id },
+      });
+    }
+
+    const auditPayload: EvidencePayload = {
+      accuracy: 6.0,
+      capturedAt: new Date().toISOString(),
+      lat: 12.9352,
+      lng: 77.6245,
+      nonce: auditTask.challengeNonce,
+      photoHash,
+      role: 'AUDIT',
+    };
+    const auditSig = await signEvidencePayload(auditPayload, keyPair2.privateKey);
+
+    const voteRes = await citizen2Page.evaluate(async ({ taskId, payload, signature, photoBase64 }) => {
+      const res = await fetch(`/api/audit/tasks/${taskId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          observed: 'DAMAGED',
+          deviceHeadingDeg: 90,
+          evidence: {
+            payload,
+            signature,
+            photoBase64,
+            mimeType: 'image/jpeg',
+          },
+        }),
+      });
+      return { status: res.status, json: await res.json() };
+    }, {
+      taskId: auditTask.id,
+      payload: auditPayload,
+      signature: auditSig,
+      photoBase64: sampleBase64,
+    });
+
+    expect(voteRes.status).toBe(201);
+    expect(voteRes.json.issueStatus).toBe('DISPUTED');
 
     // Verify status in DB is DISPUTED
     const disputedIssue = await prisma.issue.findUnique({

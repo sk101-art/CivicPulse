@@ -57,6 +57,11 @@ export interface DeskIssueItem {
     comments: number;
   };
   isSeed?: boolean;
+  contractorName?: string | null;
+  tenderId?: string | null;
+  warrantyUntil?: string | Date | null;
+  lifespanDays?: number | null;
+  liabilityClauseRef?: string | null;
 }
 
 interface AgencyOption {
@@ -87,6 +92,9 @@ export function IssueDrawer({
   const [actionError, setActionError] = useState<string | null>(null);
   const [capturedFixEvidence, setCapturedFixEvidence] = useState<CapturedEvidence | null>(null);
   const [showFixCamera, setShowFixCamera] = useState<boolean>(false);
+  const [contractorName, setContractorName] = useState(issue?.contractorName || '');
+  const [tenderId, setTenderId] = useState(issue?.tenderId || '');
+  const [liabilityClauseRef, setLiabilityClauseRef] = useState(issue?.liabilityClauseRef || '');
   const [isPending, startTransition] = useTransition();
 
   const issueId = issue?.id;
@@ -101,6 +109,9 @@ export function IssueDrawer({
       setActionError(null);
       setActiveForm(null);
       setNote('');
+      setContractorName(issue?.contractorName || '');
+      setTenderId(issue?.tenderId || '');
+      setLiabilityClauseRef(issue?.liabilityClauseRef || '');
 
       try {
         const res = await fetch(`/api/issues/${issueId}/log`);
@@ -120,7 +131,7 @@ export function IssueDrawer({
     return () => {
       isMounted = false;
     };
-  }, [issueId]);
+  }, [issueId, issue?.contractorName, issue?.liabilityClauseRef, issue?.tenderId]);
 
   if (!issue) return null;
 
@@ -238,7 +249,12 @@ export function IssueDrawer({
             mimeType: 'image/jpeg',
           };
         }
-        await executeAction('CLAIM_FIX', { evidence: evidencePayload });
+        await executeAction('CLAIM_FIX', {
+          evidence: evidencePayload,
+          contractorName: contractorName.trim() || undefined,
+          tenderId: tenderId.trim() || undefined,
+          liabilityClauseRef: liabilityClauseRef.trim() || undefined,
+        });
       });
       return;
     }
@@ -469,6 +485,38 @@ export function IssueDrawer({
                       Launch Camera (Within 50m of Issue)
                     </button>
                   )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
+                    <div>
+                      <label className="text-[11px] font-mono text-white/60 block mb-1">Contractor Name</label>
+                      <input
+                        type="text"
+                        value={contractorName}
+                        onChange={(e) => setContractorName(e.target.value)}
+                        placeholder="e.g. Cauvery Infrastructure"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder:text-white/20 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-mono text-white/60 block mb-1">Tender ID</label>
+                      <input
+                        type="text"
+                        value={tenderId}
+                        onChange={(e) => setTenderId(e.target.value)}
+                        placeholder="e.g. BBMP/EE/2026/W-10"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder:text-white/20 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-[11px] font-mono text-white/60 block mb-1">Defect Liability Clause Ref</label>
+                      <input
+                        type="text"
+                        value={liabilityClauseRef}
+                        onChange={(e) => setLiabilityClauseRef(e.target.value)}
+                        placeholder="e.g. Clause 17.2 of GCC"
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder:text-white/20 focus:outline-none focus:border-cyan-500"
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
 

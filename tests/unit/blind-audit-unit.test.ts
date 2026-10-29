@@ -281,6 +281,52 @@ describe("Blind Repair Audit — Unit Tests", () => {
       expect(result.issue.status).toBe(Status.VERIFIED_FIXED);
     });
 
+    it("rejects audit vote when challengeNonce does not match the task (e.g. from another task or report nonce)", async () => {
+      const mockIssue = {
+        id: "issue-nonce-check",
+        status: Status.CLAIMED_FIXED,
+        lat: 12.935,
+        lng: 77.689,
+        auditTasks: [],
+      };
+
+      const mockTask = {
+        id: "task-nonce-mismatch",
+        issueId: mockIssue.id,
+        assigneeId: "citizen-voter-3",
+        kind: AuditKind.CLAIM_CHECK,
+        status: AuditTaskStatus.OPEN,
+        dueAt: new Date(Date.now() + 3600 * 1000),
+        challengeBearingDeg: 90,
+        challengeNonce: "issued-task-challenge-nonce-123",
+        issue: mockIssue,
+      };
+
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(mockTask as never);
+
+      await expect(
+        submitAuditVote({
+          userId: "citizen-voter-3",
+          taskId: "task-nonce-mismatch",
+          observed: AuditObserved.INTACT,
+          deviceHeadingDeg: 90,
+          evidence: {
+            payload: {
+              accuracy: 5,
+              capturedAt: new Date().toISOString(),
+              lat: 12.935,
+              lng: 77.689,
+              nonce: "foreign-or-report-nonce-456",
+              photoHash: "abc123hash",
+              role: "AUDIT" as EvidenceRole,
+            },
+            signature: "test-ecdsa-sig",
+            photoBase64: Buffer.from("fake-jpeg").toString("base64"),
+          },
+        })
+      ).rejects.toThrow("Invalid challenge nonce for audit task");
+    });
+
     it("transitions issue to DISPUTED when weighted DAMAGED >= 1.0", async () => {
       const mockIssue = {
         id: "issue-dispute-1",
