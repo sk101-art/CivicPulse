@@ -8,6 +8,38 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Post-Epic Operations & Follow-Ups Gate · 2026-10-29
+- **Goal:** Complete operational follow-ups for Epic Upgrade (ac0df84): schedule new jobs in GitHub Actions, deploy & verify database migrations on production, diagnose test skips and verify full suite, audit non-seed test leftover rows in production database, and correct AI model references in documentation.
+- **Implemented Work:**
+  1. GitHub Actions Workflow Automation (`.github/workflows/jobs.yml`):
+     - Added scheduled cron triggers:
+       - `traffic-profile`: `"30 */2 * * *"` (every 2 hours at minute 30)
+       - `insights`: `"45 0 * * *"` (daily at 00:45 UTC / 06:15 IST)
+       - `ai-assess`: `"50 */6 * * *"` (every 6 hours at minute 50)
+     - Preserved all existing cron triggers (`overdue`, `sla-breach`, `daily-summary`, `traffic`, `weather`, `decay`).
+     - Added `traffic-profile`, `insights`, and `ai-assess` to `workflow_dispatch` inputs.
+     - Updated "Pick jobs" bash step with cron string mappings for all three new jobs.
+  2. Production Database Migrations:
+     - Confirmed both `20261029183000_place_traffic_profile` and `20261029190000_deterioration_intelligence` migrations applied to production (`public` schema) and synchronized to isolated `test` schema.
+     - `npx prisma migrate status` reports: `7 migrations found in prisma/migrations. Database schema is up to date!`.
+  3. Test Suite Diagnostics & Green Run:
+     - Root cause of skipped tests: Missing enum types and columns in PostgreSQL `test` schema caused earlier test runs to abort suites.
+     - Fully synchronized all 14 enum types, columns, and seed profiles in `test` schema.
+     - Re-ran test suite against `DATABASE_URL_TEST`:
+       - **Test Files:** 57 passed (57)
+       - **Tests:** 332 passed (332)
+       - **Skipped / Failed:** 0 skipped, 0 failed.
+  4. Production Issue Row Audit:
+     - Total rows in `public."Issue"`: 1,507
+     - Seed Demo rows: 366 (`isSeed = true` or `id` prefixed with `seed-`)
+     - Explicit test-ID issues (`test-*`, `mobile-test-*`, `t10-*`): 0 in `public`
+     - Synthetic non-seed rows: 1,141 rows (created between Oct 27–29 during manual and test runs). Preserved per instructions (zero rows deleted).
+  5. AI Model Documentation Alignment:
+     - Clarified that CivicPulse uses `gemini-2.5-flash` for Google Gemini vision and analysis, and Groq `qwen/qwen3.8-27b` (vision fallback) / `openai/gpt-oss-120b` (text fallback).
+  6. Verification Gate:
+     - `npx vitest run`: 57 files passed, 332 tests passed (100% green).
+     - `npm run build`: Exit code 0, 47 routes compiled with 0 errors.
+
 ### Phase 5 · Complete UI Integration, 84-Slot Heatmap, & Pilot Demonstrations · 2026-10-29
 - **Goal:** Surface traffic profiles, smart repair windows with lane closure details, deterioration intelligence, and AI analyst copilot in the UI across both the citizen public issue page and operations desk. Provide 84-slot repair calendar, ward morning briefings, interactive analyst chat, and seed realistic pilot demonstration scenarios.
 - **Implemented Work:**
