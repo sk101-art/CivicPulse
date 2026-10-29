@@ -114,9 +114,11 @@ export async function GET(req: Request) {
 
     if (wardMap.has("unassigned")) {
       const unassignedRecords = wardMap.get("unassigned")!;
-      byWard.push(
-        aggregateClaimGap(unassignedRecords, "unassigned", "Unassigned Area", "N/A")
-      );
+      if (unassignedRecords.length > 0) {
+        byWard.push(
+          aggregateClaimGap(unassignedRecords, "unassigned", "Unassigned Area", "N/A")
+        );
+      }
     }
 
     // 5. Group by Desk

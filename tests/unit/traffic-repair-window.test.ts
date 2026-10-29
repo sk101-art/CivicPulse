@@ -277,6 +277,137 @@ describe("Phase 2: Smart Repair Window & Lane-Closure Impact Analysis", () => {
       expect(result.bestWindow).not.toBeNull();
       expect(result.bestWindow?.urgencyBoosted).toBe(true);
     });
+
+    it("ensures Bellandur (heavy arterial, FRC2) selects a night window", () => {
+      const hourlyProfiles = new Map<string, number>();
+      for (let h = 0; h < 24; h++) {
+        // Heavy weekday traffic 08:00-21:00 (0.80 - 1.05 delay ratio), clear night (0.05)
+        const weekdayDelay = h >= 8 && h <= 21 ? 0.95 : 0.05;
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, weekdayDelay);
+        hourlyProfiles.set(`${DayType.WEEKEND}-${h}`, 0.40);
+      }
+
+      const bellandurSurroundings: SurroundingsResult = {
+        schools: [],
+        hospitals: [],
+        markets: [],
+        road: { lanes: 6, oneway: false, name: "Outer Ring Road (Bellandur)", frc: "FRC2", highway: "primary" },
+        cached: true,
+        source: "pilot_osm",
+      };
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "seed-demo-critical-bellandur",
+        lanePosition: "CURB",
+        roadClass: "primary",
+        priorityIndex: 96,
+        hourlyProfiles,
+        hourlyWeather: new Map(),
+        surroundings: bellandurSurroundings,
+        now: fixedNow,
+      });
+
+      expect(result.bestWindow).not.toBeNull();
+      expect(result.bestWindow?.windowType).toBe("NIGHT");
+    });
+
+    it("ensures Agara (light residential, FRC4+) selects a daytime window due to night noise penalty", () => {
+      const hourlyProfiles = new Map<string, number>();
+      for (let h = 0; h < 24; h++) {
+        // Light residential: daytime delayRatio < 0.15 (e.g. 0.08), night 0.04
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, h >= 6 && h < 22 ? 0.08 : 0.04);
+        hourlyProfiles.set(`${DayType.WEEKEND}-${h}`, 0.06);
+      }
+
+      const agaraSurroundings: SurroundingsResult = {
+        schools: [],
+        hospitals: [],
+        markets: [],
+        road: { lanes: 2, oneway: false, name: "Agara Residential Access Road", frc: "FRC5", highway: "residential" },
+        cached: true,
+        source: "pilot_osm",
+      };
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "seed-demo-low-agara",
+        lanePosition: "SHOULDER",
+        roadClass: "residential",
+        priorityIndex: 22,
+        hourlyProfiles,
+        hourlyWeather: new Map(),
+        surroundings: agaraSurroundings,
+        now: fixedNow,
+      });
+
+      expect(result.bestWindow).not.toBeNull();
+      // Should pick DAY_OFF_PEAK or WEEKEND_DAY, NOT NIGHT
+      expect(["DAY_OFF_PEAK", "WEEKEND_DAY"]).toContain(result.bestWindow?.windowType);
+    });
+
+    it("ensures Cessna (office access) selects a weekend or late-evening window", () => {
+      const hourlyProfiles = new Map<string, number>();
+      for (let h = 0; h < 24; h++) {
+        // Office access: heavy weekday commute 08:00-19:00 (0.75), light evening 20:00-22:00 (0.10), weekend very light (0.05)
+        const weekdayDelay = h >= 8 && h < 20 ? 0.75 : 0.10;
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, weekdayDelay);
+        hourlyProfiles.set(`${DayType.WEEKEND}-${h}`, 0.05);
+      }
+
+      const cessnaSurroundings: SurroundingsResult = {
+        schools: [],
+        hospitals: [],
+        markets: [],
+        road: { lanes: 4, oneway: false, name: "Cessna Business Park Main Access Corridor", highway: "tertiary" },
+        cached: true,
+        source: "pilot_osm",
+      };
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "seed-demo-medium-cessna",
+        lanePosition: "CENTER",
+        roadClass: "tertiary",
+        priorityIndex: 48,
+        hourlyProfiles,
+        hourlyWeather: new Map(),
+        surroundings: cessnaSurroundings,
+        now: fixedNow,
+      });
+
+      expect(result.bestWindow).not.toBeNull();
+      // Should be WEEKEND_DAY or late-evening / off-peak slot, avoiding weekday rush hours
+      expect(["WEEKEND_DAY", "DAY_OFF_PEAK", "NIGHT"]).toContain(result.bestWindow?.windowType);
+      expect(result.bestWindow?.score).toBeGreaterThan(0);
+    });
+
+    it("uses continuous scores without clamping at 100 and breaks ties without identical 100/100 slots", () => {
+      const hourlyProfiles = new Map<string, number>();
+      for (let h = 0; h < 24; h++) {
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, 0.05 + (h % 5) * 0.02);
+        hourlyProfiles.set(`${DayType.WEEKEND}-${h}`, 0.04);
+      }
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "issue-continuous-scoring",
+        lanePosition: "CURB",
+        roadClass: "primary",
+        priorityIndex: 50,
+        hourlyProfiles,
+        hourlyWeather: new Map(),
+        surroundings: defaultSurroundings,
+        now: fixedNow,
+      });
+
+      const top5Scores = result.allSlots.slice(0, 5).map((s) => s.score);
+      // All top 5 must not be identically 100
+      const allHundred = top5Scores.every((s) => s === 100);
+      expect(allHundred).toBe(false);
+
+      // Verify scores are numbers with continuous values
+      top5Scores.forEach((score) => {
+        expect(typeof score).toBe("number");
+        expect(score).toBeGreaterThan(0);
+      });
+    });
   });
 
   describe("Backwards Compatibility: computeRepairWindows", () => {

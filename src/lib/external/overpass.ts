@@ -15,6 +15,7 @@ export interface RoadWayInfo {
   wayId?: number;
   name?: string;
   highway?: string;
+  frc?: string;
   lanes: number;
   oneway: boolean;
   width?: string;

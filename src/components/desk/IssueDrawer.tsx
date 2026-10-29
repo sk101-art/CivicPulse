@@ -107,6 +107,7 @@ export function IssueDrawer({
     reasoning: string;
     keyRisks: string[];
     suggestedAction: string;
+    engine?: string;
   } | null>(null);
   const [analystDismissed, setAnalystDismissed] = useState(false);
   const [priorityAccepted, setPriorityAccepted] = useState(false);
@@ -432,11 +433,19 @@ export function IssueDrawer({
                   <Sparkles className="w-4 h-4 text-purple-400" />
                   AI Analyst Assessment
                 </span>
-                {analystSummary.priorityAdjustmentRecommended !== 0 && !priorityAccepted && (
-                  <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-mono font-bold">
-                    Rec Adj: {analystSummary.priorityAdjustmentRecommended > 0 ? `+${analystSummary.priorityAdjustmentRecommended}` : analystSummary.priorityAdjustmentRecommended}
+                <div className="flex items-center gap-2">
+                  <span
+                    data-testid="analyst-engine-badge"
+                    className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-200 text-[10px] font-mono"
+                  >
+                    {analystSummary.engine || "Gemini 2.5 Flash"}
                   </span>
-                )}
+                  {analystSummary.priorityAdjustmentRecommended !== 0 && !priorityAccepted && (
+                    <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-mono font-bold">
+                      Rec Adj: {analystSummary.priorityAdjustmentRecommended > 0 ? `+${analystSummary.priorityAdjustmentRecommended}` : analystSummary.priorityAdjustmentRecommended}
+                    </span>
+                  )}
+                </div>
               </div>
               <p className="text-xs font-mono text-purple-100/90 leading-relaxed bg-black/20 p-2.5 rounded-lg border border-purple-900/40">
                 {analystSummary.summary}

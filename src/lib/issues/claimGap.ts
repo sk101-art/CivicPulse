@@ -47,21 +47,17 @@ export function aggregateClaimGap(
   let verified = 0;
   let disputed = 0;
   let pending = 0;
-  const durationsHours: number[] = [];
+  const verificationDurations: number[] = [];
 
   for (const r of records) {
     if (r.verdict === "FIXED" || (r.verifiedAt && !r.disputedAt)) {
       verified++;
       if (r.verifiedAt) {
         const diffHours = (new Date(r.verifiedAt).getTime() - new Date(r.claimedAt).getTime()) / (3600 * 1000);
-        if (diffHours >= 0) durationsHours.push(diffHours);
+        if (diffHours >= 0.1) verificationDurations.push(diffHours);
       }
     } else if (r.verdict === "NOT_FIXED" || r.disputedAt) {
       disputed++;
-      if (r.disputedAt) {
-        const diffHours = (new Date(r.disputedAt).getTime() - new Date(r.claimedAt).getTime()) / (3600 * 1000);
-        if (diffHours >= 0) durationsHours.push(diffHours);
-      }
     } else {
       pending++;
     }
@@ -69,7 +65,8 @@ export function aggregateClaimGap(
 
   const disputedShare = claimed > 0 ? disputed / claimed : 0;
   const disputedPercentage = Math.round(disputedShare * 1000) / 10;
-  const medianHoursToVerify = computeMedian(durationsHours);
+  // If there are no verified claims, verification time is null
+  const medianHoursToVerify = verified > 0 && verificationDurations.length > 0 ? computeMedian(verificationDurations) : null;
   const insufficientData = claimed < 5;
 
   return {

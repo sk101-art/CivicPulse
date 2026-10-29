@@ -335,9 +335,11 @@ export async function buildPlaceProfile(
 
         if (canUseTomTom) {
           try {
-            const departDate = new Date(targetDate);
-            departDate.setHours(hour, 0, 0, 0);
-            const departAtIso = departDate.toISOString().replace(/\.\d{3}Z$/, "");
+            const yyyy = targetDate.getFullYear();
+            const mm = String(targetDate.getMonth() + 1).padStart(2, "0");
+            const dd = String(targetDate.getDate()).padStart(2, "0");
+            const hh = String(hour).padStart(2, "0");
+            const departAtIso = `${yyyy}-${mm}-${dd}T${hh}:00:00`;
 
             const routeResult = await calculateTomTomRoute({
               origin,

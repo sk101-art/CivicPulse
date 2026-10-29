@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
-import { Status } from "@prisma/client";
+import { Status, ProfileSource } from "@prisma/client";
 import { buildPlaceProfile, PROFILE_TTL_DAYS } from "@/lib/traffic/profile";
 import {
   getDailyTomTomCallCount,
@@ -38,11 +38,16 @@ export async function runTrafficProfileJob(
   );
 
   // Find candidate open issues ordered by highest priority first
+  // Allow real non-seed issues OR seed DEMO issues (whose id starts with "seed-demo-")
   const openIssues = await prisma.issue.findMany({
     where: {
       status: {
         notIn: [Status.VERIFIED_FIXED, Status.REJECTED],
       },
+      OR: [
+        { isSeed: false },
+        { id: { startsWith: "seed-demo-" } },
+      ],
     },
     select: {
       id: true,
@@ -62,12 +67,13 @@ export async function runTrafficProfileJob(
     return { processed: 0, skipped: "No open issues found" };
   }
 
-  // Find existing profile counts within 14 days
+  // Find existing profile counts within 14 days with real TomTom profiles
   const recentProfiles = await prisma.placeTrafficProfile.groupBy({
     by: ["issueId"],
     where: {
       issueId: { in: openIssues.map((i) => i.id) },
       fetchedAt: { gte: validSince },
+      source: { in: [ProfileSource.TOMTOM_HISTORIC, ProfileSource.LIVE_SAMPLE] },
     },
     _count: { id: true },
   });
@@ -89,13 +95,16 @@ export async function runTrafficProfileJob(
     }
 
     try {
-      await buildPlaceProfile({
-        id: issue.id,
-        lat: issue.lat,
-        lng: issue.lng,
-        segmentId: issue.segmentId,
-        roadClass: issue.segment?.roadClass,
-      });
+      await buildPlaceProfile(
+        {
+          id: issue.id,
+          lat: issue.lat,
+          lng: issue.lng,
+          segmentId: issue.segmentId,
+          roadClass: issue.segment?.roadClass,
+        },
+        issue.id.startsWith("seed-demo-")
+      );
       processed++;
     } catch (err) {
       failed++;

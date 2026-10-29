@@ -128,16 +128,25 @@ export function getRulesFallback(feature: string, input: unknown): Record<string
     case "G-BRIEF": {
       const wardName = typeof inp.wardName === "string" ? inp.wardName : "Ward";
       const wardCode = typeof inp.wardCode === "string" ? inp.wardCode : "150";
-      const openCount = typeof inp.openIssuesCount === "number" ? inp.openIssuesCount : 0;
+      const openCount = typeof inp.totalOpen === "number" ? inp.totalOpen : typeof inp.openIssuesCount === "number" ? inp.openIssuesCount : 0;
       const rainPast24h = typeof inp.rainPast24hMm === "number" ? inp.rainPast24hMm : 0;
-      const highRiskCount = typeof inp.highRiskCount === "number" ? inp.highRiskCount : 0;
+      const highRiskCount = typeof inp.totalHighRisk === "number" ? inp.totalHighRisk : typeof inp.highRiskCount === "number" ? inp.highRiskCount : 0;
+      const wardsList = Array.isArray(inp.wards) ? inp.wards : [];
 
-      const briefText = `${wardName} (${wardCode}) Morning Brief: ${openCount} open issues. ${highRiskCount} high-risk defects flagged after ${Math.round(rainPast24h)} mm recent rain. Recommended today: dispatch repair crews during the recommended dry night window.`;
+      let briefText: string;
+      if (wardsList.length > 0) {
+        const parts = wardsList
+          .filter((w: Record<string, unknown>) => (w.total as number) > 0)
+          .map((w: Record<string, unknown>) => `${w.wardName} (${w.wardCode}): ${w.total} active (${w.highRisk} high risk)`);
+        briefText = `Morning brief across active wards: ${parts.join(" · ")}. ${highRiskCount} high-risk defects flagged after ${Math.round(rainPast24h)} mm recent rain. Dispatch repair crews during scheduled dry windows.`;
+      } else {
+        briefText = `${wardName} (${wardCode}) Morning Brief: ${openCount} open issues. ${highRiskCount} high-risk defects flagged after ${Math.round(rainPast24h)} mm recent rain. Recommended today: dispatch repair crews during the recommended dry night window.`;
+      }
 
       return {
         wardCode,
-        wardName,
-        headline: `${openCount} open issues in ${wardName}`,
+        wardName: wardsList.length > 0 ? "Bengaluru Pilot Wards" : wardName,
+        headline: `${openCount} active issues across pilot corridors`,
         brief: briefText,
         recommendedActions: [
           "Deploy asphalt repair crew to high-risk road corridors.",
@@ -183,14 +192,19 @@ export function getRulesFallback(feature: string, input: unknown): Record<string
 
     case "G-CHAT": {
       const query = typeof inp.query === "string" ? inp.query : "";
-      const issues = Array.isArray(inp.issues) ? inp.issues : [];
+      const issues = Array.isArray(inp.issues) ? (inp.issues as Array<Record<string, unknown>>) : [];
       const citedIds = issues
         .slice(0, 3)
         .map((iss) => (iss && typeof iss === "object" && "id" in iss ? String(iss.id) : ""))
         .filter(Boolean);
 
+      const topIssue = issues[0];
+      const answer = topIssue
+        ? `Regarding "${query}": high priority attention is recommended for [#${topIssue.id}] (${topIssue.category} on ${topIssue.location || topIssue.road || 'corridor'}, priority ${topIssue.priority}). Additional active items requiring coordination include ${citedIds.slice(1).map((id: string) => `[#${id}]`).join(", ")}.`
+        : `Analysis for '${query}': evaluated ${issues.length} active issues in the pilot area. High priority repairs needed on key arterial segments [${citedIds.map((id) => `#${id}`).join(", ")}].`;
+
       return {
-        answer: `Analysis for '${query}': evaluated ${issues.length} active issues in the pilot area. High priority repairs needed on key arterial segments [${citedIds.map((id) => `#${id}`).join(", ")}].`,
+        answer,
         citedIssueIds: citedIds,
         suggestedFollowups: [
           "Which contractors have pending warranty claims?",

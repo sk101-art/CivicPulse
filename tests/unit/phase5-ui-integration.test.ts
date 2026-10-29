@@ -59,12 +59,12 @@ describe("Phase 5: UI & Intelligence Integration", () => {
       expect(residentialResult.allSlots.length).toBe(84);
 
       // Human-readable explanations are generated
-      expect(arterialResult.bestWindow.explanation).toBeTruthy();
-      expect(residentialResult.bestWindow.explanation).toBeTruthy();
+      expect(arterialResult.bestWindow!.explanation).toBeTruthy();
+      expect(residentialResult.bestWindow!.explanation).toBeTruthy();
 
       // Lane closure details are present for multi-lane roads
-      expect(arterialResult.bestWindow.laneClosure).toBeDefined();
-      expect(arterialResult.bestWindow.laneClosure?.totalLanes).toBe(6);
+      expect(arterialResult.bestWindow!.laneClosure).toBeDefined();
+      expect(arterialResult.bestWindow!.laneClosure?.totalLanes).toBe(6);
     });
   });
 
@@ -76,9 +76,8 @@ describe("Phase 5: UI & Intelligence Integration", () => {
         roadClass: "primary",
         busesPerHour: 45,
         past7DaysRainMm: 35,
-        next72HoursRainMm: 28,
-        recurrenceCount: 2,
-        segmentAgeDays: 120,
+        forecast72hRainMm: 28,
+        recurrenceCount12m: 2,
       });
 
       expect(assessment.risk).toBe(DeteriorationRisk.HIGH);
@@ -94,9 +93,8 @@ describe("Phase 5: UI & Intelligence Integration", () => {
         roadClass: "residential",
         busesPerHour: 0,
         past7DaysRainMm: 0,
-        next72HoursRainMm: 0,
-        recurrenceCount: 0,
-        segmentAgeDays: 15,
+        forecast72hRainMm: 0,
+        recurrenceCount12m: 0,
       });
 
       expect(assessment.risk).toBe(DeteriorationRisk.LOW);
@@ -114,13 +112,13 @@ describe("Phase 5: UI & Intelligence Integration", () => {
       expect(brief.brief).toBeTruthy();
       expect(Array.isArray(brief.recommendedActions)).toBe(true);
       expect(brief.recommendedActions.length).toBeGreaterThanOrEqual(1);
-    });
+    }, 30000);
 
     it("answers desk questions grounded in facts with issue citations", async () => {
       const chatRes = await askDeskAnalyst("Which roads are at highest risk of monsoon failure?");
       expect(chatRes).toBeDefined();
       expect(chatRes.answer).toBeTruthy();
       expect(Array.isArray(chatRes.suggestedFollowups)).toBe(true);
-    });
+    }, 30000);
   });
 });

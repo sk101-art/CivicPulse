@@ -91,8 +91,21 @@ describe("Repair Window Endpoint (Desk Only) & TomTom Flow Null-Safety", () => {
           condition: "low traffic, dry",
           basis: "live",
           sampleCount: 8,
+          score: 95,
+          factors: { trafficScore: 90, weatherScore: 100, surroundingsScore: 100, crewScore: 90 },
+          laneClosure: {
+            direction: "Northbound",
+            blockedLane: "curb lane",
+            remainingLanes: 2,
+            totalLanes: 3,
+            lanePosition: "CURB",
+            estimatedQueueDelayMin: "< 3 min",
+            capacityDropPercent: 33,
+          },
+          explanation: "Best repair window",
         },
         windows: [],
+        allSlots: [],
         displayText: "Best repair window: Fri 01:00-03:00 (low traffic, dry) · based on 8 samples · live",
       };
 

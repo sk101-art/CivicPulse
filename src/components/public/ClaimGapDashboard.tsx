@@ -72,7 +72,9 @@ export function ClaimGapDashboard({
     );
   };
 
-  const activeList = view === 'ward' ? byWard : byDesk;
+  const activeList = (view === 'ward' ? byWard : byDesk).filter(
+    (item) => !(item.id === 'unassigned' && item.claimed === 0)
+  );
 
   return (
     <div className="space-y-6">
@@ -257,7 +259,7 @@ export function ClaimGapDashboard({
                   <td className="p-4 text-center">{getGapBadge(item)}</td>
 
                   <td className="p-4 text-right text-white/80">
-                    {item.medianHoursToVerify !== null ? (
+                    {item.verified > 0 && item.medianHoursToVerify !== null ? (
                       <span className="inline-flex items-center gap-1 justify-end">
                         <Clock className="w-3.5 h-3.5 text-cyan-400" />
                         {item.medianHoursToVerify}h

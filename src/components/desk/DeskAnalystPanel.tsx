@@ -9,6 +9,7 @@ interface WardBriefData {
   headline: string;
   brief: string;
   recommendedActions: string[];
+  engine?: string;
 }
 
 interface ChatMessage {
@@ -17,6 +18,7 @@ interface ChatMessage {
   text: string;
   citedIssueIds?: string[];
   suggestedFollowups?: string[];
+  engine?: string;
 }
 
 export function DeskAnalystPanel() {
@@ -100,6 +102,7 @@ export function DeskAnalystPanel() {
           text: data.answer,
           citedIssueIds: data.citedIssueIds,
           suggestedFollowups: data.suggestedFollowups,
+          engine: data.engine,
         };
         setMessages((prev) => [...prev, botMsg]);
       } else {
@@ -168,7 +171,17 @@ export function DeskAnalystPanel() {
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                   {brief.headline}
                 </span>
-                <span className="text-[10px] text-white/40">Ward {brief.wardCode}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-white/40">
+                    {brief.wardCode === 'ALL' ? 'Pilot Wards' : `Ward ${brief.wardCode}`}
+                  </span>
+                  <span
+                    data-testid="brief-engine-badge"
+                    className="px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-200 text-[9px] font-mono font-normal"
+                  >
+                    {brief.engine || "Gemini 2.5 Flash"}
+                  </span>
+                </div>
               </div>
               <p className="text-xs font-mono text-white/80 leading-relaxed">
                 {brief.brief}
@@ -206,8 +219,16 @@ export function DeskAnalystPanel() {
                       : 'bg-purple-950/30 border border-purple-800/40 text-purple-100 mr-8'
                   }`}
                 >
-                  <div className="text-[10px] font-bold uppercase text-white/40 mb-1">
-                    {m.sender === 'user' ? 'Desk Officer' : 'AI Analyst'}
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase text-white/40 mb-1">
+                    <span>{m.sender === 'user' ? 'Desk Officer' : 'AI Analyst'}</span>
+                    {m.sender === 'analyst' && (
+                      <span
+                        data-testid="chat-engine-badge"
+                        className="px-1.5 py-0.2 rounded bg-purple-500/20 border border-purple-500/30 text-purple-200 text-[9px] font-mono normal-case font-normal"
+                      >
+                        {m.engine || "Gemini 2.5 Flash"}
+                      </span>
+                    )}
                   </div>
                   <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
                   {m.citedIssueIds && m.citedIssueIds.length > 0 && (

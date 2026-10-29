@@ -31,6 +31,10 @@ export interface LaneClosureDetails {
 export interface RepairWindow {
   start: string;                       // ISO string
   end: string;                         // ISO string
+  startIso?: string;
+  endIso?: string;
+  windowType?: "NIGHT" | "DAY_OFF_PEAK" | "DAY_PEAK" | "WEEKEND_DAY";
+  delayRatio?: number;
   display: string;                     // e.g. "Tue 23:00-01:00"
   dayOfWeek: string;                   // e.g. "Tue"
   timeRange: string;                   // e.g. "23:00-01:00"
@@ -171,6 +175,7 @@ export function computeMultiFactorRepairWindows(options: {
   lanePosition?: string | null;
   bearingDeg?: number;
   priorityIndex?: number;
+  roadClass?: string | null;
   deteriorationRisk?: "LOW" | "MED" | "HIGH";
   wardCrewHoursMode?: "DAY_ONLY" | "NIGHT_ONLY" | "STANDARD" | "ANY";
   hourlyProfiles?: Map<string, number>; // key: `${dayType}-${hour}` -> delayRatio
@@ -185,6 +190,7 @@ export function computeMultiFactorRepairWindows(options: {
     lanePosition = "CURB",
     bearingDeg = 0,
     priorityIndex = 50,
+    roadClass,
     deteriorationRisk = "LOW",
     wardCrewHoursMode = "STANDARD",
     hourlyProfiles = new Map(),
@@ -210,9 +216,28 @@ export function computeMultiFactorRepairWindows(options: {
   const now = options.now ?? new Date();
   const basis: "live" | "estimated" = sampleCount > 0 ? "live" : "estimated";
 
+  // Road characterization
+  const rc = (roadClass || safeSurroundings.road.highway || "residential").toLowerCase();
+  const frc = (safeSurroundings.road.frc || "").toUpperCase();
+  const isResidential =
+    rc === "residential" ||
+    rc === "living_street" ||
+    rc === "service" ||
+    rc === "unclassified" ||
+    frc === "FRC4" ||
+    frc === "FRC5" ||
+    frc === "FRC6" ||
+    frc === "FRC7" ||
+    safeSurroundings.road.highway === "residential";
+
+  const totalLanes = Math.max(1, safeSurroundings.road.lanes || 2);
+  const isHighSpeed =
+    ["trunk", "primary", "motorway"].includes(rc) ||
+    ["FRC0", "FRC1", "FRC2"].includes(frc) ||
+    totalLanes >= 4;
+
   // Lane and Direction modeling
   const forwardDir = getCompassDirection(bearingDeg);
-  const totalLanes = Math.max(1, safeSurroundings.road.lanes || 2);
   const oneway = safeSurroundings.road.oneway;
   const direction = forwardDir;
 
@@ -357,21 +382,39 @@ export function computeMultiFactorRepairWindows(options: {
       }
     }
 
-    // Composite Score
-    let compositeScore = Math.round(
+    // Composite Score with realistic night-work costs & continuous differentiation
+    const isNight = fStart.hour >= 22 || fStart.hour < 6;
+    let rawCompositeScore = (
       0.40 * trafficScore +
       0.25 * weatherScore +
       0.20 * surroundingsScore +
       0.15 * crewScore
     );
 
+    // Realistic night-work penalties:
+    if (isNight) {
+      rawCompositeScore -= 15; // Night crew cost premium (-15)
+      if (isHighSpeed) {
+        rawCompositeScore -= 10; // Worker-safety penalty on high-speed roads at night (-10)
+      }
+      if (isResidential) {
+        rawCompositeScore -= 35; // Residential noise penalty 22:00-06:00 (-35)
+      }
+    }
+
     // Urgency override: if priority index >= 80 or high deterioration, boost next 24h slots
     const isWithinNext24h = slotIdx < 12; // first 12 two-hour slots = 24h
     let urgencyBoosted = false;
     if (isUrgent && isWithinNext24h && weatherScore > 0) {
-      compositeScore = Math.min(100, compositeScore + 25);
+      rawCompositeScore += 18;
       urgencyBoosted = true;
     }
+
+    // Continuous score: differentiate by exact delay ratio so identical scores do not saturate
+    const delayPenalty = (avgDelayRatio * 6) + (capacityDropPercent > 0 ? 1.5 : 0);
+    rawCompositeScore = Math.max(5, rawCompositeScore - delayPenalty);
+    // Continuous score with 1 decimal precision, no clamping at 100
+    const compositeScore = Math.round(rawCompositeScore * 10) / 10;
 
     // Queue Delay Estimation
     let queueDelayMin = "< 3 min";
@@ -431,10 +474,23 @@ export function computeMultiFactorRepairWindows(options: {
 
     const condition = `${avgDelayRatio < 0.20 ? "low traffic" : avgDelayRatio < 0.45 ? "moderate traffic" : "heavy traffic"}, ${maxPrecip > 0 ? "rain likely" : "dry"}`;
 
+    const isWeekendDay = dayType === DayType.WEEKEND && !isNight;
+    const isPeak =
+      dayType === DayType.WEEKDAY &&
+      ((fStart.hour >= 8 && fStart.hour < 11) || (fStart.hour >= 17 && fStart.hour < 21));
+    const windowType: "NIGHT" | "DAY_OFF_PEAK" | "DAY_PEAK" | "WEEKEND_DAY" =
+      isNight
+        ? "NIGHT"
+        : (isWeekendDay ? "WEEKEND_DAY" : (isPeak ? "DAY_PEAK" : "DAY_OFF_PEAK"));
+
     allSlots.push({
       slotIndex: slotIdx,
       start: tStart.toISOString(),
       end: tEnd.toISOString(),
+      startIso: tStart.toISOString(),
+      endIso: tEnd.toISOString(),
+      windowType,
+      delayRatio: avgDelayRatio,
       display: timeDisplay,
       dayOfWeek: fStart.dayOfWeek,
       timeRange: `${fStart.time}-${fEnd.time}`,
@@ -455,10 +511,13 @@ export function computeMultiFactorRepairWindows(options: {
     });
   }
 
-  // Sort candidate slots: highest score first, then earlier start time
+  // Sort candidate slots: highest score first, then lowest lane-closure queue delay / congestion, then sooner start time
   const sorted = [...allSlots].sort((a, b) => {
-    if (b.score !== a.score) {
+    if (Math.abs(b.score - a.score) > 0.05) {
       return b.score - a.score;
+    }
+    if (a.expectedCongestion !== b.expectedCongestion) {
+      return a.expectedCongestion - b.expectedCongestion;
     }
     return new Date(a.start).getTime() - new Date(b.start).getTime();
   });
@@ -602,6 +661,7 @@ export async function getRepairWindowForIssue(
       id: true,
       lat: true,
       lng: true,
+      priority: true,
       wardId: true,
       segmentId: true,
       lanePosition: true,
@@ -669,7 +729,8 @@ export async function getRepairWindowForIssue(
     issueId: issue.id,
     lanePosition: issue.lanePosition,
     bearingDeg: 0,
-    priorityIndex: 50,
+    priorityIndex: issue.priority ?? 50,
+    roadClass: issue.segment?.roadClass,
     hourlyProfiles,
     hourlyWeather,
     surroundings,

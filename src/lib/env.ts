@@ -16,11 +16,12 @@ const serverSchema = z.object({
   TOMTOM_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().optional(),
+  GEMINI_MODELS: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   GROQ_MODEL_VISION: z.string().default("qwen/qwen3.8-27b"),
   GROQ_MODEL_TEXT: z.string().default("openai/gpt-oss-120b"),
   AI_DAILY_CALL_CAP: z.coerce.number().default(400),
-  AI_FEATURES: z.string().default("G1,G2,G7"),
+  AI_FEATURES: z.string().default("G1,G2,G7,G-ASSESS,G-BRIEF,G-AUDIT-ASSIST,G-CHAT"),
   REDDIT_CLIENT_ID: z.string().optional(),
   REDDIT_CLIENT_SECRET: z.string().optional(),
   REDDIT_USER_AGENT: z.string().optional(),
@@ -82,10 +83,19 @@ export function isConfigured(key: keyof ServerEnv): boolean {
  * Checks whether a specific AI feature is enabled in AI_FEATURES.
  */
 export function isAiFeatureEnabled(featureId: string): boolean {
+  const normalized = featureId.trim().toUpperCase();
   const features = (env.AI_FEATURES || "")
     .split(",")
     .map((f) => f.trim().toUpperCase());
-  return features.includes(featureId.trim().toUpperCase());
+  if (features.includes(normalized)) return true;
+  // Also treat G-ASSESS, G-BRIEF, G-AUDIT-ASSIST, G-CHAT as enabled when G7 or ANALYST is present
+  if (
+    normalized.startsWith("G-") &&
+    (features.includes("G7") || features.includes("G-ANALYST") || features.includes("ANALYST"))
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**

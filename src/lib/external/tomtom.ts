@@ -483,6 +483,7 @@ export async function calculateTomTomRoute(
     ),
     language: "en-IN",
     routeType: options.routeType || "fastest",
+    computeTravelTimeFor: "all",
   });
 
   if (options.departAt) {

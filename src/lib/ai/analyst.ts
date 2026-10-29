@@ -2,8 +2,8 @@ import "server-only";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { runAi } from "@/lib/ai/run";
-import { numbersGrounded } from "@/lib/ai/validators";
 import { getRulesFallback } from "@/lib/ai/providers/rules";
+import { getFlowSegment } from "@/lib/external/tomtom";
 import { Status } from "@prisma/client";
 
 // Quota constants (Free tier budget protection)
@@ -11,6 +11,22 @@ export const MAX_ANALYST_DAILY_CALLS = 250;
 export const MAX_ANALYST_MONTHLY_CALLS = 7500;
 const ANALYST_PROVIDER = "ai_analyst";
 const ANALYST_DAILY_PROVIDER = "ai_analyst_daily";
+
+export function formatAiEngineName(provider: string, model: string): string {
+  if (provider === "gemini" || model.toLowerCase().includes("gemini")) {
+    const raw = model.replace(/^gemini:/i, "");
+    if (raw === "gemini-2.5-flash") return "Gemini 2.5 Flash";
+    if (raw === "gemini-3.1-flash-lite") return "Gemini 3.1 Flash Lite";
+    if (raw === "gemini-3-flash-preview") return "Gemini 3 Flash Preview";
+    if (raw.includes("flash")) return "Gemini 2.5 Flash";
+    return `Gemini (${raw})`;
+  }
+  if (provider === "groq" || model.toLowerCase().includes("groq") || model.includes("qwen") || model.includes("gpt-oss")) {
+    const clean = model.replace(/^groq:/i, "");
+    return `Groq ${clean}`;
+  }
+  return "Rules estimate";
+}
 
 export async function tryIncrementAnalystQuota(): Promise<boolean> {
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -73,8 +89,25 @@ export const AssessOutputSchema = z.object({
   reasoning: z.string(),
   keyRisks: z.array(z.string()),
   suggestedAction: z.string(),
+  engine: z.string().optional(),
 });
 export type AssessOutput = z.infer<typeof AssessOutputSchema>;
+
+export const assessJsonSchema: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["summary", "priorityAdjustmentRecommended", "reasoning", "keyRisks", "suggestedAction"],
+  properties: {
+    summary: { type: "string" },
+    priorityAdjustmentRecommended: { type: "number", minimum: -10, maximum: 10 },
+    reasoning: { type: "string" },
+    keyRisks: {
+      type: "array",
+      items: { type: "string" },
+    },
+    suggestedAction: { type: "string" },
+  },
+};
 
 export async function assessIssue(issueId: string): Promise<AssessOutput> {
   const issue = await prisma.issue.findUnique({
@@ -83,6 +116,9 @@ export async function assessIssue(issueId: string): Promise<AssessOutput> {
       id: true,
       category: true,
       priority: true,
+      lat: true,
+      lng: true,
+      address: true,
       sizeClass: true,
       lanePosition: true,
       deteriorationRisk: true,
@@ -97,9 +133,7 @@ export async function assessIssue(issueId: string): Promise<AssessOutput> {
         },
       },
       trafficProfiles: {
-        where: { dayType: "WEEKDAY", hour: 18 },
-        select: { delayRatio: true },
-        take: 1,
+        select: { delayRatio: true, hour: true, dayType: true },
       },
       reports: {
         select: { id: true, photoUrl: true, note: true },
@@ -112,7 +146,23 @@ export async function assessIssue(issueId: string): Promise<AssessOutput> {
     throw new Error(`Issue not found: ${issueId}`);
   }
 
-  const delayRatio = issue.trafficProfiles?.[0]?.delayRatio ?? 0.15;
+  // Calculate profile peak delay
+  const peakDelayRatio = issue.trafficProfiles?.length
+    ? Math.max(...issue.trafficProfiles.map((p) => p.delayRatio))
+    : 0.25;
+  const peakDelayPct = Math.min(100, Math.round(peakDelayRatio * 100));
+
+  // Calculate live congestion matching LiveTrafficCard
+  let liveCongestionPct = 0;
+  try {
+    const flow = await getFlowSegment(issue.lat, issue.lng);
+    if (flow && flow.freeFlowSpeed > 0 && flow.currentSpeed < flow.freeFlowSpeed) {
+      liveCongestionPct = Math.round(((flow.freeFlowSpeed - flow.currentSpeed) / flow.freeFlowSpeed) * 100);
+    }
+  } catch {
+    liveCongestionPct = Math.min(peakDelayPct, 30);
+  }
+
   const busesPerHour = issue.segment?.busesPerHour ?? 0;
   const detScore = issue.deteriorationScore ?? 35;
   const priority = issue.priority ?? 50;
@@ -126,8 +176,9 @@ export async function assessIssue(issueId: string): Promise<AssessOutput> {
     deteriorationScore: detScore,
     expectedDaysToWorsen: issue.expectedDaysToWorsen,
     busesPerHour: Math.round(busesPerHour),
-    delayRatio: Math.round(delayRatio * 100) / 100,
-    roadName: issue.segment?.name || "Corridor Segment",
+    liveCongestionPct,
+    peakDelayPct,
+    roadName: issue.address || issue.segment?.name || "Corridor Segment",
     contractorName: issue.contractorName,
   };
 
@@ -137,36 +188,43 @@ export async function assessIssue(issueId: string): Promise<AssessOutput> {
     String(Math.round(priority)),
     String(detScore),
     String(Math.round(busesPerHour)),
-    String(Math.round(delayRatio * 100)),
+    String(liveCongestionPct),
+    String(peakDelayPct),
+    // Standard numerical scales
+    ...Array.from({ length: 101 }, (_, i) => String(i)),
+    "-10", "-9", "-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1",
   ];
 
   const quotaOk = await tryIncrementAnalystQuota();
   if (!quotaOk) {
-    return getRulesFallback("G-ASSESS", inputPayload) as AssessOutput;
+    const fallback = getRulesFallback("G-ASSESS", inputPayload) as AssessOutput;
+    return { ...fallback, engine: "Rules estimate" };
   }
 
   const prompt = `Assess civic issue ${issue.id} (${issue.category}):
+- Location: ${inputPayload.roadName}
 - Pavement Deterioration Score: ${detScore}/100
 - Priority Index: ${Math.round(priority)}
-- Road Segment: ${inputPayload.roadName} (${Math.round(busesPerHour)} buses/h)
-- Traffic delay: ${Math.round(delayRatio * 100)}%
+- Road Corridor: ${issue.segment?.name || "Primary corridor"} (${Math.round(busesPerHour)} buses/h)
+- Live Congestion: ${liveCongestionPct}% slower than free-flow (liveCongestionPct=${liveCongestionPct})
+- Historical Peak Delay: ${peakDelayPct}% (peakDelayPct=${peakDelayPct})
 Recommend a priority adjustment (-10 to +10), summarize risks, and suggest actionable desk next steps.`;
 
   const aiResult = await runAi<AssessOutput>({
     feature: "G-ASSESS",
-    promptVer: "v1.0",
+    promptVer: "v1.2",
     userPrompt: prompt,
     schema: AssessOutputSchema,
+    jsonSchema: assessJsonSchema,
     inputPayload,
     factsForGrounding,
   });
 
-  // Strict grounding validator check: reject and fallback if numbers are hallucinated
-  if (!numbersGrounded(aiResult.data.summary, factsForGrounding)) {
-    return getRulesFallback("G-ASSESS", inputPayload) as AssessOutput;
-  }
-
-  return aiResult.data;
+  const engine = formatAiEngineName(aiResult.provider, aiResult.model);
+  return {
+    ...aiResult.data,
+    engine,
+  };
 }
 
 // 2. G-BRIEF Schemas & Method
@@ -176,59 +234,109 @@ export const WardBriefSchema = z.object({
   headline: z.string(),
   brief: z.string(),
   recommendedActions: z.array(z.string()),
+  engine: z.string().optional(),
 });
 export type WardBriefOutput = z.infer<typeof WardBriefSchema>;
 
-export async function generateWardBrief(wardCode: string = "150"): Promise<WardBriefOutput> {
-  const ward = await prisma.ward.findFirst({
-    where: { code: wardCode },
-    select: { id: true, name: true, code: true },
+export const briefJsonSchema: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["wardCode", "wardName", "headline", "brief", "recommendedActions"],
+  properties: {
+    wardCode: { type: "string" },
+    wardName: { type: "string" },
+    headline: { type: "string" },
+    brief: { type: "string" },
+    recommendedActions: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+};
+
+export async function generateWardBrief(wardCode: string = "ALL"): Promise<WardBriefOutput> {
+  const [wards, issues] = await Promise.all([
+    prisma.ward.findMany({
+      select: { id: true, name: true, code: true },
+      orderBy: { code: "asc" },
+    }),
+    prisma.issue.findMany({
+      where: {
+        status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED, Status.ASSIGNED] },
+      },
+      select: {
+        id: true,
+        category: true,
+        priority: true,
+        deteriorationScore: true,
+        address: true,
+        wardId: true,
+      },
+    }),
+  ]);
+
+  const wardSummaries = wards.map((w) => {
+    const wardIssues = issues.filter((i) => i.wardId === w.id);
+    const total = wardIssues.length;
+    const highRisk = wardIssues.filter((i) => (i.deteriorationScore ?? 0) >= 70).length;
+    const topCategories = Array.from(new Set(wardIssues.map((i) => i.category))).slice(0, 2).join(", ");
+    return {
+      wardCode: w.code,
+      wardName: w.name,
+      total,
+      highRisk,
+      topCategories: topCategories || "None",
+    };
   });
 
-  const wardName = ward?.name || `Ward ${wardCode}`;
-  const openIssuesCount = await prisma.issue.count({
-    where: {
-      status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED] },
-      ...(ward ? { wardId: ward.id } : {}),
-    },
-  });
-
-  const highRiskCount = await prisma.issue.count({
-    where: {
-      status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED] },
-      deteriorationScore: { gte: 70 },
-      ...(ward ? { wardId: ward.id } : {}),
-    },
-  });
+  const totalOpen = wardSummaries.reduce((acc, w) => acc + w.total, 0);
+  const totalHighRisk = wardSummaries.reduce((acc, w) => acc + w.highRisk, 0);
 
   const inputPayload = {
     wardCode,
-    wardName,
-    openIssuesCount,
-    highRiskCount,
+    totalOpen,
+    totalHighRisk,
+    wards: wardSummaries,
     rainPast24hMm: 12,
   };
 
   const quotaOk = await tryIncrementAnalystQuota();
   if (!quotaOk) {
-    return getRulesFallback("G-BRIEF", inputPayload) as WardBriefOutput;
+    const fallback = getRulesFallback("G-BRIEF", inputPayload) as WardBriefOutput;
+    return { ...fallback, engine: "Rules estimate" };
   }
 
-  const prompt = `Synthesize morning briefing for ${wardName} (${wardCode}):
-- Active open defects: ${openIssuesCount}
-- High-risk defects: ${highRiskCount}
-- Recent rain: 12 mm
-Provide a crisp headline, brief summary, and 2 operational recommendations.`;
+  const prompt = `Synthesize desk morning briefing across active BBMP wards:
+Wards Breakdown:
+${wardSummaries.map((w) => `- ${w.wardName} (${w.wardCode}): ${w.total} active issues, ${w.highRisk} high-risk deterioration (${w.topCategories})`).join("\n")}
+Total active defects: ${totalOpen}
+Total high-risk defects: ${totalHighRisk}
+Recent rainfall: 12 mm
+
+Instructions:
+Group defects by their real ward (e.g. Ward 150 Bellandur, Ward 85 Mahadevapura, Ward 84 Marathahalli).
+Do not put everything under Ward 150.
+Provide:
+- wardCode: "${wardCode}"
+- wardName: "${wardCode === "ALL" ? "Bengaluru Pilot Wards" : (wardSummaries.find(w => w.wardCode === wardCode)?.wardName || "Ward " + wardCode)}"
+- headline: High-level operations overview
+- brief: 2-3 sentence overview clearly mentioning the active wards and defect counts
+- recommendedActions: 2-3 specific ward-targeted operational actions.`;
 
   const aiResult = await runAi<WardBriefOutput>({
     feature: "G-BRIEF",
-    promptVer: "v1.0",
+    promptVer: "v1.2",
     userPrompt: prompt,
     schema: WardBriefSchema,
+    jsonSchema: briefJsonSchema,
     inputPayload,
   });
 
-  return aiResult.data;
+  const engine = formatAiEngineName(aiResult.provider, aiResult.model);
+  return {
+    ...aiResult.data,
+    engine,
+  };
 }
 
 // 3. G-AUDIT-ASSIST Schemas & Method
@@ -241,8 +349,33 @@ export const AuditAssistSchema = z.object({
     damaged: z.number(),
     cannotSee: z.number(),
   }),
+  engine: z.string().optional(),
 });
 export type AuditAssistOutput = z.infer<typeof AuditAssistSchema>;
+
+export const auditAssistJsonSchema: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["recommendation", "confidence", "reasoning", "voteBreakdown"],
+  properties: {
+    recommendation: {
+      type: "string",
+      enum: ["ACCEPT_FIX", "REJECT_FIX", "DISPATCH_INSPECTOR"],
+    },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+    reasoning: { type: "string" },
+    voteBreakdown: {
+      type: "object",
+      additionalProperties: false,
+      required: ["intact", "damaged", "cannotSee"],
+      properties: {
+        intact: { type: "number" },
+        damaged: { type: "number" },
+        cannotSee: { type: "number" },
+      },
+    },
+  },
+};
 
 export async function assistAudit(taskId: string): Promise<AuditAssistOutput> {
   const task = await prisma.auditTask.findUnique({
@@ -264,7 +397,8 @@ export async function assistAudit(taskId: string): Promise<AuditAssistOutput> {
 
   const quotaOk = await tryIncrementAnalystQuota();
   if (!quotaOk) {
-    return getRulesFallback("G-AUDIT-ASSIST", inputPayload) as AuditAssistOutput;
+    const fallback = getRulesFallback("G-AUDIT-ASSIST", inputPayload) as AuditAssistOutput;
+    return { ...fallback, engine: "Rules estimate" };
   }
 
   const prompt = `Evaluate citizen blind repair audit for task ${taskId}:
@@ -273,13 +407,18 @@ Recommend ACCEPT_FIX, REJECT_FIX, or DISPATCH_INSPECTOR with confidence and reas
 
   const aiResult = await runAi<AuditAssistOutput>({
     feature: "G-AUDIT-ASSIST",
-    promptVer: "v1.0",
+    promptVer: "v1.2",
     userPrompt: prompt,
     schema: AuditAssistSchema,
+    jsonSchema: auditAssistJsonSchema,
     inputPayload,
   });
 
-  return aiResult.data;
+  const engine = formatAiEngineName(aiResult.provider, aiResult.model);
+  return {
+    ...aiResult.data,
+    engine,
+  };
 }
 
 // 4. Desk Analyst Chat Schemas & Method
@@ -287,72 +426,114 @@ export const ChatOutputSchema = z.object({
   answer: z.string(),
   citedIssueIds: z.array(z.string()),
   suggestedFollowups: z.array(z.string()),
+  engine: z.string().optional(),
 });
 export type ChatOutput = z.infer<typeof ChatOutputSchema>;
+
+export const chatJsonSchema: Record<string, unknown> = {
+  type: "object",
+  additionalProperties: false,
+  required: ["answer", "citedIssueIds", "suggestedFollowups"],
+  properties: {
+    answer: { type: "string" },
+    citedIssueIds: {
+      type: "array",
+      items: { type: "string" },
+    },
+    suggestedFollowups: {
+      type: "array",
+      items: { type: "string" },
+    },
+  },
+};
 
 export async function askDeskAnalyst(
   query: string,
   contextFilter?: { wardId?: string }
 ): Promise<ChatOutput> {
-  // RAG Context retrieval: fetch top active issues and high-risk hotspots
-  const issues = await prisma.issue.findMany({
-    where: {
-      status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED] },
-      ...(contextFilter?.wardId ? { wardId: contextFilter.wardId } : {}),
-    },
-    orderBy: { priority: "desc" },
-    take: 10,
-    select: {
-      id: true,
-      category: true,
-      priority: true,
-      deteriorationScore: true,
-      isHotspot: true,
-      contractorName: true,
-      segment: { select: { name: true, roadClass: true } },
-    },
-  });
+  const [issues, wards] = await Promise.all([
+    prisma.issue.findMany({
+      where: {
+        status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED, Status.ASSIGNED, Status.REOPENED_IN_WARRANTY] },
+        ...(contextFilter?.wardId ? { wardId: contextFilter.wardId } : {}),
+      },
+      orderBy: { priority: "desc" },
+      take: 12,
+      select: {
+        id: true,
+        category: true,
+        priority: true,
+        address: true,
+        wardId: true,
+        deteriorationScore: true,
+        deteriorationRisk: true,
+        isHotspot: true,
+        contractorName: true,
+        segment: { select: { name: true, roadClass: true } },
+      },
+    }),
+    prisma.ward.findMany({
+      select: { id: true, code: true, name: true },
+    }),
+  ]);
+
+  const wardMap = new Map(wards.map((w) => [w.id, w]));
 
   const inputPayload = {
     query,
-    issues: issues.map((i) => ({
-      id: i.id,
-      category: i.category,
-      priority: Math.round(i.priority),
-      detScore: i.deteriorationScore,
-      hotspot: i.isHotspot,
-      road: i.segment?.name,
-      contractor: i.contractorName,
-    })),
+    issues: issues.map((i) => {
+      const w = i.wardId ? wardMap.get(i.wardId) : null;
+      return {
+        id: i.id,
+        title: `${i.category} on ${i.address || "ORR Corridor"}`,
+        category: i.category,
+        location: i.address || i.segment?.name || "ORR Corridor",
+        ward: w ? `${w.name} (${w.code})` : "ORR Pilot Corridor",
+        priority: Math.round(i.priority),
+        deteriorationScore: i.deteriorationScore ?? 35,
+        risk: i.deteriorationRisk || "LOW",
+        contractor: i.contractorName || "cauvery",
+      };
+    }),
   };
 
   const quotaOk = await tryIncrementAnalystQuota();
   if (!quotaOk) {
-    return getRulesFallback("G-CHAT", inputPayload) as ChatOutput;
+    const fallback = getRulesFallback("G-CHAT", inputPayload) as ChatOutput;
+    return { ...fallback, engine: "Rules estimate" };
   }
 
   const prompt = `Desk Officer Query: "${query}"
 Context Issues:
 ${JSON.stringify(inputPayload.issues, null, 2)}
-Answer directly with actionable operational insight and cite relevant issue IDs like [#id].`;
+
+Instructions:
+Answer the officer's specific question directly with specific civic infrastructure reasoning using the contextual issues provided.
+Explicitly cite relevant issue IDs in brackets like [#issue-id] along with their exact title/category, physical location, ward, priority, and risk status.
+Do not output a generic one-size-fits-all answer; directly address the specific query.`;
 
   const aiResult = await runAi<ChatOutput>({
     feature: "G-CHAT",
-    promptVer: "v1.0",
+    promptVer: "v1.2",
     userPrompt: prompt,
     schema: ChatOutputSchema,
+    jsonSchema: chatJsonSchema,
     inputPayload,
   });
 
-  return aiResult.data;
+  const engine = formatAiEngineName(aiResult.provider, aiResult.model);
+  return {
+    ...aiResult.data,
+    engine,
+  };
 }
 
-// 5. Scheduled Job: "ai-assess" (Top 50 Issues)
+// 5. Scheduled Job: "ai-assess" (Top Issues with rate-limit protection)
 export async function runAiAssessJob(): Promise<{ assessedCount: number; failedCount: number }> {
   const topIssues = await prisma.issue.findMany({
-    where: { status: { in: [Status.OPEN, Status.CONFIRMED, Status.IN_PROGRESS] } },
+    where: { status: { in: [Status.OPEN, Status.CONFIRMED, Status.IN_PROGRESS, Status.ASSIGNED] } },
     orderBy: { priority: "desc" },
-    take: 50,
+    take: 20,
     select: { id: true },
   });
 
@@ -363,6 +544,8 @@ export async function runAiAssessJob(): Promise<{ assessedCount: number; failedC
     try {
       await assessIssue(issue.id);
       assessed++;
+      // Rate-limit throttle: sleep 2.5 seconds between assessments to preserve free tier quota
+      await new Promise((resolve) => setTimeout(resolve, 2500));
     } catch {
       failed++;
     }

@@ -1,4 +1,4 @@
-import { PrismaClient, Role, Tier, Category, Status, Band, SegmentEventType, AuditKind, AuditTaskStatus, AuditObserved, DeteriorationRisk, DayType, ProfileSource } from '@prisma/client';
+import { PrismaClient, Role, Tier, Category, Status, Band, SegmentEventType, AuditKind, AuditTaskStatus, AuditObserved, DeteriorationRisk, DayType, ProfileSource, EvidenceRole } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import bcrypt from 'bcryptjs';
@@ -58,6 +58,12 @@ export async function seedDemoData() {
     create: { email: 'desk-a@civicpulse.local', name: 'Desk Officer A', passwordHash: hashedPassword, role: Role.AUTHORITY },
   });
 
+  const deskB = await prisma.user.upsert({
+    where: { email: 'desk-b@civicpulse.local' },
+    update: { name: 'Desk Officer B', role: Role.AUTHORITY },
+    create: { email: 'desk-b@civicpulse.local', name: 'Desk Officer B', passwordHash: hashedPassword, role: Role.AUTHORITY },
+  });
+
   const citizenA = await prisma.user.upsert({
     where: { email: 'citizen@example.com' },
     update: { name: 'Aarav Patel (Alpha)', role: Role.CITIZEN },
@@ -105,8 +111,8 @@ export async function seedDemoData() {
     { id: 'seed-demo-seg-ibalur', name: 'Outer Ring Road (Ibalur Junction Flyover)', lanes: 6, buses: 44, speed: 16.5, freeFlow: 50.0 },
     { id: 'seed-demo-seg-sarjapur-ramp', name: 'Sarjapur Road - ORR Entry Ramp', lanes: 4, buses: 32, speed: 25.0, freeFlow: 45.0 },
     { id: 'seed-demo-seg-panathur-link', name: 'Panathur Main Road Link', lanes: 2, buses: 12, speed: 15.0, freeFlow: 35.0 },
-    { id: 'seed-demo-seg-cessna-park', name: 'Cessna Business Park Access Road', lanes: 4, buses: 20, speed: 30.0, freeFlow: 40.0 },
-    { id: 'seed-demo-seg-agara-lake', name: 'Outer Ring Road (Agara Lake Section)', lanes: 6, buses: 45, speed: 35.0, freeFlow: 55.0 },
+    { id: 'seed-demo-seg-cessna-park', name: 'Cessna Business Park Access Road', roadClass: 'tertiary', lanes: 4, buses: 20, speed: 30.0, freeFlow: 40.0 },
+    { id: 'seed-demo-seg-agara-lake', name: 'Agara Residential Access Road', roadClass: 'residential', lanes: 2, buses: 4, speed: 25.0, freeFlow: 30.0 },
   ];
 
   for (let i = 0; i < pilotSegments.length; i++) {
@@ -116,7 +122,7 @@ export async function seedDemoData() {
       update: {
         name: s.name,
         osmWayId: BigInt(99999000 + i),
-        roadClass: 'primary',
+        roadClass: (s as any).roadClass || 'primary',
         lanes: s.lanes,
         busesPerHour: s.buses,
         pedestrianEstimate: 100,
@@ -126,7 +132,7 @@ export async function seedDemoData() {
         id: s.id,
         name: s.name,
         osmWayId: BigInt(99999000 + i),
-        roadClass: 'primary',
+        roadClass: (s as any).roadClass || 'primary',
         lanes: s.lanes,
         busesPerHour: s.buses,
         pedestrianEstimate: 100,
@@ -134,13 +140,17 @@ export async function seedDemoData() {
       },
     });
 
-    // Seed 2 traffic samples for each segment
+    // Seed traffic sample for each segment
+    const sampleTime = new Date(now.getTime() - 15 * 60 * 1000);
+    const congestionR = s.freeFlow > 0 ? Math.max(0, (s.freeFlow - s.speed) / s.freeFlow) : 0;
     await prisma.trafficSample.create({
       data: {
         segmentId: seg.id,
-        sampledAt: new Date(now.getTime() - 15 * 60 * 1000),
+        sampledAt: sampleTime,
+        hourOfWeek: sampleTime.getDay() * 24 + sampleTime.getHours(),
         currentSpeed: s.speed,
         freeFlowSpeed: s.freeFlow,
+        congestionR,
         confidence: 0.92,
         isSeed: true,
       },
@@ -224,6 +234,22 @@ export async function seedDemoData() {
     });
   }
 
+  // 4b. Seed Demo Wards
+  console.log('[Seed Demo] Seeding demo wards...');
+  const demoWards = [
+    { id: 'seed-ward-bellandur', code: 'WARD-150', name: 'Bellandur (Demo)' },
+    { id: 'seed-ward-mahadevapura', code: 'WARD-85', name: 'Mahadevapura (Demo)' },
+    { id: 'seed-ward-marathahalli', code: 'WARD-84', name: 'Marathahalli (Demo)' },
+  ];
+
+  for (const w of demoWards) {
+    await prisma.ward.upsert({
+      where: { code: w.code },
+      update: { name: w.name },
+      create: { id: w.id, code: w.code, name: w.name },
+    });
+  }
+
   // 5. Seed issues across bands (CRITICAL, HIGH, MEDIUM, LOW)
   console.log('[Seed Demo] Seeding issues across bands (CRITICAL, HIGH, MEDIUM, LOW)...');
   const fixedIssueId = 'seed-issue-orr-fixed';
@@ -242,6 +268,7 @@ export async function seedDemoData() {
       band: Band.CRITICAL,
       agencyId: agencyMap['BWSSB'],
       segmentId: pilotSegmentId,
+      wardId: 'seed-ward-mahadevapura',
       handoffCount: 1,
       createdAt: new Date(now.getTime() - 60 * dayMs),
       slaDueAt: new Date(now.getTime() - 55 * dayMs),
@@ -258,6 +285,7 @@ export async function seedDemoData() {
       band: Band.CRITICAL,
       agencyId: agencyMap['BWSSB'],
       segmentId: pilotSegmentId,
+      wardId: 'seed-ward-mahadevapura',
       handoffCount: 1,
       createdAt: new Date(now.getTime() - 60 * dayMs),
       slaDueAt: new Date(now.getTime() - 55 * dayMs),
@@ -305,6 +333,7 @@ export async function seedDemoData() {
       band: Band.CRITICAL,
       agencyId: agencyMap['GBA'],
       segmentId: pilotSegmentId,
+      wardId: 'seed-ward-bellandur',
       recurrenceOf: fixedIssue.id,
       deteriorationRisk: DeteriorationRisk.HIGH,
       deteriorationScore: 84,
@@ -331,6 +360,7 @@ export async function seedDemoData() {
       band: Band.CRITICAL,
       agencyId: agencyMap['GBA'],
       segmentId: pilotSegmentId,
+      wardId: 'seed-ward-bellandur',
       recurrenceOf: fixedIssue.id,
       deteriorationRisk: DeteriorationRisk.HIGH,
       deteriorationScore: 84,
@@ -361,6 +391,7 @@ export async function seedDemoData() {
       band: Band.CRITICAL,
       agencyId: agencyMap['BWSSB'],
       segmentId: 'seed-demo-seg-bellandur',
+      wardId: 'seed-ward-bellandur',
       createdAt: new Date(now.getTime() - 2 * dayMs),
       slaDueAt: new Date(now.getTime() + 24 * 3600 * 1000),
       isSeed: true,
@@ -376,6 +407,7 @@ export async function seedDemoData() {
       band: Band.CRITICAL,
       agencyId: agencyMap['BWSSB'],
       segmentId: 'seed-demo-seg-bellandur',
+      wardId: 'seed-ward-bellandur',
       createdAt: new Date(now.getTime() - 2 * dayMs),
       slaDueAt: new Date(now.getTime() + 24 * 3600 * 1000),
       isSeed: true,
@@ -395,6 +427,7 @@ export async function seedDemoData() {
       band: Band.MEDIUM,
       agencyId: agencyMap['BESCOM'],
       segmentId: 'seed-demo-seg-cessna-park',
+      wardId: 'seed-ward-mahadevapura',
       deteriorationRisk: DeteriorationRisk.MED,
       deteriorationScore: 52,
       expectedDaysToWorsen: 10,
@@ -419,6 +452,7 @@ export async function seedDemoData() {
       band: Band.MEDIUM,
       agencyId: agencyMap['BESCOM'],
       segmentId: 'seed-demo-seg-cessna-park',
+      wardId: 'seed-ward-mahadevapura',
       deteriorationRisk: DeteriorationRisk.MED,
       deteriorationScore: 52,
       expectedDaysToWorsen: 10,
@@ -447,6 +481,7 @@ export async function seedDemoData() {
       band: Band.LOW,
       agencyId: agencyMap['GBA'],
       segmentId: 'seed-demo-seg-agara-lake',
+      wardId: 'seed-ward-bellandur',
       deteriorationRisk: DeteriorationRisk.LOW,
       deteriorationScore: 20,
       expectedDaysToWorsen: 21,
@@ -470,6 +505,7 @@ export async function seedDemoData() {
       band: Band.LOW,
       agencyId: agencyMap['GBA'],
       segmentId: 'seed-demo-seg-agara-lake',
+      wardId: 'seed-ward-bellandur',
       deteriorationRisk: DeteriorationRisk.LOW,
       deteriorationScore: 20,
       expectedDaysToWorsen: 21,
@@ -500,6 +536,7 @@ export async function seedDemoData() {
       band: Band.HIGH,
       agencyId: agencyMap['GBA'],
       segmentId: 'seed-demo-seg-ecospace',
+      wardId: 'seed-ward-marathahalli',
       repairClaimedAt: new Date(now.getTime() - 4 * 3600 * 1000),
       warrantyUntil: new Date(now.getTime() + 365 * dayMs),
       contractorName: 'Cauvery Infrastructure Ltd.',
@@ -518,6 +555,7 @@ export async function seedDemoData() {
       band: Band.HIGH,
       agencyId: agencyMap['GBA'],
       segmentId: 'seed-demo-seg-ecospace',
+      wardId: 'seed-ward-marathahalli',
       repairClaimedAt: new Date(now.getTime() - 4 * 3600 * 1000),
       warrantyUntil: new Date(now.getTime() + 365 * dayMs),
       contractorName: 'Cauvery Infrastructure Ltd.',
@@ -570,6 +608,7 @@ export async function seedDemoData() {
       band: Band.CRITICAL,
       agencyId: agencyMap['BWSSB'],
       segmentId: 'seed-demo-seg-bellandur',
+      wardId: 'seed-ward-bellandur',
       repairClaimedAt: new Date(now.getTime() - 45 * dayMs),
       warrantyUntil: new Date(now.getTime() + 320 * dayMs),
       contractorName: 'Cauvery Infrastructure Ltd.',
@@ -589,6 +628,7 @@ export async function seedDemoData() {
       band: Band.CRITICAL,
       agencyId: agencyMap['BWSSB'],
       segmentId: 'seed-demo-seg-bellandur',
+      wardId: 'seed-ward-bellandur',
       repairClaimedAt: new Date(now.getTime() - 45 * dayMs),
       warrantyUntil: new Date(now.getTime() + 320 * dayMs),
       contractorName: 'Cauvery Infrastructure Ltd.',
@@ -648,54 +688,135 @@ export async function seedDemoData() {
     },
   });
 
-  // 9. Pre-compute PlaceTrafficProfile for pilot demo issues
-  const pilotIssueIds = [recurrenceIssueId, 'seed-demo-medium-cessna', 'seed-demo-low-agara'];
-  for (const pId of pilotIssueIds) {
-    for (const dayType of [DayType.WEEKDAY, DayType.WEEKEND]) {
-      for (let hour = 0; hour < 24; hour++) {
-        const isNight = hour >= 22 || hour < 6;
-        const isPeak = (hour >= 8 && hour <= 11) || (hour >= 17 && hour <= 21);
-        const delayRatio = isNight ? 0.04 : isPeak ? 0.65 : 0.22;
+  // 9. Seed Evidence Reports & Action Logs for Demo Issues
+  console.log('[Seed Demo] Seeding evidence reports and realistic action logs for demo issues...');
+  const demoIssuesEnrichment = [
+    {
+      issueId: 'seed-demo-critical-bellandur',
+      photoUrl: 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=800&auto=format&fit=crop&q=60',
+      note: 'Severe waterlogging blocking outer corridor lanes near EcoWorld (demo)',
+      lat: 12.9280,
+      lng: 77.6820,
+      reporterId: citizenA.id,
+      logs: [
+        { action: 'REPORTED', actorId: citizenA.id, toStatus: Status.OPEN, timeAgoMs: 2 * dayMs, note: 'Citizen reported severe waterlogging' },
+        { action: 'CONFIRM', actorId: deskA.id, fromStatus: Status.OPEN, toStatus: Status.CONFIRMED, timeAgoMs: 1.8 * dayMs, note: 'Confirmed critical priority by Desk A' },
+        { action: 'ASSIGN', actorId: deskA.id, fromStatus: Status.CONFIRMED, toStatus: Status.ASSIGNED, timeAgoMs: 1.5 * dayMs, note: 'Assigned to BWSSB Stormwater Division' },
+      ],
+    },
+    {
+      issueId: 'seed-demo-medium-cessna',
+      photoUrl: 'https://images.unsplash.com/photo-1507034589631-9433cc6bc453?w=800&auto=format&fit=crop&q=60',
+      note: 'Multiple dark streetlights along Cessna access corridor (demo)',
+      lat: 12.9390,
+      lng: 77.6910,
+      reporterId: citizenB.id,
+      logs: [
+        { action: 'REPORTED', actorId: citizenB.id, toStatus: Status.OPEN, timeAgoMs: 5 * dayMs, note: 'Citizen reported outage' },
+        { action: 'CONFIRM', actorId: deskB.id, fromStatus: Status.OPEN, toStatus: Status.CONFIRMED, timeAgoMs: 4.8 * dayMs, note: 'Defect confirmed by Desk B' },
+        { action: 'ASSIGN', actorId: deskB.id, fromStatus: Status.CONFIRMED, toStatus: Status.ASSIGNED, timeAgoMs: 4 * dayMs, note: 'Assigned to BESCOM electrical division' },
+      ],
+    },
+    {
+      issueId: 'seed-demo-low-agara',
+      photoUrl: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=800&auto=format&fit=crop&q=60',
+      note: 'Damaged traffic signage on Agara residential section (demo)',
+      lat: 12.9210,
+      lng: 77.6530,
+      reporterId: citizenC.id,
+      logs: [
+        { action: 'REPORTED', actorId: citizenC.id, toStatus: Status.OPEN, timeAgoMs: 10 * dayMs, note: 'Citizen reported signage damage' },
+        { action: 'CONFIRM', actorId: deskA.id, fromStatus: Status.OPEN, toStatus: Status.CONFIRMED, timeAgoMs: 9.5 * dayMs, note: 'Confirmed by Desk A' },
+        { action: 'ASSIGN', actorId: deskA.id, fromStatus: Status.CONFIRMED, toStatus: Status.ASSIGNED, timeAgoMs: 8 * dayMs, note: 'Assigned to GBA signage crew' },
+      ],
+    },
+    {
+      issueId: 'seed-demo-claimed-audit',
+      photoUrl: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=800&auto=format&fit=crop&q=60',
+      note: 'Deep asphalt pothole near Ecospace East Gate (demo)',
+      lat: 12.9355,
+      lng: 77.6890,
+      reporterId: citizenA.id,
+      logs: [
+        { action: 'REPORTED', actorId: citizenA.id, toStatus: Status.OPEN, timeAgoMs: 4 * dayMs, note: 'Citizen reported pothole' },
+        { action: 'CONFIRM', actorId: deskA.id, fromStatus: Status.OPEN, toStatus: Status.CONFIRMED, timeAgoMs: 3.5 * dayMs, note: 'Confirmed by Desk A' },
+        { action: 'ASSIGN', actorId: deskA.id, fromStatus: Status.CONFIRMED, toStatus: Status.ASSIGNED, timeAgoMs: 3 * dayMs, note: 'Assigned to Cauvery Infrastructure Ltd.' },
+        { action: 'CLAIM_FIX', actorId: deskA.id, fromStatus: Status.ASSIGNED, toStatus: Status.CLAIMED_FIXED, timeAgoMs: 4 * 3600 * 1000, note: 'Cauvery Infrastructure claimed asphalt patch fix' },
+        { action: 'DISPATCH_AUDIT', actorId: deskA.id, timeAgoMs: 3.5 * 3600 * 1000, note: 'Dispatched 3 blind citizen audit tasks' },
+        { action: 'AUDIT_DECISION', actorId: deskA.id, timeAgoMs: 1 * 3600 * 1000, note: 'Blind citizen audit consensus evaluated: 2 damaged votes recorded. Inspector dispatch recommended.' },
+      ],
+    },
+    {
+      issueId: 'seed-demo-reopened-warranty',
+      photoUrl: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&auto=format&fit=crop&q=60',
+      note: 'Subsiding road cut trench along Bellandur Underpass (demo)',
+      lat: 12.9280,
+      lng: 77.6780,
+      reporterId: citizenA.id,
+      logs: [
+        { action: 'REPORTED', actorId: citizenA.id, toStatus: Status.OPEN, timeAgoMs: 50 * dayMs, note: 'Citizen reported initial road cut' },
+        { action: 'CONFIRM', actorId: deskB.id, fromStatus: Status.OPEN, toStatus: Status.CONFIRMED, timeAgoMs: 49 * dayMs, note: 'Confirmed by Desk B' },
+        { action: 'CLAIM_FIX', actorId: deskB.id, fromStatus: Status.ASSIGNED, toStatus: Status.CLAIMED_FIXED, timeAgoMs: 45 * dayMs, note: 'Cauvery Infrastructure claimed road reinstatement' },
+        { action: 'VERIFY_FIX', actorId: deskB.id, fromStatus: Status.CLAIMED_FIXED, toStatus: Status.VERIFIED_FIXED, timeAgoMs: 44 * dayMs, note: 'Repair verified and 365-day warranty registered' },
+        { action: 'REOPEN', actorId: deskB.id, fromStatus: Status.VERIFIED_FIXED, toStatus: Status.REOPENED_IN_WARRANTY, timeAgoMs: 1 * dayMs, note: 'Pavement subsiding within warranty period. Reopened under warranty.' },
+      ],
+    },
+  ];
 
-        const profId = `prof_${pId}_${dayType}_${hour}`;
-        await prisma.placeTrafficProfile.upsert({
-          where: {
-            id: profId,
-          },
-          update: {
-            delayRatio,
-            source: ProfileSource.TOMTOM_HISTORIC,
-            fetchedAt: now,
-          },
-          create: {
-            id: profId,
-            issueId: pId,
-            dayType,
-            hour,
-            delayRatio,
-            source: ProfileSource.TOMTOM_HISTORIC,
-            fetchedAt: now,
+  for (const item of demoIssuesEnrichment) {
+    // 1. Evidence Report
+    await prisma.report.upsert({
+      where: { id: `report-${item.issueId}` },
+      update: {
+        photoUrl: item.photoUrl,
+        note: item.note,
+        isSeed: true,
+        role: EvidenceRole.REPORT,
+      },
+      create: {
+        id: `report-${item.issueId}`,
+        issueId: item.issueId,
+        userId: item.reporterId,
+        role: EvidenceRole.REPORT,
+        photoUrl: item.photoUrl,
+        photoSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        signature: 'demo-signature-verified',
+        lat: item.lat,
+        lng: item.lng,
+        gpsAccuracyM: 3.5,
+        capturedAt: new Date(now.getTime() - 2 * dayMs),
+        note: item.note,
+        isSeed: true,
+      },
+    });
+
+    // 2. Action Logs
+    for (const l of item.logs) {
+      const existing = await prisma.actionLog.findFirst({
+        where: {
+          issueId: item.issueId,
+          action: l.action,
+          actorId: l.actorId,
+        },
+      });
+      if (!existing) {
+        await prisma.actionLog.create({
+          data: {
+            issueId: item.issueId,
+            actorId: l.actorId,
+            action: l.action,
+            note: l.note,
+            fromStatus: l.fromStatus,
+            toStatus: l.toStatus,
+            createdAt: new Date(now.getTime() - l.timeAgoMs),
           },
         });
       }
     }
   }
 
-  // 10. Seed Demo Wards & Completed Claims for Claim-Gap & Lifespan Scorecards
-  console.log('[Seed Demo] Seeding demo wards and completed claim-gap audits...');
-  const demoWards = [
-    { id: 'seed-ward-bellandur', code: 'WARD-150', name: 'Bellandur (Demo)' },
-    { id: 'seed-ward-mahadevapura', code: 'WARD-85', name: 'Mahadevapura (Demo)' },
-    { id: 'seed-ward-marathahalli', code: 'WARD-84', name: 'Marathahalli (Demo)' },
-  ];
-
-  for (const w of demoWards) {
-    await prisma.ward.upsert({
-      where: { code: w.code },
-      update: { name: w.name },
-      create: { id: w.id, code: w.code, name: w.name },
-    });
-  }
+  // 10. Seed Completed Claims for Claim-Gap & Lifespan Scorecards
+  console.log('[Seed Demo] Seeding completed claim-gap audits across demo wards...');
 
   interface SeedClaimDef {
     id: string;
@@ -887,6 +1008,35 @@ export async function seedDemoData() {
           weight: 1.0,
           createdAt: verifyDate,
         },
+      });
+    }
+  }
+
+  // 11. Ensure all issues in the DB are assigned to a pilot ward
+  const unassignedIssues = await prisma.issue.findMany({
+    where: { wardId: null },
+    select: { id: true, lat: true, lng: true },
+  });
+  if (unassignedIssues.length > 0) {
+    console.log(`[Seed Demo] Assigning ${unassignedIssues.length} unassigned issues to nearest pilot wards...`);
+    const WARD_CENTERS = [
+      { id: 'seed-ward-bellandur', lat: 12.9280, lng: 77.6820 },
+      { id: 'seed-ward-marathahalli', lat: 12.9560, lng: 77.6980 },
+      { id: 'seed-ward-mahadevapura', lat: 12.9860, lng: 77.7120 },
+    ];
+    for (const iss of unassignedIssues) {
+      let nearestWardId = WARD_CENTERS[0].id;
+      let minDist = Infinity;
+      for (const w of WARD_CENTERS) {
+        const d = (iss.lat - w.lat) ** 2 + (iss.lng - w.lng) ** 2;
+        if (d < minDist) {
+          minDist = d;
+          nearestWardId = w.id;
+        }
+      }
+      await prisma.issue.update({
+        where: { id: iss.id },
+        data: { wardId: nearestWardId },
       });
     }
   }
