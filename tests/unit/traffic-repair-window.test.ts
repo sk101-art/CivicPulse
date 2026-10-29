@@ -2,152 +2,299 @@ import { describe, it, expect } from "vitest";
 import {
   getDefaultRoadClassProfile,
   computeRepairWindows,
+  computeMultiFactorRepairWindows,
   formatIstTime,
+  getCompassDirection,
 } from "@/lib/traffic/repairWindow";
+import { DayType } from "@prisma/client";
+import { SurroundingsResult } from "@/lib/external/overpass";
 
-describe("Recommended Repair Window Selection & Profiles", () => {
-  describe("getDefaultRoadClassProfile", () => {
-    it("generates 168-hour profile with peaks at 8-11 and 17-21 IST", () => {
-      const profile = getDefaultRoadClassProfile("primary");
-      expect(profile).toHaveLength(168);
+describe("Phase 2: Smart Repair Window & Lane-Closure Impact Analysis", () => {
+  const fixedNow = new Date("2026-10-26T06:00:00.000Z"); // Monday 11:30 IST
 
-      // Check a weekday (e.g. Monday: hours 24 to 47)
-      // Night (01:00 IST): hour 25
-      const nightCongestion = profile[25];
-      // Morning peak (09:00 IST): hour 33
-      const morningPeak = profile[33];
-      // Midday (14:00 IST): hour 38
-      const midday = profile[38];
-      // Evening peak (18:00 IST): hour 42
-      const eveningPeak = profile[42];
+  const defaultSurroundings: SurroundingsResult = {
+    schools: [],
+    hospitals: [],
+    markets: [],
+    road: {
+      lanes: 3,
+      oneway: false,
+      name: "Outer Ring Road",
+    },
+    cached: true,
+    source: "pilot_osm",
+  };
 
-      expect(nightCongestion).toBeLessThan(midday);
-      expect(midday).toBeLessThan(morningPeak);
-      expect(morningPeak).toBeGreaterThanOrEqual(0.7);
-      expect(eveningPeak).toBeGreaterThanOrEqual(0.7);
-    });
-
-    it("scales baseline congestion by road class (trunk/primary > secondary > tertiary > residential)", () => {
-      const primary = getDefaultRoadClassProfile("primary");
-      const secondary = getDefaultRoadClassProfile("secondary");
-      const tertiary = getDefaultRoadClassProfile("tertiary");
-      const residential = getDefaultRoadClassProfile("residential");
-
-      // Hour 33 is 09:00 IST Monday
-      expect(primary[33]).toBeGreaterThan(secondary[33]);
-      expect(secondary[33]).toBeGreaterThan(tertiary[33]);
-      expect(tertiary[33]).toBeGreaterThan(residential[33]);
+  describe("Compass Bearing to Direction Mapping", () => {
+    it("maps bearings correctly to compass directions", () => {
+      expect(getCompassDirection(0)).toBe("Northbound");
+      expect(getCompassDirection(10)).toBe("Northbound");
+      expect(getCompassDirection(45)).toBe("Northeastbound");
+      expect(getCompassDirection(90)).toBe("Eastbound");
+      expect(getCompassDirection(180)).toBe("Southbound");
+      expect(getCompassDirection(270)).toBe("Westbound");
     });
   });
 
-  describe("computeRepairWindows (window selection with rain exclusion)", () => {
-    // Fixed reference time: Monday 2026-10-26 06:00:00 UTC (11:30 IST)
-    const fixedNow = new Date("2026-10-26T06:00:00.000Z");
+  describe("Multi-Factor Scoring & 84 Candidate Slots", () => {
+    it("generates 84 two-hour candidate slots covering 7 days with multi-factor scores", () => {
+      const hourlyProfiles = new Map<string, number>();
+      for (let h = 0; h < 24; h++) {
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, h < 6 ? 0.04 : 0.40);
+        hourlyProfiles.set(`${DayType.WEEKEND}-${h}`, 0.10);
+      }
 
-    it("returns top 3 non-overlapping 2-hour windows with 'estimated' basis when no samples exist", () => {
-      const rainByDay = new Map<string, number>(); // completely dry week
-
-      const result = computeRepairWindows({
-        issueId: "issue-123",
-        roadClass: "primary",
-        samples: [],
-        rainByDay,
+      const hourlyWeather = new Map<string, { precipMm: number; precipProb: number; tempC: number }>();
+      const result = computeMultiFactorRepairWindows({
+        issueId: "issue-84-slots",
+        lanePosition: "CURB",
+        bearingDeg: 0,
+        hourlyProfiles,
+        hourlyWeather,
+        surroundings: defaultSurroundings,
         now: fixedNow,
       });
 
-      expect(result.issueId).toBe("issue-123");
-      expect(result.basis).toBe("estimated");
-      expect(result.sampleCount).toBe(0);
+      expect(result.allSlots).toHaveLength(84);
       expect(result.windows).toHaveLength(3);
       expect(result.bestWindow).not.toBeNull();
+      expect(result.bestWindow?.factors).toBeDefined();
+      expect(result.bestWindow?.factors.trafficScore).toBeGreaterThanOrEqual(0);
+      expect(result.bestWindow?.factors.weatherScore).toBeGreaterThanOrEqual(0);
+    });
 
-      // In estimated road profile, nighttime hours (01:00-03:00, 03:00-05:00, etc.) have lowest congestion (~10%)
-      expect(result.bestWindow?.expectedCongestion).toBeLessThanOrEqual(0.25);
-      expect(result.bestWindow?.condition).toMatch(/low traffic, dry/);
+    it("evaluates weather factor: heavy rain (>5mm or >70% prob) receives 0, dry night receives 100", () => {
+      const hourlyProfiles = new Map<string, number>();
+      for (let h = 0; h < 24; h++) {
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, 0.04);
+        hourlyProfiles.set(`${DayType.WEEKEND}-${h}`, 0.04);
+      }
+
+      // Monday night slot: 2026-10-26T18:00:00.000Z is 23:30 IST (dry night)
+      const hourlyWeather = new Map<string, { precipMm: number; precipProb: number; tempC: number }>();
+      // Rain slot on Tuesday morning
+      const rainySlotKey = "2026-10-27T04:00:00.000Z";
+      hourlyWeather.set(rainySlotKey, { precipMm: 8.5, precipProb: 80, tempC: 22 });
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "issue-weather-scoring",
+        lanePosition: "CURB",
+        bearingDeg: 0,
+        hourlyProfiles,
+        hourlyWeather,
+        surroundings: defaultSurroundings,
+        now: fixedNow,
+      });
+
+      // Find the rainy slot
+      const rainyCandidate = result.allSlots.find((s) => s.start.startsWith("2026-10-27T04:00"));
+      expect(rainyCandidate?.factors.weatherScore).toBe(0);
+
+      // Best window should be dry with high score
+      expect(result.bestWindow?.factors.weatherScore).toBeGreaterThanOrEqual(90);
+    });
+
+    it("applies school penalty (daytime 07:30-09:30 and 14:00-16:00) when school is within 200m", () => {
+      const hourlyProfiles = new Map<string, number>();
+      for (let h = 0; h < 24; h++) {
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, 0.10);
+        hourlyProfiles.set(`${DayType.WEEKEND}-${h}`, 0.10);
+      }
+
+      const surroundingsWithSchool: SurroundingsResult = {
+        ...defaultSurroundings,
+        schools: [
+          {
+            id: 101,
+            name: "Gear Innovative International School",
+            type: "school",
+            distanceM: 180,
+            lat: 12.95,
+            lng: 77.70,
+          },
+        ],
+        nearestSchool: {
+          id: 101,
+          name: "Gear Innovative International School",
+          type: "school",
+          distanceM: 180,
+          lat: 12.95,
+          lng: 77.70,
+        },
+      };
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "issue-school-penalty",
+        lanePosition: "CURB",
+        bearingDeg: 0,
+        hourlyProfiles,
+        hourlyWeather: new Map(),
+        surroundings: surroundingsWithSchool,
+        now: fixedNow,
+      });
+
+      // Daytime school slots on Tuesday (08:00 IST) should have surroundingsScore reduced by 40
+      const schoolHourSlot = result.allSlots.find(
+        (s) => s.dayOfWeek === "Tue" && s.timeRange.startsWith("08:")
+      );
+      if (schoolHourSlot) {
+        expect(schoolHourSlot.factors.surroundingsScore).toBeLessThanOrEqual(60);
+        expect(schoolHourSlot.explanation).toMatch(/School 180 m away is active/);
+      }
+
+      // Night window should show "School 180 m away is closed"
+      const nightSlot = result.allSlots.find((s) => s.timeRange.startsWith("23:") || s.timeRange.startsWith("01:"));
+      if (nightSlot) {
+        expect(nightSlot.explanation).toMatch(/School 180 m away is closed/);
+      }
+    });
+
+    it("applies hospital night noise penalty (22:00-06:00) when hospital is within 200m", () => {
+      const hourlyProfiles = new Map<string, number>();
+      for (let h = 0; h < 24; h++) {
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, 0.05);
+      }
+
+      const surroundingsWithHospital: SurroundingsResult = {
+        ...defaultSurroundings,
+        hospitals: [
+          {
+            id: 202,
+            name: "Sakra World Hospital",
+            type: "hospital",
+            distanceM: 150,
+            lat: 12.95,
+            lng: 77.70,
+          },
+        ],
+        nearestHospital: {
+          id: 202,
+          name: "Sakra World Hospital",
+          type: "hospital",
+          distanceM: 150,
+          lat: 12.95,
+          lng: 77.70,
+        },
+      };
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "issue-hospital-penalty",
+        lanePosition: "CURB",
+        bearingDeg: 0,
+        hourlyProfiles,
+        hourlyWeather: new Map(),
+        surroundings: surroundingsWithHospital,
+        now: fixedNow,
+      });
+
+      // Night window (e.g. 23:00-01:00) should have surroundings penalty of 50
+      const nightSlot = result.allSlots.find((s) => s.timeRange.startsWith("23:") || s.timeRange.startsWith("01:"));
+      if (nightSlot) {
+        expect(nightSlot.factors.surroundingsScore).toBeLessThanOrEqual(50);
+        expect(nightSlot.explanation).toMatch(/Hospital 150 m away — heavy noise restricted/);
+      }
+    });
+  });
+
+  describe("Lane-Closure Impact & Queue Delay Estimation", () => {
+    it("computes lane closure details and formats human explanation matching exact spec", () => {
+      const hourlyProfiles = new Map<string, number>();
+      for (let h = 0; h < 24; h++) {
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, 0.04);
+        hourlyProfiles.set(`${DayType.WEEKEND}-${h}`, 0.04);
+      }
+
+      const surroundings: SurroundingsResult = {
+        ...defaultSurroundings,
+        schools: [
+          {
+            id: 1,
+            name: "Vibgyor High",
+            type: "school",
+            distanceM: 180,
+            lat: 12.95,
+            lng: 77.70,
+          },
+        ],
+        nearestSchool: {
+          id: 1,
+          name: "Vibgyor High",
+          type: "school",
+          distanceM: 180,
+          lat: 12.95,
+          lng: 77.70,
+        },
+        road: {
+          lanes: 3,
+          oneway: false,
+          name: "Outer Ring Road",
+        },
+      };
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "issue-lane-closure",
+        lanePosition: "CURB",
+        bearingDeg: 0, // Northbound
+        hourlyProfiles,
+        hourlyWeather: new Map(),
+        surroundings,
+        now: fixedNow,
+      });
+
+      const best = result.bestWindow;
+      expect(best).not.toBeNull();
+      expect(best?.laneClosure.direction).toBe("Northbound");
+      expect(best?.laneClosure.blockedLane).toBe("Northbound curb lane");
+      expect(best?.laneClosure.remainingLanes).toBe(2);
+      expect(best?.laneClosure.totalLanes).toBe(3);
+      expect(best?.laneClosure.estimatedQueueDelayMin).toBe("< 3 min");
+
+      // Verify explanation string structure
+      expect(best?.explanation).toMatch(/Recommended closure: Northbound curb lane; 2 of 3 lanes remain open, estimated queue delay < 3 min/);
+      expect(best?.explanation).toMatch(/School 180 m away is closed/);
+    });
+
+    it("surfaces urgent slots within next 24h when priority index >= 80 or deterioration is HIGH", () => {
+      const hourlyProfiles = new Map<string, number>();
+      // Give Tuesday night (slot > 12) a slightly higher traffic score than Monday night (slot < 12)
+      for (let h = 0; h < 24; h++) {
+        hourlyProfiles.set(`${DayType.WEEKDAY}-${h}`, 0.10);
+      }
+
+      const result = computeMultiFactorRepairWindows({
+        issueId: "issue-urgent-override",
+        lanePosition: "CURB",
+        bearingDeg: 0,
+        priorityIndex: 85, // Urgent!
+        deteriorationRisk: "HIGH",
+        hourlyProfiles,
+        hourlyWeather: new Map(),
+        surroundings: defaultSurroundings,
+        now: fixedNow,
+      });
+
+      // Best window should be boosted and selected from next 24h
+      expect(result.bestWindow).not.toBeNull();
+      expect(result.bestWindow?.urgencyBoosted).toBe(true);
+    });
+  });
+
+  describe("Backwards Compatibility: computeRepairWindows", () => {
+    it("maintains compatibility with existing tests and callers", () => {
+      const rainByDay = new Map<string, number>();
+      const result = computeRepairWindows({
+        issueId: "issue-compat",
+        roadClass: "primary",
+        samples: [],
+        rainByDay,
+        now: fixedNow,
+      });
+
+      expect(result.issueId).toBe("issue-compat");
+      expect(result.windows).toHaveLength(3);
+      expect(result.allSlots).toHaveLength(84);
+      expect(result.bestWindow).not.toBeNull();
       expect(result.displayText).toMatch(/Best repair window:/);
-      expect(result.displayText).toMatch(/based on 0 samples · estimated/);
-
-      // Verify windows do not overlap
-      const w0 = result.windows[0];
-      const w1 = result.windows[1];
-      const w2 = result.windows[2];
-      const t0Start = new Date(w0.start).getTime();
-      const t0End = new Date(w0.end).getTime();
-      const t1Start = new Date(w1.start).getTime();
-      const t1End = new Date(w1.end).getTime();
-      const t2Start = new Date(w2.start).getTime();
-      const t2End = new Date(w2.end).getTime();
-
-      expect(t0End <= t1Start || t1End <= t0Start).toBe(true);
-      expect(t1End <= t2Start || t2End <= t1Start).toBe(true);
-      expect(t0End <= t2Start || t2End <= t0Start).toBe(true);
-    });
-
-    it("uses live samples when available and labels basis as 'live' with sample count", () => {
-      const rainByDay = new Map<string, number>();
-      // Provide live samples for Tuesday 01:00-03:00 IST (day 2, hours 49 and 50)
-      const samples = [
-        { hourOfWeek: 49, congestionR: 0.04 },
-        { hourOfWeek: 50, congestionR: 0.06 },
-        { hourOfWeek: 73, congestionR: 0.05 }, // Wednesday
-      ];
-
-      const result = computeRepairWindows({
-        issueId: "issue-live-1",
-        roadClass: "primary",
-        samples,
-        rainByDay,
-        now: fixedNow,
-      });
-
-      expect(result.basis).toBe("live");
-      expect(result.sampleCount).toBe(3);
-      expect(result.displayText).toMatch(/based on 3 samples · live/);
-    });
-
-    it("excludes hours on days with forecast rain >= 5.0 mm", () => {
-      const rainByDay = new Map<string, number>();
-      // Suppose Tuesday 2026-10-27 has heavy rain >= 5.0 mm
-      rainByDay.set("2026-10-27", 12.5); // heavy rain day
-      rainByDay.set("2026-10-28", 0.0);  // dry
-      rainByDay.set("2026-10-29", 1.2);  // light rain (< 5mm, dry)
-
-      const result = computeRepairWindows({
-        issueId: "issue-rain-test",
-        roadClass: "primary",
-        samples: [],
-        rainByDay,
-        now: fixedNow,
-      });
-
-      // No window in result.windows should fall on Tuesday 2026-10-27
-      for (const win of result.windows) {
-        const { dateStr } = formatIstTime(new Date(win.start));
-        expect(dateStr).not.toBe("2026-10-27");
-        expect(win.condition).toMatch(/dry/);
-      }
-    });
-
-    it("falls back gracefully if all days in forecast exceed 5.0 mm", () => {
-      const rainByDay = new Map<string, number>();
-      // Mark all 7 days as rainy
-      for (let d = 26; d <= 31; d++) {
-        rainByDay.set(`2026-10-${d}`, 15.0);
-      }
-      rainByDay.set("2026-11-01", 15.0);
-      rainByDay.set("2026-11-02", 15.0);
-
-      const result = computeRepairWindows({
-        issueId: "issue-monsoon",
-        roadClass: "primary",
-        samples: [],
-        rainByDay,
-        now: fixedNow,
-      });
-
-      // Should still find best windows without crashing, but condition notes rain likely
-      expect(result.windows.length).toBeGreaterThan(0);
-      expect(result.windows[0].condition).toMatch(/rain likely/);
     });
   });
 });

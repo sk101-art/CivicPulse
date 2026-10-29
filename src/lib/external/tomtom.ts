@@ -662,3 +662,117 @@ export async function getFlowSegment(
   }
 }
 
+export interface TrafficIncident {
+  id: string;
+  description: string;
+  iconCategory: number;
+  magnitudeOfDelay?: number;
+  delaySeconds?: number;
+  lengthMeters?: number;
+}
+
+export interface TrafficIncidentsResult {
+  incidents: TrafficIncident[];
+  hasNearbyIncident: boolean;
+  summary?: string;
+  cached: boolean;
+}
+
+const incidentCache = new Map<string, { data: TrafficIncidentsResult; timestamp: number }>();
+const INCIDENT_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+export function clearTomTomIncidentCache(): void {
+  incidentCache.clear();
+}
+
+export async function getTomTomTrafficIncidents(
+  lat: number,
+  lng: number,
+  radiusMeters: number = 500
+): Promise<TrafficIncidentsResult> {
+  // India bounds check
+  if (!isLocationInIndia({ latitude: lat, longitude: lng })) {
+    return { incidents: [], hasNearbyIncident: false, cached: false };
+  }
+
+  const cacheKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  const cached = incidentCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < INCIDENT_CACHE_TTL_MS) {
+    return { ...cached.data, cached: true };
+  }
+
+  if (!isConfigured("TOMTOM_API_KEY")) {
+    return { incidents: [], hasNearbyIncident: false, cached: false };
+  }
+
+  // Quota checks
+  if (!(await tryIncrementDailyQuota()) || !(await tryIncrementMonthlyQuota())) {
+    return { incidents: [], hasNearbyIncident: false, cached: false };
+  }
+
+  try {
+    const apiKey = env.TOMTOM_API_KEY!;
+    // 500 m bbox: ~0.0045 deg lat, ~0.0046 deg lng in Bangalore
+    const dLat = radiusMeters / 111000;
+    const dLng = radiusMeters / (111000 * Math.cos((lat * Math.PI) / 180));
+    const minLon = (lng - dLng).toFixed(5);
+    const minLat = (lat - dLat).toFixed(5);
+    const maxLon = (lng + dLng).toFixed(5);
+    const maxLat = (lat + dLat).toFixed(5);
+
+    const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${encodeURIComponent(
+      apiKey
+    )}&bbox=${minLon},${minLat},${maxLon},${maxLat}&language=en-GB`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      return { incidents: [], hasNearbyIncident: false, cached: false };
+    }
+
+    const json = (await res.json()) as {
+      incidents?: Array<{
+        id?: string;
+        properties?: {
+          iconCategory?: number;
+          iconCategoryName?: string;
+          magnitudeOfDelay?: number;
+          delay?: number;
+          length?: number;
+          events?: Array<{ description?: string; code?: number }>;
+        };
+      }>;
+    };
+    const rawIncidents = json?.incidents || [];
+    const incidents: TrafficIncident[] = [];
+
+    for (const inc of rawIncidents) {
+      const props = inc.properties || {};
+      const desc =
+        props.events?.[0]?.description ||
+        props.iconCategoryName ||
+        "Traffic Incident";
+      incidents.push({
+        id: inc.id || String(Math.random()),
+        description: desc,
+        iconCategory: props.iconCategory || 0,
+        magnitudeOfDelay: props.magnitudeOfDelay,
+        delaySeconds: props.delay,
+        lengthMeters: props.length,
+      });
+    }
+
+    const result: TrafficIncidentsResult = {
+      incidents,
+      hasNearbyIncident: incidents.length > 0,
+      summary: incidents.length > 0 ? incidents[0].description : undefined,
+      cached: false,
+    };
+
+    incidentCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    return result;
+  } catch {
+    return { incidents: [], hasNearbyIncident: false, cached: false };
+  }
+}
+
+

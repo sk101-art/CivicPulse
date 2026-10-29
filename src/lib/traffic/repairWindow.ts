@@ -1,16 +1,52 @@
+import "server-only";
 import { prisma } from "@/lib/db/prisma";
+import { DayType } from "@prisma/client";
 import { getHourOfWeekIST } from "./congestion";
+import {
+  getSurroundingsAndRoadInfo,
+  SurroundingsResult,
+} from "@/lib/external/overpass";
+import {
+  getTomTomTrafficIncidents,
+  TrafficIncidentsResult,
+} from "@/lib/external/tomtom";
+
+export interface SlotFactorBreakdown {
+  trafficScore: number;       // 0-100 (weight 40%)
+  weatherScore: number;       // 0-100 (weight 25%)
+  surroundingsScore: number;  // 0-100 (weight 20%)
+  crewScore: number;          // 0-100 (weight 15%)
+}
+
+export interface LaneClosureDetails {
+  direction: string;                   // e.g. "Northbound"
+  blockedLane: string;                 // e.g. "Northbound curb lane"
+  remainingLanes: number;              // e.g. 2
+  totalLanes: number;                  // e.g. 3
+  lanePosition: string;                // e.g. "CURB"
+  estimatedQueueDelayMin: string;      // e.g. "< 3 min"
+  capacityDropPercent: number;         // e.g. 33
+}
 
 export interface RepairWindow {
-  start: string; // ISO string
-  end: string;   // ISO string
-  display: string; // e.g. "Tue 01:00-03:00"
-  dayOfWeek: string;
-  timeRange: string;
-  expectedCongestion: number;
-  condition: string;
+  start: string;                       // ISO string
+  end: string;                         // ISO string
+  display: string;                     // e.g. "Tue 23:00-01:00"
+  dayOfWeek: string;                   // e.g. "Tue"
+  timeRange: string;                   // e.g. "23:00-01:00"
+  score: number;                       // 0-100 composite score
+  expectedCongestion: number;          // 0..1 (avg delay ratio)
+  condition: string;                   // e.g. "low traffic, dry"
   basis: "live" | "estimated";
   sampleCount: number;
+  factors: SlotFactorBreakdown;
+  laneClosure: LaneClosureDetails;
+  explanation: string;
+  urgencyBoosted?: boolean;
+}
+
+export interface CandidateSlot extends RepairWindow {
+  slotIndex: number; // 0..83
 }
 
 export interface RepairWindowResult {
@@ -18,14 +54,24 @@ export interface RepairWindowResult {
   basis: "live" | "estimated";
   sampleCount: number;
   bestWindow: RepairWindow | null;
-  windows: RepairWindow[];
+  windows: RepairWindow[];             // Top 3 non-overlapping windows
+  allSlots: CandidateSlot[];           // Full 84 two-hour candidate slots
   displayText: string;
+  roadInfo?: {
+    lanes: number;
+    oneway: boolean;
+    name?: string;
+  };
+  surroundings?: {
+    nearestSchoolDistM?: number;
+    nearestHospitalDistM?: number;
+    nearestMarketDistM?: number;
+  };
+  incidents?: string[];
 }
 
 /**
  * Returns a 168-hour fallback congestion profile (0 to 167) in IST.
- * Peak hours: 8-11 and 17-21 IST.
- * Night hours: 0-6 IST (lowest traffic).
  */
 export function getDefaultRoadClassProfile(roadClass?: string | null): number[] {
   const rc = (roadClass || "residential").toLowerCase();
@@ -57,7 +103,7 @@ export function getDefaultRoadClassProfile(roadClass?: string | null): number[] 
 
   const profile: number[] = new Array(168);
   for (let h = 0; h < 168; h++) {
-    const hr = h % 24; // 0 to 23 in IST
+    const hr = h % 24;
     if (hr >= 8 && hr < 11) {
       profile[h] = morningPeak;
     } else if (hr >= 17 && hr < 21) {
@@ -77,7 +123,12 @@ export function getDefaultRoadClassProfile(roadClass?: string | null): number[] 
 /**
  * Formats a Date into IST Day ("Mon", "Tue", etc.) and time string "HH:00".
  */
-export function formatIstTime(date: Date): { dayOfWeek: string; time: string; dateStr: string } {
+export function formatIstTime(date: Date): {
+  dayOfWeek: string;
+  time: string;
+  dateStr: string;
+  hour: number;
+} {
   const istOffsetMs = 5.5 * 3600 * 1000;
   const ist = new Date(date.getTime() + istOffsetMs);
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -92,27 +143,375 @@ export function formatIstTime(date: Date): { dayOfWeek: string; time: string; da
     dayOfWeek,
     time: `${hh}:${mm}`,
     dateStr: `${yyyy}-${month}-${dd}`,
+    hour: ist.getUTCHours(),
   };
 }
 
 /**
- * Pure function: calculates the best 3 two-hour repair windows in the next 7 days.
- * Excludes hours on days with forecast rain >= 5.0 mm.
+ * Maps compass bearing in degrees (0-359) to 8-point direction name.
+ */
+export function getCompassDirection(bearingDeg: number): string {
+  const norm = ((bearingDeg % 360) + 360) % 360;
+  if (norm >= 337.5 || norm < 22.5) return "Northbound";
+  if (norm >= 22.5 && norm < 67.5) return "Northeastbound";
+  if (norm >= 67.5 && norm < 112.5) return "Eastbound";
+  if (norm >= 112.5 && norm < 157.5) return "Southeastbound";
+  if (norm >= 157.5 && norm < 202.5) return "Southbound";
+  if (norm >= 202.5 && norm < 247.5) return "Southwestbound";
+  if (norm >= 247.5 && norm < 292.5) return "Westbound";
+  return "Northwestbound";
+}
+
+/**
+ * Pure function: calculates 84 two-hour candidate slots and selects the best 3
+ * using the multi-factor scoring model and lane-closure impact analysis.
+ */
+export function computeMultiFactorRepairWindows(options: {
+  issueId: string;
+  lanePosition?: string | null;
+  bearingDeg?: number;
+  priorityIndex?: number;
+  deteriorationRisk?: "LOW" | "MED" | "HIGH";
+  wardCrewHoursMode?: "DAY_ONLY" | "NIGHT_ONLY" | "STANDARD" | "ANY";
+  hourlyProfiles: Map<string, number>; // key: `${dayType}-${hour}` -> delayRatio
+  hourlyWeather: Map<string, { precipMm: number; precipProb: number; tempC: number }>; // key: ISO string hour
+  surroundings: SurroundingsResult;
+  incidentsResult?: TrafficIncidentsResult;
+  sampleCount?: number;
+  now?: Date;
+}): RepairWindowResult {
+  const {
+    issueId,
+    lanePosition = "CURB",
+    bearingDeg = 0,
+    priorityIndex = 50,
+    deteriorationRisk = "LOW",
+    wardCrewHoursMode = "STANDARD",
+    hourlyProfiles,
+    hourlyWeather,
+    surroundings,
+    incidentsResult,
+    sampleCount = 0,
+  } = options;
+
+  const now = options.now ?? new Date();
+  const basis: "live" | "estimated" = sampleCount > 0 ? "live" : "estimated";
+
+  // Lane and Direction modeling
+  const forwardDir = getCompassDirection(bearingDeg);
+  const totalLanes = Math.max(1, surroundings.road.lanes || 2);
+  const oneway = surroundings.road.oneway;
+  const direction = forwardDir;
+
+  const normPos = (lanePosition || "CURB").toUpperCase();
+  let blockedLaneDesc = `${direction} curb lane`;
+  let remainingLanes = Math.max(1, totalLanes - 1);
+  let capacityDropPercent = Math.round(((totalLanes - remainingLanes) / totalLanes) * 100);
+
+  if (normPos === "CENTER") {
+    blockedLaneDesc = `${direction} center lane`;
+    remainingLanes = Math.max(1, totalLanes - 1);
+    capacityDropPercent = Math.round(((totalLanes - remainingLanes) / totalLanes) * 100);
+  } else if (normPos === "SHOULDER") {
+    blockedLaneDesc = `${direction} shoulder`;
+    remainingLanes = totalLanes;
+    capacityDropPercent = 0;
+  } else if (normPos === "UNKNOWN") {
+    blockedLaneDesc = `${direction} outer lane`;
+    remainingLanes = Math.max(1, totalLanes - 1);
+    capacityDropPercent = Math.round(((totalLanes - remainingLanes) / totalLanes) * 100);
+  }
+
+  // Next 7 days candidate hours starting at next top-of-hour
+  const startMs = Math.ceil(now.getTime() / (3600 * 1000)) * (3600 * 1000);
+  const totalSlots = 84; // 84 * 2h = 168h = 7 days
+  const isUrgent = priorityIndex >= 80 || deteriorationRisk === "HIGH";
+
+  const allSlots: CandidateSlot[] = [];
+
+  for (let slotIdx = 0; slotIdx < totalSlots; slotIdx++) {
+    const tStart = new Date(startMs + slotIdx * 2 * 3600 * 1000);
+    const tMid = new Date(startMs + (slotIdx * 2 + 1) * 3600 * 1000);
+    const tEnd = new Date(startMs + (slotIdx * 2 + 2) * 3600 * 1000);
+
+    const fStart = formatIstTime(tStart);
+    const fMid = formatIstTime(tMid);
+    const fEnd = formatIstTime(tEnd);
+
+    const dayType =
+      fStart.dayOfWeek === "Sat" || fStart.dayOfWeek === "Sun"
+        ? DayType.WEEKEND
+        : DayType.WEEKDAY;
+
+    // 1. Traffic Factor (40%)
+    const delay1 = hourlyProfiles.get(`${dayType}-${fStart.hour}`) ?? 0.15;
+    const delay2 = hourlyProfiles.get(`${dayType}-${fMid.hour}`) ?? 0.15;
+    const avgDelayRatio = Math.round(((delay1 + delay2) / 2) * 100) / 100;
+    // Lower delay = higher score (0 delay -> 100; 0.75+ delay -> 0)
+    const trafficScore = Math.max(
+      0,
+      Math.min(100, Math.round(100 * (1 - avgDelayRatio / 0.75)))
+    );
+
+    // 2. Weather Factor (25%)
+    const w1Key = new Date(tStart.getTime()).toISOString().slice(0, 13) + ":00:00.000Z";
+    const w2Key = new Date(tMid.getTime()).toISOString().slice(0, 13) + ":00:00.000Z";
+    const w1 = hourlyWeather.get(w1Key) ?? { precipMm: 0, precipProb: 0, tempC: 24 };
+    const w2 = hourlyWeather.get(w2Key) ?? { precipMm: 0, precipProb: 0, tempC: 24 };
+
+    const maxPrecip = Math.max(w1.precipMm, w2.precipMm);
+    const maxProb = Math.max(w1.precipProb, w2.precipProb);
+    const avgTemp = Math.round((w1.tempC + w2.tempC) / 2);
+
+    let weatherScore = 85;
+    if (maxPrecip > 5.0 || maxProb > 70) {
+      weatherScore = 0; // Heavy rain rule
+    } else if (maxPrecip > 1.0 || maxProb > 40) {
+      weatherScore = 30;
+    } else if (maxPrecip > 0 || maxProb > 20) {
+      weatherScore = 60;
+    } else {
+      // Dry condition
+      const isNight = fStart.hour >= 22 || fStart.hour < 6;
+      if (isNight && avgTemp >= 18 && avgTemp <= 28) {
+        weatherScore = 100; // Perfect dry night
+      } else if (!isNight && avgTemp >= 18 && avgTemp <= 32) {
+        weatherScore = 90;
+      } else if (avgTemp > 34) {
+        weatherScore = 75;
+      }
+    }
+
+    // 3. Surroundings Factor (20%)
+    let surroundingsScore = 100;
+    let schoolStatusText = "";
+    let hospitalStatusText = "";
+
+    // School check (< 200m)
+    if (surroundings.nearestSchool && surroundings.nearestSchool.distanceM <= 200) {
+      const dist = surroundings.nearestSchool.distanceM;
+      const isSchoolHour =
+        dayType === DayType.WEEKDAY &&
+        ((fStart.hour >= 7 && fStart.hour < 10) || (fStart.hour >= 14 && fStart.hour < 16));
+
+      if (isSchoolHour) {
+        surroundingsScore -= 40;
+        schoolStatusText = `School ${dist} m away is active (school zone traffic).`;
+      } else {
+        schoolStatusText = `School ${dist} m away is closed.`;
+      }
+    }
+
+    // Hospital check (< 200m)
+    if (surroundings.nearestHospital && surroundings.nearestHospital.distanceM <= 200) {
+      const dist = surroundings.nearestHospital.distanceM;
+      const isNight = fStart.hour >= 22 || fStart.hour < 6;
+      if (isNight) {
+        surroundingsScore -= 50; // Noise restriction for heavy machinery/jackhammers
+        hospitalStatusText = `Hospital ${dist} m away — heavy noise restricted.`;
+      } else {
+        hospitalStatusText = `Hospital ${dist} m away (emergency access maintained).`;
+      }
+    }
+
+    // Market check (< 200m)
+    if (surroundings.nearestMarket && surroundings.nearestMarket.distanceM <= 200) {
+      const isMarketHour = fStart.hour >= 17 && fStart.hour < 21;
+      if (isMarketHour) {
+        surroundingsScore -= 40;
+      }
+    }
+    surroundingsScore = Math.max(0, surroundingsScore);
+
+    // 4. Crew Hours Factor (15%)
+    let crewScore = 100;
+    const isNightShift = fStart.hour >= 22 || fStart.hour < 5;
+    const isDayShift = fStart.hour >= 7 && fStart.hour < 19;
+    const isShiftChange = (fStart.hour >= 5 && fStart.hour < 7) || (fStart.hour >= 19 && fStart.hour < 22);
+
+    if (wardCrewHoursMode === "DAY_ONLY") {
+      crewScore = isDayShift ? 100 : 0;
+    } else if (wardCrewHoursMode === "NIGHT_ONLY") {
+      crewScore = isNightShift ? 100 : 0;
+    } else if (wardCrewHoursMode === "ANY") {
+      crewScore = 100;
+    } else {
+      // STANDARD: allow NIGHT 22-05 and DAY 07-19, penalize shift change
+      if (isNightShift || isDayShift) {
+        crewScore = 100;
+      } else if (isShiftChange) {
+        crewScore = 30;
+      }
+    }
+
+    // Composite Score
+    let compositeScore = Math.round(
+      0.40 * trafficScore +
+      0.25 * weatherScore +
+      0.20 * surroundingsScore +
+      0.15 * crewScore
+    );
+
+    // Urgency override: if priority index >= 80 or high deterioration, boost next 24h slots
+    const isWithinNext24h = slotIdx < 12; // first 12 two-hour slots = 24h
+    let urgencyBoosted = false;
+    if (isUrgent && isWithinNext24h && weatherScore > 0) {
+      compositeScore = Math.min(100, compositeScore + 25);
+      urgencyBoosted = true;
+    }
+
+    // Queue Delay Estimation
+    let queueDelayMin = "< 3 min";
+    if (capacityDropPercent > 0) {
+      if (avgDelayRatio > 0.50) {
+        queueDelayMin = "> 20 min";
+      } else if (avgDelayRatio > 0.35) {
+        queueDelayMin = "12-18 min";
+      } else if (avgDelayRatio > 0.20) {
+        queueDelayMin = "6-10 min";
+      } else if (avgDelayRatio > 0.08) {
+        queueDelayMin = "3-5 min";
+      } else {
+        queueDelayMin = "< 3 min";
+      }
+    } else {
+      queueDelayMin = "< 1 min";
+    }
+
+    const laneClosure: LaneClosureDetails = {
+      direction,
+      blockedLane: blockedLaneDesc,
+      remainingLanes,
+      totalLanes,
+      lanePosition: normPos,
+      estimatedQueueDelayMin: queueDelayMin,
+      capacityDropPercent,
+    };
+
+    // Build human explanation
+    const timeDisplay = `${fStart.dayOfWeek} ${fStart.time}-${fEnd.time}`;
+    const trafficDesc =
+      avgDelayRatio < 0.08
+        ? `Lowest traffic (delay ${Math.round(avgDelayRatio * 100)}%)`
+        : avgDelayRatio < 0.25
+        ? `Moderate traffic (delay ${Math.round(avgDelayRatio * 100)}%)`
+        : `High traffic (delay ${Math.round(avgDelayRatio * 100)}%)`;
+
+    const rainDesc =
+      maxPrecip === 0
+        ? `no rain (0 mm, ${avgTemp} C)`
+        : `${maxPrecip.toFixed(1)} mm rain (${maxProb}% prob, ${avgTemp} C)`;
+
+    let closureText = `Recommended closure: ${blockedLaneDesc}; ${remainingLanes} of ${totalLanes} lanes remain open, estimated queue delay ${queueDelayMin}.`;
+
+    const surroundingParts: string[] = [];
+    if (schoolStatusText) surroundingParts.push(schoolStatusText);
+    if (hospitalStatusText) surroundingParts.push(hospitalStatusText);
+    const surroundingText = surroundingParts.length > 0 ? ` ${surroundingParts.join(" ")}` : "";
+
+    let incidentText = "";
+    if (incidentsResult && incidentsResult.hasNearbyIncident) {
+      incidentText = " Congestion already present nearby.";
+    }
+
+    const explanation = `${timeDisplay} (score ${compositeScore}/100): ${trafficDesc}, ${rainDesc}. ${closureText}${surroundingText}${incidentText}`.trim();
+
+    const condition = `${avgDelayRatio < 0.20 ? "low traffic" : avgDelayRatio < 0.45 ? "moderate traffic" : "heavy traffic"}, ${maxPrecip > 0 ? "rain likely" : "dry"}`;
+
+    allSlots.push({
+      slotIndex: slotIdx,
+      start: tStart.toISOString(),
+      end: tEnd.toISOString(),
+      display: timeDisplay,
+      dayOfWeek: fStart.dayOfWeek,
+      timeRange: `${fStart.time}-${fEnd.time}`,
+      score: compositeScore,
+      expectedCongestion: avgDelayRatio,
+      condition,
+      basis,
+      sampleCount,
+      factors: {
+        trafficScore,
+        weatherScore,
+        surroundingsScore,
+        crewScore,
+      },
+      laneClosure,
+      explanation,
+      urgencyBoosted,
+    });
+  }
+
+  // Sort candidate slots: highest score first, then earlier start time
+  const sorted = [...allSlots].sort((a, b) => {
+    if (b.score !== a.score) {
+      return b.score - a.score;
+    }
+    return new Date(a.start).getTime() - new Date(b.start).getTime();
+  });
+
+  // Pick top 3 non-overlapping windows
+  const selected: RepairWindow[] = [];
+  for (const slot of sorted) {
+    if (selected.length >= 3) break;
+    const sStart = new Date(slot.start).getTime();
+    const sEnd = new Date(slot.end).getTime();
+
+    const overlaps = selected.some((s) => {
+      const existStart = new Date(s.start).getTime();
+      const existEnd = new Date(s.end).getTime();
+      return sStart < existEnd && sEnd > existStart;
+    });
+
+    if (!overlaps) {
+      selected.push(slot);
+    }
+  }
+
+  const bestWindow = selected[0] ?? null;
+
+  let displayText: string;
+  if (bestWindow) {
+    displayText = `Best repair window: ${bestWindow.display} (score ${bestWindow.score}/100) · ${bestWindow.condition} · based on ${sampleCount} samples · ${basis}`;
+  } else {
+    displayText = "No repair window available";
+  }
+
+  return {
+    issueId,
+    basis,
+    sampleCount,
+    bestWindow,
+    windows: selected,
+    allSlots,
+    displayText,
+    roadInfo: {
+      lanes: totalLanes,
+      oneway,
+      name: surroundings.road.name,
+    },
+    surroundings: {
+      nearestSchoolDistM: surroundings.nearestSchool?.distanceM,
+      nearestHospitalDistM: surroundings.nearestHospital?.distanceM,
+      nearestMarketDistM: surroundings.nearestMarket?.distanceM,
+    },
+    incidents: incidentsResult?.incidents?.map((i) => i.description) || [],
+  };
+}
+
+/**
+ * Backwards-compatible pure function: calculates repair windows from sample and rain map.
  */
 export function computeRepairWindows(options: {
   issueId: string;
   roadClass?: string | null;
   samples: Array<{ hourOfWeek: number; congestionR: number }>;
-  rainByDay: Map<string, number>; // dateStr (YYYY-MM-DD IST) -> total daily rain mm
+  rainByDay: Map<string, number>;
   now?: Date;
 }): RepairWindowResult {
   const { issueId, roadClass, samples, rainByDay } = options;
   const now = options.now ?? new Date();
 
-  const totalSampleCount = samples.length;
-  const basis: "live" | "estimated" = totalSampleCount > 0 ? "live" : "estimated";
-
-  // Build 168-hour profile
   const fallbackProfile = getDefaultRoadClassProfile(roadClass);
   const hourBuckets: Map<number, number[]> = new Map();
   for (const s of samples) {
@@ -123,152 +522,62 @@ export function computeRepairWindows(options: {
     }
   }
 
-  const profile: number[] = new Array(168);
+  const hourlyProfiles = new Map<string, number>();
   for (let h = 0; h < 168; h++) {
     const list = hourBuckets.get(h);
-    if (list && list.length > 0) {
-      const sum = list.reduce((a, b) => a + b, 0);
-      profile[h] = Math.round((sum / list.length) * 1000) / 1000;
-    } else {
-      profile[h] = fallbackProfile[h];
-    }
+    const day = Math.floor(h / 24);
+    const hour = h % 24;
+    const dayType = day === 0 || day === 6 ? DayType.WEEKEND : DayType.WEEKDAY;
+    const val =
+      list && list.length > 0
+        ? Math.round((list.reduce((a, b) => a + b, 0) / list.length) * 1000) / 1000
+        : fallbackProfile[h];
+    hourlyProfiles.set(`${dayType}-${hour}`, val);
   }
 
-  // Next 7 days candidate hours starting at next top-of-hour
+  // Synthesize hourly weather from rainByDay
+  const hourlyWeather = new Map<string, { precipMm: number; precipProb: number; tempC: number }>();
   const startMs = Math.ceil(now.getTime() / (3600 * 1000)) * (3600 * 1000);
-  const totalCandidateHours = 7 * 24; // 168 hours ahead
-
-  interface CandidateWindow {
-    startDate: Date;
-    endDate: Date;
-    avgCongestion: number;
-    display: string;
-    dayOfWeek: string;
-    timeRange: string;
-    dateStr: string;
-  }
-
-  const candidates: CandidateWindow[] = [];
-
-  for (let i = 0; i <= totalCandidateHours - 2; i++) {
-    const t1 = new Date(startMs + i * 3600 * 1000);
-    const t2 = new Date(startMs + (i + 1) * 3600 * 1000);
-    const tEnd = new Date(startMs + (i + 2) * 3600 * 1000);
-
-    const f1 = formatIstTime(t1);
-    const fEnd = formatIstTime(tEnd);
-
-    // Rain exclusion rule: exclude hours on days with forecast rain >= 5 mm
-    const dayRain1 = rainByDay.get(f1.dateStr) ?? 0;
-    const f2 = formatIstTime(t2);
-    const dayRain2 = rainByDay.get(f2.dateStr) ?? 0;
-
-    if (dayRain1 >= 5.0 || dayRain2 >= 5.0) {
-      continue; // Exclude due to rain on that day
-    }
-
-    const h1 = getHourOfWeekIST(t1);
-    const h2 = getHourOfWeekIST(t2);
-    const avgCongestion = Math.round(((profile[h1] + profile[h2]) / 2) * 1000) / 1000;
-
-    const timeRange = `${f1.time}-${fEnd.time}`;
-    candidates.push({
-      startDate: t1,
-      endDate: tEnd,
-      avgCongestion,
-      display: `${f1.dayOfWeek} ${timeRange}`,
-      dayOfWeek: f1.dayOfWeek,
-      timeRange,
-      dateStr: f1.dateStr,
+  for (let i = 0; i < 168; i++) {
+    const t = new Date(startMs + i * 3600 * 1000);
+    const f = formatIstTime(t);
+    const dayRain = rainByDay.get(f.dateStr) ?? 0;
+    const key = t.toISOString().slice(0, 13) + ":00:00.000Z";
+    hourlyWeather.set(key, {
+      precipMm: dayRain >= 5.0 ? 8.0 : dayRain > 0 ? 1.0 : 0.0,
+      precipProb: dayRain >= 5.0 ? 85 : dayRain > 0 ? 30 : 0,
+      tempC: 24,
     });
   }
 
-  // If heavy rain on every day left candidates empty, fallback to candidate windows without rain exclusion
-  const pool = candidates;
-  let isDryCondition = true;
-  if (pool.length === 0) {
-    isDryCondition = false;
-    for (let i = 0; i <= totalCandidateHours - 2; i++) {
-      const t1 = new Date(startMs + i * 3600 * 1000);
-      const tEnd = new Date(startMs + (i + 2) * 3600 * 1000);
-      const f1 = formatIstTime(t1);
-      const fEnd = formatIstTime(tEnd);
-      const h1 = getHourOfWeekIST(t1);
-      const h2 = getHourOfWeekIST(new Date(t1.getTime() + 3600 * 1000));
-      const avgCongestion = Math.round(((profile[h1] + profile[h2]) / 2) * 1000) / 1000;
-      const timeRange = `${f1.time}-${fEnd.time}`;
-      pool.push({
-        startDate: t1,
-        endDate: tEnd,
-        avgCongestion,
-        display: `${f1.dayOfWeek} ${timeRange}`,
-        dayOfWeek: f1.dayOfWeek,
-        timeRange,
-        dateStr: f1.dateStr,
-      });
-    }
-  }
-
-  // Sort by congestion ascending, then earlier time
-  pool.sort((a, b) => {
-    if (a.avgCongestion !== b.avgCongestion) {
-      return a.avgCongestion - b.avgCongestion;
-    }
-    return a.startDate.getTime() - b.startDate.getTime();
-  });
-
-  // Pick top 3 non-overlapping windows
-  const selected: RepairWindow[] = [];
-  for (const cand of pool) {
-    if (selected.length >= 3) break;
-    const candStart = cand.startDate.getTime();
-    const candEnd = cand.endDate.getTime();
-
-    // Check collision with already selected windows
-    const overlaps = selected.some((s) => {
-      const sStart = new Date(s.start).getTime();
-      const sEnd = new Date(s.end).getTime();
-      return candStart < sEnd && candEnd > sStart;
-    });
-
-    if (!overlaps) {
-      const condition = `${cand.avgCongestion < 0.25 ? "low traffic" : cand.avgCongestion < 0.50 ? "moderate traffic" : "heavy traffic"}, ${isDryCondition ? "dry" : "rain likely"}`;
-
-      selected.push({
-        start: cand.startDate.toISOString(),
-        end: cand.endDate.toISOString(),
-        display: cand.display,
-        dayOfWeek: cand.dayOfWeek,
-        timeRange: cand.timeRange,
-        expectedCongestion: cand.avgCongestion,
-        condition,
-        basis,
-        sampleCount: totalSampleCount,
-      });
-    }
-  }
-
-  const bestWindow = selected[0] ?? null;
-
-  let displayText: string;
-  if (bestWindow) {
-    displayText = `Best repair window: ${bestWindow.display} (${bestWindow.condition}) · based on ${totalSampleCount} samples · ${basis}`;
-  } else {
-    displayText = "No repair window available";
-  }
-
-  return {
-    issueId,
-    basis,
-    sampleCount: totalSampleCount,
-    bestWindow,
-    windows: selected,
-    displayText,
+  const mockSurroundings: SurroundingsResult = {
+    schools: [],
+    hospitals: [],
+    markets: [],
+    road: {
+      lanes: 2,
+      oneway: false,
+    },
+    cached: true,
+    source: "fallback",
   };
+
+  return computeMultiFactorRepairWindows({
+    issueId,
+    lanePosition: "CURB",
+    bearingDeg: 0,
+    priorityIndex: 50,
+    hourlyProfiles,
+    hourlyWeather,
+    surroundings: mockSurroundings,
+    sampleCount: samples.length,
+    now,
+  });
 }
 
 /**
- * Computes repair window for an issue by querying its traffic samples and weather forecasts.
+ * Computes repair window for an issue by querying its traffic samples,
+ * place traffic profiles, weather forecasts, Overpass surroundings, and incidents.
  */
 export async function getRepairWindowForIssue(
   issueId: string,
@@ -278,10 +587,17 @@ export async function getRepairWindowForIssue(
     where: { id: issueId },
     select: {
       id: true,
+      lat: true,
+      lng: true,
       wardId: true,
-      segment: { select: { roadClass: true } },
+      segmentId: true,
+      lanePosition: true,
+      segment: { select: { roadClass: true, lanes: true } },
       trafficSamples: {
         select: { hourOfWeek: true, congestionR: true },
+      },
+      trafficProfiles: {
+        select: { dayType: true, hour: true, delayRatio: true },
       },
     },
   });
@@ -290,33 +606,62 @@ export async function getRepairWindowForIssue(
     return null;
   }
 
-  // Fetch weather forecast in next 7 days for the issue's ward or pilot
+  // 1. Gather hourly profile map
+  const hourlyProfiles = new Map<string, number>();
+  if (issue.trafficProfiles && issue.trafficProfiles.length > 0) {
+    for (const p of issue.trafficProfiles) {
+      hourlyProfiles.set(`${p.dayType}-${p.hour}`, p.delayRatio);
+    }
+  } else {
+    const fallbackProfile = getDefaultRoadClassProfile(issue.segment?.roadClass);
+    for (let h = 0; h < 168; h++) {
+      const day = Math.floor(h / 24);
+      const hour = h % 24;
+      const dayType = day === 0 || day === 6 ? DayType.WEEKEND : DayType.WEEKDAY;
+      hourlyProfiles.set(`${dayType}-${hour}`, fallbackProfile[h]);
+    }
+  }
+
+  // 2. Fetch Weather Forecasts
   const pointKey = issue.wardId || "pilot";
   const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 3600 * 1000);
   const weatherRows = await prisma.weatherForecast.findMany({
     where: {
       pointKey,
       hour: {
-        gte: new Date(now.getTime() - 24 * 3600 * 1000), // include today
+        gte: new Date(now.getTime() - 24 * 3600 * 1000),
         lte: sevenDaysLater,
       },
     },
-    select: { hour: true, precipMm: true },
+    select: { hour: true, precipMm: true, precipProb: true, tempC: true },
   });
 
-  // Aggregate rainfall by IST calendar day
-  const rainByDay = new Map<string, number>();
+  const hourlyWeather = new Map<string, { precipMm: number; precipProb: number; tempC: number }>();
   for (const w of weatherRows) {
-    const { dateStr } = formatIstTime(w.hour);
-    const curr = rainByDay.get(dateStr) ?? 0;
-    rainByDay.set(dateStr, curr + w.precipMm);
+    const key = w.hour.toISOString().slice(0, 13) + ":00:00.000Z";
+    hourlyWeather.set(key, {
+      precipMm: w.precipMm,
+      precipProb: w.precipProb,
+      tempC: w.tempC,
+    });
   }
 
-  return computeRepairWindows({
+  // 3. Query Overpass Surroundings and Road Details
+  const surroundings = await getSurroundingsAndRoadInfo(issue.lat, issue.lng, 500);
+
+  // 4. Query TomTom Incidents (500m bbox)
+  const incidents = await getTomTomTrafficIncidents(issue.lat, issue.lng, 500);
+
+  return computeMultiFactorRepairWindows({
     issueId: issue.id,
-    roadClass: issue.segment?.roadClass,
-    samples: issue.trafficSamples,
-    rainByDay,
+    lanePosition: issue.lanePosition,
+    bearingDeg: 0,
+    priorityIndex: 50,
+    hourlyProfiles,
+    hourlyWeather,
+    surroundings,
+    incidentsResult: incidents,
+    sampleCount: issue.trafficSamples?.length || 0,
     now,
   });
 }

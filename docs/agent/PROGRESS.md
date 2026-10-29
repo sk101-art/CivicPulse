@@ -8,6 +8,34 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Phase 2 · Smart Repair Window & Lane-Closure Impact Analysis · 2026-10-29
+- **Goal:** Replace static window logic with an 84-slot multi-factor model (traffic 40%, weather 25%, surroundings 20%, crew hours 15%), directional lane closure estimation, Overpass 30-day tile caching, TomTom traffic incidents, and human explanation generation.
+- **Implemented Work:**
+  1. Multi-Factor Scoring Model (`src/lib/traffic/repairWindow.ts`):
+     - Evaluates all 84 two-hour candidate slots over the next 7 days starting from next top-of-hour.
+     - **Traffic Factor (40%):** delayRatio from `PlaceTrafficProfile` for slot dayType and hour. Lower delay = higher score (delay <= 0.05 -> 100, delay >= 0.75 -> 0).
+     - **Weather Factor (25%):** Open-Meteo hourly precipitation, probability, and temperature. Heavy rain (>5 mm or >70% prob) receives 0; dry night (18-28 C, 0 rain) receives 100.
+     - **Surroundings Factor (20%):** Overpass POIs within 200m. School penalty (-40) during weekday school hours (07:30-09:30, 14:00-16:00). Hospital night noise penalty (-50) during 22:00-06:00 (no heavy jackhammers). Market penalty (-40) during 17:00-21:00.
+     - **Crew Hours Factor (15%):** Allowed night (22:00-05:00) and day (07:00-19:00) shifts receive 100; shift changeover hours (05:00-07:00, 19:00-22:00) receive 30.
+     - **Urgency Override:** If Priority Index >= 80 or deteriorationRisk is HIGH, boosts next 24h slots by +25 points.
+  2. Lane-Closure Impact Model:
+     - Directional bearing mapped to compass directions (e.g. Northbound / Southbound).
+     - Road lanes and oneway from Overpass / OSM way data.
+     - Issue `lanePosition` (`CURB`, `CENTER`, `SHOULDER`, `UNKNOWN`) determines blocked lane and remaining open lanes (e.g. 2 of 3 lanes open).
+     - Queue delay estimation based on demand / remaining capacity ratio (`< 3 min` off-peak to `> 20 min` peak).
+  3. Overpass & OSM Integration (`src/lib/external/overpass.ts`):
+     - 30-day tile caching (500m grid cell) in `OverpassTileCache`.
+     - Direct extraction from `data/osm/pilot.json` for pilot corridor coordinates; fallback to live Overpass API outside pilot.
+  4. TomTom Traffic Incidents (`src/lib/external/tomtom.ts`):
+     - Added `getTomTomTrafficIncidents(lat, lng, radiusMeters = 500)` with 10-minute cache and quota protection.
+     - Appends nearby incident warnings to repair window explanation string.
+  5. Desk API & Calendar Integration (`GET /api/issues/[id]/repair-window`):
+     - Returns `bestWindow`, `windows` (top 3 non-overlapping), `allSlots` (84 two-hour candidate slots for calendar view), `roadInfo`, `surroundings`, and `incidents`.
+  6. Verification:
+     - Updated `tests/unit/traffic-repair-window.test.ts` (8 comprehensive tests covering compass bearings, 84 candidate slots, weather scoring, school daytime penalty, hospital night noise penalty, lane closure queue delay, urgency override, and backwards compatibility).
+     - All 54 test files passed (314/314 tests green).
+
+
 ### Phase 1 · Real Per-Place Traffic Profile & Live Traffic Flow Intelligence · 2026-10-29
 - **Goal:** Implement true per-place traffic profiles (without waiting for sparse live samples) using TomTom historic routing probes across 48 hourly slots, 14-day validity caching, 150m segment sharing, live sample blending, daily 1,200 quota guard, and live Flow intelligence endpoint with 24h sparklines.
 - **Implemented Work:**
