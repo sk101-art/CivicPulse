@@ -10,6 +10,7 @@ import { runTrafficSample } from "@/lib/jobs/trafficSample";
 import { runDurability } from "@/lib/jobs/durability";
 import { runTrafficProfileJob } from "@/lib/jobs/trafficProfile";
 import { runDailyInsightsJob } from "@/lib/insights/deterioration";
+import { runAiAssessJob } from "@/lib/ai/analyst";
 import { sanitizeErrorMessage } from "@/lib/api/errors";
 
 /** Each run must finish well inside a serverless function's time limit. */
@@ -36,6 +37,7 @@ export const JOB_NAMES = [
   "durability",
   "traffic-profile",
   "insights",
+  "ai-assess",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -217,6 +219,11 @@ export async function runJob(name: JobName): Promise<JobResult> {
     case "insights": {
       const insightsResult = await runDailyInsightsJob();
       result = { processed: insightsResult.assessedIssuesCount, failed: 0 };
+      break;
+    }
+    case "ai-assess": {
+      const assessResult = await runAiAssessJob();
+      result = { processed: assessResult.assessedCount, failed: assessResult.failedCount };
       break;
     }
     default:

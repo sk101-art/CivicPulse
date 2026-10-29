@@ -88,6 +88,117 @@ export function getRulesFallback(feature: string, input: unknown): Record<string
       };
     }
 
+    case "G-ASSESS": {
+      const p = typeof inp.priority === "number" ? inp.priority : 50;
+      const detScore = typeof inp.deteriorationScore === "number" ? inp.deteriorationScore : 30;
+      const category = typeof inp.category === "string" ? inp.category : "Defect";
+      const delayRatio = typeof inp.delayRatio === "number" ? inp.delayRatio : 0.15;
+      const busPerHour = typeof inp.busesPerHour === "number" ? inp.busesPerHour : 0;
+      const rainMm = typeof inp.past7DaysRainMm === "number" ? inp.past7DaysRainMm : 0;
+
+      let adjustment = 0;
+      const keyRisks: string[] = [];
+      if (detScore >= 70) {
+        adjustment += 5;
+        keyRisks.push(`High deterioration risk (score ${detScore}/100)`);
+      }
+      if (busPerHour >= 30) {
+        adjustment += 3;
+        keyRisks.push(`Heavy bus corridor (${Math.round(busPerHour)} buses/h)`);
+      }
+      if (rainMm >= 20) {
+        keyRisks.push(`Pavement subgrade weakened by ${Math.round(rainMm)} mm rain`);
+      }
+
+      adjustment = Math.max(-10, Math.min(10, adjustment));
+
+      return {
+        summary: `${category} with priority ${Math.round(p)} and deterioration score ${detScore}/100. Pavement traffic delay is ${Math.round(delayRatio * 100)}% with ${Math.round(busPerHour)} buses/h.`,
+        priorityAdjustmentRecommended: adjustment,
+        reasoning: adjustment > 0
+          ? `Elevated risk due to ${keyRisks.join(" and ")}.`
+          : "Standard defect maintenance priority holds.",
+        keyRisks: keyRisks.length > 0 ? keyRisks : ["Standard wear and tear"],
+        suggestedAction: detScore >= 70
+          ? "Schedule immediate patch repair during night window."
+          : "Queue for routine ward maintenance.",
+      };
+    }
+
+    case "G-BRIEF": {
+      const wardName = typeof inp.wardName === "string" ? inp.wardName : "Ward";
+      const wardCode = typeof inp.wardCode === "string" ? inp.wardCode : "150";
+      const openCount = typeof inp.openIssuesCount === "number" ? inp.openIssuesCount : 0;
+      const rainPast24h = typeof inp.rainPast24hMm === "number" ? inp.rainPast24hMm : 0;
+      const highRiskCount = typeof inp.highRiskCount === "number" ? inp.highRiskCount : 0;
+
+      const briefText = `${wardName} (${wardCode}) Morning Brief: ${openCount} open issues. ${highRiskCount} high-risk defects flagged after ${Math.round(rainPast24h)} mm recent rain. Recommended today: dispatch repair crews during the recommended dry night window.`;
+
+      return {
+        wardCode,
+        wardName,
+        headline: `${openCount} open issues in ${wardName}`,
+        brief: briefText,
+        recommendedActions: [
+          "Deploy asphalt repair crew to high-risk road corridors.",
+          "Inspect drainage outlets before next forecast rain.",
+        ],
+      };
+    }
+
+    case "G-AUDIT-ASSIST": {
+      const votes = Array.isArray(inp.votes) ? inp.votes : [];
+      let intact = 0;
+      let damaged = 0;
+      let cannotSee = 0;
+
+      for (const v of votes) {
+        const obs = (v && typeof v === "object" && "observed" in v) ? String(v.observed).toUpperCase() : "";
+        if (obs === "INTACT") intact++;
+        else if (obs === "DAMAGED") damaged++;
+        else cannotSee++;
+      }
+
+      let recommendation: "ACCEPT_FIX" | "REJECT_FIX" | "DISPATCH_INSPECTOR" = "DISPATCH_INSPECTOR";
+      let confidence = 0.6;
+      let reasoning = "Inconclusive citizen audit votes. Manual verification required.";
+
+      if (intact >= 2 && damaged === 0) {
+        recommendation = "ACCEPT_FIX";
+        confidence = 0.9;
+        reasoning = `${intact} citizens confirmed repair is intact without dissent.`;
+      } else if (damaged >= 2) {
+        recommendation = "REJECT_FIX";
+        confidence = 0.88;
+        reasoning = `${damaged} independent citizen audits reported defect remains damaged.`;
+      }
+
+      return {
+        recommendation,
+        confidence,
+        reasoning,
+        voteBreakdown: { intact, damaged, cannotSee },
+      };
+    }
+
+    case "G-CHAT": {
+      const query = typeof inp.query === "string" ? inp.query : "";
+      const issues = Array.isArray(inp.issues) ? inp.issues : [];
+      const citedIds = issues
+        .slice(0, 3)
+        .map((iss) => (iss && typeof iss === "object" && "id" in iss ? String(iss.id) : ""))
+        .filter(Boolean);
+
+      return {
+        answer: `Analysis for '${query}': evaluated ${issues.length} active issues in the pilot area. High priority repairs needed on key arterial segments [${citedIds.map((id) => `#${id}`).join(", ")}].`,
+        citedIssueIds: citedIds,
+        suggestedFollowups: [
+          "Which contractors have pending warranty claims?",
+          "Show recommended repair windows for high-priority potholes.",
+        ],
+      };
+    }
+
     default:
       return {
         fallback: true,

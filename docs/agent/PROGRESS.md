@@ -8,6 +8,26 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Phase 4 · The AI Analyst (Desk Co-pilot: Gemini → Groq → Rules) · 2026-10-29
+- **Goal:** Build the Desk AI Analyst with multi-tier provider cascade (Gemini Flash → Groq Llama 3.3 70B → Rules fallback), strict numbers-grounding checks, 250 daily / 7,500 monthly quota guard, four core capabilities (`G-ASSESS`, `G-BRIEF`, `G-AUDIT-ASSIST`, and "Ask the Desk Analyst" chat), and scheduled job `ai-assess`.
+- **Implemented Work:**
+  1. Multi-Tier AI Analyst Engine (`src/lib/ai/analyst.ts`):
+     - Configured free-tier quota tracking (`ai_analyst`, `ai_analyst_daily`) in `ApiUsage` with daily cap of 250 calls and monthly cap of 7,500.
+     - Deterministic rules fallback engine in `src/lib/ai/providers/rules.ts` ensuring zero service interruption when external APIs are unconfigured, rate-limited, or quota-exhausted.
+  2. Four Capabilities:
+     - `G-ASSESS`: Per-issue intelligence summary with priority adjustment recommendation (-10 to +10), reasoning, risk factors, and actionable desk next steps. Evaluated with strict `numbersGrounded` validator ensuring zero hallucinated metrics.
+     - `G-BRIEF`: Ward morning brief aggregating active issues, high-risk defects, recent precipitation, and prioritized dispatch actions.
+     - `G-AUDIT-ASSIST`: Blind repair audit synthesis evaluating citizen votes, recommending `ACCEPT_FIX`, `REJECT_FIX`, or `DISPATCH_INSPECTOR` with confidence metrics and reasoning.
+     - `Ask the Desk Analyst`: RAG chat endpoint (`POST /api/desk/analyst/chat`) providing grounded answers with issue ID citations (`[#id]`) from active context.
+  3. Endpoints & Jobs:
+     - `POST /api/desk/analyst/chat`: Authenticated officer chat endpoint.
+     - `GET /api/issues/[id]/analyst`: On-demand per-issue intelligence summary for desk officers.
+     - Registered `"ai-assess"` scheduled job in `src/lib/jobs/runner.ts` and `JOB_NAMES` (processes top 50 active issues).
+  4. Verification:
+     - Added `tests/unit/ai-analyst.test.ts` (8 tests covering G-ASSESS, numbers grounding, G-BRIEF, G-AUDIT-ASSIST accept/reject/inconclusive scenarios, grounded chat citations, and daily quota cap).
+     - Full gate passed: 56 test files passed (327/327 tests green).
+
+
 ### Phase 3 · Deterioration Risk & Severity Intelligence · 2026-10-29
 - **Goal:** Pavement deterioration risk modeling (0-100 score + LOW/MED/HIGH + expectedDaysToWorsen), named engineering drivers (moisture, heavy axle loads, braking shear, repeat failure), schema migration, and daily `insights` scheduled job detecting hotspots (>=3 defects in 90 days) and contractor warranty expiration risks.
 - **Implemented Work:**
