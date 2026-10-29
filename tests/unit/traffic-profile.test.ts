@@ -7,6 +7,7 @@ import {
   getNextTargetDate,
   calculateDistanceM,
   formatTomTomDepartAt,
+  interpolateMissingHours,
 } from "@/lib/traffic/profile";
 import {
   tryIncrementDailyQuota,
@@ -18,7 +19,7 @@ import { runTrafficProfileJob } from "@/lib/jobs/trafficProfile";
 import { GET as getTrafficLive } from "@/app/api/issues/[id]/traffic-live/route";
 import * as authModule from "@/lib/api/auth";
 import { prisma } from "@/lib/db/prisma";
-import { DayType } from "@prisma/client";
+import { DayType, ProfileSource } from "@prisma/client";
 import * as tomtomModule from "@/lib/external/tomtom";
 
 describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
@@ -107,6 +108,29 @@ describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
       const nextSun = getNextTargetDate(0, ref); // Sunday
       expect(nextSun.getDay()).toBe(0);
       expect(nextSun.getTime()).toBeGreaterThan(ref.getTime());
+    });
+
+    it("interpolates missing TomTom hours from neighbouring hours", () => {
+      // Build 24 hours where hour 21 is missing (ESTIMATED) and 20 & 22 are TOMTOM_HISTORIC
+      const points = Array.from({ length: 24 }, (_, hour) => {
+        if (hour === 20) {
+          return { hour, dayType: DayType.WEEKDAY, delayRatio: 0.4, source: ProfileSource.TOMTOM_HISTORIC };
+        }
+        if (hour === 22) {
+          return { hour, dayType: DayType.WEEKDAY, delayRatio: 0.2, source: ProfileSource.TOMTOM_HISTORIC };
+        }
+        if (hour === 21) {
+          return { hour, dayType: DayType.WEEKDAY, delayRatio: 0.99, source: ProfileSource.ESTIMATED };
+        }
+        return { hour, dayType: DayType.WEEKDAY, delayRatio: 0.1, source: ProfileSource.TOMTOM_HISTORIC };
+      });
+
+      interpolateMissingHours(points, true);
+
+      const p21 = points.find((p) => p.hour === 21)!;
+      // 21 is midway between 20 (0.40) and 22 (0.20), so expected is 0.30
+      expect(p21.delayRatio).toBe(0.3);
+      expect(p21.source).toBe(ProfileSource.ESTIMATED);
     });
   });
 

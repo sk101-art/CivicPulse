@@ -81,6 +81,8 @@ export async function GET(
         delayRatio: p.delayRatio,
         congestionPct: Math.min(100, Math.round(p.delayRatio * 100)),
         isCurrentHour: p.hour === currentHour,
+        source: p.source,
+        isEstimated: p.source === "ESTIMATED",
       }));
 
     return NextResponse.json(

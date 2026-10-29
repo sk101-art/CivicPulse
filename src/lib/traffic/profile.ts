@@ -131,6 +131,63 @@ export function formatTomTomDepartAt(date: Date, hour: number): string {
   return `${yyyy}-${mm}-${dd}T${hh}:00:00+05:30`;
 }
 
+/**
+ * Interpolates missing (ESTIMATED) hours from neighbouring TOMTOM_HISTORIC hours within the same dayType.
+ * (e.g. 21:00 = average of 20:00 and 22:00). Falls back to flat road-class baseline only if no TomTom hours exist.
+ */
+export function interpolateMissingHours<
+  T extends { hour: number; dayType: DayType; delayRatio: number; source: ProfileSource }
+>(points: T[], isArterial: boolean): T[] {
+  for (const dayType of [DayType.WEEKDAY, DayType.WEEKEND]) {
+    const dayPoints = points.filter((p) => p.dayType === dayType);
+    const tomtomHours = dayPoints.filter((p) => p.source === ProfileSource.TOMTOM_HISTORIC);
+
+    if (tomtomHours.length === 0) {
+      continue;
+    }
+
+    for (const p of dayPoints) {
+      if (p.source === ProfileSource.TOMTOM_HISTORIC) {
+        continue;
+      }
+
+      // Find closest previous TomTom hour (24-hour circular)
+      let prevPoint = tomtomHours[0];
+      let prevDist = 24;
+      for (const t of tomtomHours) {
+        const dist = (p.hour - t.hour + 24) % 24;
+        if (dist > 0 && dist < prevDist) {
+          prevDist = dist;
+          prevPoint = t;
+        }
+      }
+
+      // Find closest next TomTom hour (24-hour circular)
+      let nextPoint = tomtomHours[0];
+      let nextDist = 24;
+      for (const t of tomtomHours) {
+        const dist = (t.hour - p.hour + 24) % 24;
+        if (dist > 0 && dist < nextDist) {
+          nextDist = dist;
+          nextPoint = t;
+        }
+      }
+
+      if (prevDist + nextDist > 0) {
+        const interpolated =
+          (nextDist * prevPoint.delayRatio + prevDist * nextPoint.delayRatio) /
+          (prevDist + nextDist);
+        p.delayRatio = Math.round(interpolated * 1000) / 1000;
+      } else {
+        p.delayRatio = prevPoint.delayRatio;
+      }
+      p.source = ProfileSource.ESTIMATED;
+    }
+  }
+
+  return points;
+}
+
 export interface BuildPlaceProfileInput {
   id: string;
   lat: number;
@@ -154,7 +211,12 @@ export async function buildPlaceProfile(
   const now = new Date();
   const validSince = new Date(now.getTime() - PROFILE_TTL_MS);
 
-  // 1. Check if issue already has a fresh profile
+  // 1. Check if issue already has a fresh and complete profile
+  const existingTomTomMap = new Map<
+    string,
+    { hour: number; dayType: DayType; delayRatio: number; source: ProfileSource }
+  >();
+
   if (!forceRefresh) {
     const existing = await prisma.placeTrafficProfile.findMany({
       where: {
@@ -164,7 +226,15 @@ export async function buildPlaceProfile(
       orderBy: [{ dayType: "asc" }, { hour: "asc" }],
     });
 
-    if (existing.length === 48) {
+    const isComplete =
+      existing.length === 48 &&
+      existing.every(
+        (p) =>
+          p.source === ProfileSource.TOMTOM_HISTORIC ||
+          p.source === ProfileSource.LIVE_SAMPLE
+      );
+
+    if (isComplete) {
       return {
         points: existing.map((p) => ({
           hour: p.hour,
@@ -179,7 +249,22 @@ export async function buildPlaceProfile(
       };
     }
 
-    // 2. Check if a nearby issue within 150m on the same road segment has a fresh profile
+    // Retain existing TOMTOM_HISTORIC or LIVE_SAMPLE points so we only query missing/estimated hours
+    for (const p of existing) {
+      if (
+        p.source === ProfileSource.TOMTOM_HISTORIC ||
+        p.source === ProfileSource.LIVE_SAMPLE
+      ) {
+        existingTomTomMap.set(`${p.dayType}-${p.hour}`, {
+          hour: p.hour,
+          dayType: p.dayType,
+          delayRatio: p.delayRatio,
+          source: p.source,
+        });
+      }
+    }
+
+    // 2. Check if a nearby issue within 150m on the same road segment has a fresh complete profile
     if (issue.segmentId) {
       const candidateProfiles = await prisma.placeTrafficProfile.findMany({
         where: {
@@ -217,7 +302,15 @@ export async function buildPlaceProfile(
               orderBy: [{ dayType: "asc" }, { hour: "asc" }],
             });
 
-            if (sharedPoints.length === 48) {
+            const isSharedComplete =
+              sharedPoints.length === 48 &&
+              sharedPoints.every(
+                (p) =>
+                  p.source === ProfileSource.TOMTOM_HISTORIC ||
+                  p.source === ProfileSource.LIVE_SAMPLE
+              );
+
+            if (isSharedComplete) {
               return {
                 points: sharedPoints.map((p) => ({
                   hour: p.hour,
@@ -327,28 +420,38 @@ export async function buildPlaceProfile(
   const dailyUsage = await getDailyTomTomCallCount().catch(() => 0);
   const canUseTomTom = isConfigured("TOMTOM_API_KEY") && dailyUsage + 48 <= MAX_DAILY_QUOTA;
 
-  const tasks: Array<{ dayType: DayType; hour: number; targetDate: Date }> = [];
+  const tasksToQuery: Array<{ dayType: DayType; hour: number; targetDate: Date }> = [];
   for (const dayType of [DayType.WEEKDAY, DayType.WEEKEND]) {
     const targetDate = dayType === DayType.WEEKDAY ? nextTue : nextSun;
     for (let hour = 0; hour < 24; hour++) {
-      tasks.push({ dayType, hour, targetDate });
+      const key = `${dayType}-${hour}`;
+      const cached = existingTomTomMap.get(key);
+      if (cached) {
+        pointsToCreate.push(cached);
+      } else {
+        tasksToQuery.push({ dayType, hour, targetDate });
+      }
     }
   }
 
-  // Process concurrently in batches of 8 to balance speed and connection limits
-  const BATCH_SIZE = 8;
-  for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
-    const batch = tasks.slice(i, i + BATCH_SIZE);
+  // Process concurrently in batches of 4 with a 200ms pause to respect TomTom 5 QPS rate limit
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < tasksToQuery.length; i += BATCH_SIZE) {
+    if (i > 0) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    const batch = tasksToQuery.slice(i, i + BATCH_SIZE);
     const batchResults = await Promise.all(
       batch.map(async ({ dayType, hour, targetDate }) => {
         let delayRatio = getEstimatedHourlyDelay(hour, dayType, isArterial);
         let pointSource: ProfileSource = ProfileSource.ESTIMATED;
 
         if (canUseTomTom) {
-          try {
-            const departAtIso = formatTomTomDepartAt(targetDate, hour);
+          const departAtIso = formatTomTomDepartAt(targetDate, hour);
+          let routeResult = null;
 
-            const routeResult = await calculateTomTomRoute({
+          try {
+            routeResult = await calculateTomTomRoute({
               origin,
               destination,
               traffic: true,
@@ -356,35 +459,34 @@ export async function buildPlaceProfile(
               travelMode: "car",
               maxAlternatives: 0,
             });
-
-            if (routeResult.routes.length > 0) {
-              const route = routeResult.routes[0];
-              const travelTime = route.travelTimeSeconds;
-              const noTraffic =
-                route.noTrafficTravelTimeSeconds ||
-                (travelTime - route.trafficDelaySeconds);
-
-              if (noTraffic > 0 && travelTime >= noTraffic) {
-                delayRatio = Math.max(0, (travelTime - noTraffic) / noTraffic);
-                pointSource = ProfileSource.TOMTOM_HISTORIC;
-              }
-            }
           } catch {
-            delayRatio = getEstimatedHourlyDelay(hour, dayType, isArterial);
-            pointSource = ProfileSource.ESTIMATED;
+            // Retry that hour once after a short wait (250ms) to recover from rate limits / network blips
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            try {
+              routeResult = await calculateTomTomRoute({
+                origin,
+                destination,
+                traffic: true,
+                departAt: departAtIso,
+                travelMode: "car",
+                maxAlternatives: 0,
+              });
+            } catch {
+              routeResult = null;
+            }
           }
-        }
 
-        // Blend live samples if present
-        const sampleKey = `${dayType}-${hour}`;
-        const sampleData = sampleMap.get(sampleKey);
-        if (sampleData && sampleData.count > 0) {
-          const avgSampleDelay = sampleData.sumDelay / sampleData.count;
-          delayRatio =
-            (delayRatio * 10 + avgSampleDelay * sampleData.count) /
-            (10 + sampleData.count);
-          if (pointSource === ProfileSource.ESTIMATED) {
-            pointSource = ProfileSource.LIVE_SAMPLE;
+          if (routeResult && routeResult.routes.length > 0) {
+            const route = routeResult.routes[0];
+            const travelTime = route.travelTimeSeconds;
+            const noTraffic =
+              route.noTrafficTravelTimeSeconds ||
+              (travelTime - route.trafficDelaySeconds);
+
+            if (noTraffic > 0 && travelTime >= noTraffic) {
+              delayRatio = Math.max(0, (travelTime - noTraffic) / noTraffic);
+              pointSource = ProfileSource.TOMTOM_HISTORIC;
+            }
           }
         }
 
@@ -398,6 +500,27 @@ export async function buildPlaceProfile(
     );
 
     pointsToCreate.push(...batchResults);
+  }
+
+  // Interpolate any hours missing TomTom data from neighbouring TomTom hours before blending live samples
+  interpolateMissingHours(pointsToCreate, isArterial);
+
+  // Blend live samples if present
+  for (const p of pointsToCreate) {
+    const sampleKey = `${p.dayType}-${p.hour}`;
+    const sampleData = sampleMap.get(sampleKey);
+    if (sampleData && sampleData.count > 0) {
+      const avgSampleDelay = sampleData.sumDelay / sampleData.count;
+      p.delayRatio =
+        Math.round(
+          ((p.delayRatio * 10 + avgSampleDelay * sampleData.count) /
+            (10 + sampleData.count)) *
+            1000
+        ) / 1000;
+      if (p.source === ProfileSource.ESTIMATED) {
+        p.source = ProfileSource.LIVE_SAMPLE;
+      }
+    }
   }
 
   // 6. Persist to database in a transaction

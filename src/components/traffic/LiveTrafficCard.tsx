@@ -19,6 +19,8 @@ interface LiveTrafficData {
     delayRatio: number;
     congestionPct: number;
     isCurrentHour: boolean;
+    source?: string;
+    isEstimated?: boolean;
   }>;
   currentHour: number;
   dayType: 'WEEKDAY' | 'WEEKEND';
@@ -168,18 +170,21 @@ export function LiveTrafficCard({ issueId, variant = 'card' }: LiveTrafficCardPr
             // Scale bar height: min 10%, max 100%
             const heightPct = Math.max(10, Math.min(100, Math.round(p.delayRatio * 85 + 10)));
             const isNow = p.isCurrentHour;
+            const isEstimated = p.isEstimated ?? (p.source === 'ESTIMATED');
             const barColor = isNow
               ? 'bg-cyan-400 ring-2 ring-cyan-400/50'
-              : p.congestionPct > 50
-                ? 'bg-rose-500/70 hover:bg-rose-400'
-                : p.congestionPct > 25
-                  ? 'bg-amber-500/70 hover:bg-amber-400'
-                  : 'bg-emerald-500/50 hover:bg-emerald-400';
+              : isEstimated
+                ? 'bg-white/20 border border-dashed border-white/40 hover:bg-white/30'
+                : p.congestionPct > 50
+                  ? 'bg-rose-500/70 hover:bg-rose-400'
+                  : p.congestionPct > 25
+                    ? 'bg-amber-500/70 hover:bg-amber-400'
+                    : 'bg-emerald-500/50 hover:bg-emerald-400';
 
             return (
               <div
                 key={p.hour}
-                title={`${String(p.hour).padStart(2, '0')}:00 — ${p.congestionPct}% delay ratio`}
+                title={`${String(p.hour).padStart(2, '0')}:00 — ${p.congestionPct}% delay ratio${isEstimated ? ' (estimated)' : ''}`}
                 className="flex-1 flex flex-col items-center justify-end h-full group relative cursor-pointer"
               >
                 <div
