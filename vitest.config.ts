@@ -12,7 +12,7 @@ if (fs.existsSync(path.join(rootDir, '.env.local'))) {
 }
 
 // Fail-fast test database isolation check
-process.env.NODE_ENV = 'test';
+(process.env as Record<string, string | undefined>).NODE_ENV = 'test';
 process.env.VITEST = 'true';
 
 const rawProdUrl = process.env.PROD_DATABASE_URL || process.env.APP_DATABASE_URL;

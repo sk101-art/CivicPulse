@@ -13,6 +13,7 @@ import Image from 'next/image';
 import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/CaptureCamera';
 import { formatPriority } from '@/lib/priority';
 import { RepairWindowBadge } from './RepairWindowBadge';
+import { LiveTrafficCard } from '@/components/traffic/LiveTrafficCard';
 
 interface ActionLogEntry {
   id: string;
@@ -361,6 +362,9 @@ export function IssueDrawer({
 
           {/* Recommended Repair Windows */}
           <RepairWindowBadge issueId={issue.id} variant="drawer" />
+
+          {/* Live Traffic Intelligence & 24h Profile */}
+          <LiveTrafficCard issueId={issue.id} variant="drawer" />
 
           {/* Evidence photo preview */}
           {issue.reports && issue.reports[0]?.photoUrl && (

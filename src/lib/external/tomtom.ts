@@ -43,6 +43,8 @@ export interface TomTomRoute {
   travelTimeSeconds: number;
   trafficDelaySeconds: number;
   trafficLengthMeters: number;
+  noTrafficTravelTimeSeconds?: number;
+  liveTrafficIncidentsTravelTimeSeconds?: number;
   departureTime?: string;
   arrivalTime?: string;
   travelMode: string;
@@ -76,9 +78,94 @@ interface CacheEntry {
 const routeCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Monthly request quota tracking (20,000 / month free tier cap, persisted in ApiUsage)
+// Request quota tracking (20,000 / month free tier cap, 1,200 / day job cap, persisted in ApiUsage)
 export const MAX_MONTHLY_QUOTA = 20000;
+export const MAX_DAILY_QUOTA = 1200;
 const PROVIDER_NAME = "tomtom";
+const PROVIDER_DAILY_NAME = "tomtom_daily";
+
+export async function tryIncrementDailyQuota(dateStr?: string): Promise<boolean> {
+  const currentDay = dateStr || new Date().toISOString().slice(0, 10); // e.g. "2026-10-29"
+  try {
+    const usage = await prisma.apiUsage.findUnique({
+      where: {
+        provider_month: {
+          provider: PROVIDER_DAILY_NAME,
+          month: currentDay,
+        },
+      },
+      select: { count: true },
+    });
+
+    if (usage && usage.count >= MAX_DAILY_QUOTA) {
+      return false;
+    }
+
+    await prisma.apiUsage.upsert({
+      where: {
+        provider_month: {
+          provider: PROVIDER_DAILY_NAME,
+          month: currentDay,
+        },
+      },
+      create: {
+        provider: PROVIDER_DAILY_NAME,
+        month: currentDay,
+        count: 1,
+      },
+      update: {
+        count: { increment: 1 },
+      },
+    });
+
+    return true;
+  } catch (err) {
+    console.error("[tomtom] Failed to check/increment daily ApiUsage quota:", err);
+    return false;
+  }
+}
+
+export async function getDailyTomTomCallCount(dateStr?: string): Promise<number> {
+  const currentDay = dateStr || new Date().toISOString().slice(0, 10);
+  try {
+    const usage = await prisma.apiUsage.findUnique({
+      where: {
+        provider_month: {
+          provider: PROVIDER_DAILY_NAME,
+          month: currentDay,
+        },
+      },
+      select: { count: true },
+    });
+    return usage?.count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function resetDailyTomTomCallCount(dateStr?: string): Promise<void> {
+  const currentDay = dateStr || new Date().toISOString().slice(0, 10);
+  try {
+    await prisma.apiUsage.upsert({
+      where: {
+        provider_month: {
+          provider: PROVIDER_DAILY_NAME,
+          month: currentDay,
+        },
+      },
+      create: {
+        provider: PROVIDER_DAILY_NAME,
+        month: currentDay,
+        count: 0,
+      },
+      update: {
+        count: 0,
+      },
+    });
+  } catch {
+    // ignore
+  }
+}
 
 export async function tryIncrementMonthlyQuota(): Promise<boolean> {
   const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
@@ -114,6 +201,9 @@ export async function tryIncrementMonthlyQuota(): Promise<boolean> {
       },
     });
 
+    // Also increment daily quota tracking
+    await tryIncrementDailyQuota().catch(() => false);
+
     return true;
   } catch (err) {
     console.error("[tomtom] Failed to check/increment ApiUsage quota:", err);
@@ -123,6 +213,13 @@ export async function tryIncrementMonthlyQuota(): Promise<boolean> {
 
 async function checkAndIncrementQuota(): Promise<void> {
   const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
+  const currentDay = new Date().toISOString().slice(0, 10);
+  const dailyCount = await getDailyTomTomCallCount(currentDay);
+  if (dailyCount >= MAX_DAILY_QUOTA) {
+    throw new Error(
+      `TomTom daily quota exceeded: reached ${MAX_DAILY_QUOTA} calls for ${currentDay}`
+    );
+  }
   const ok = await tryIncrementMonthlyQuota();
   if (!ok) {
     throw new Error(
@@ -201,6 +298,8 @@ export function parseTomTomRouteResponse(
         travelTimeInSeconds?: number;
         trafficDelayInSeconds?: number;
         trafficLengthInMeters?: number;
+        noTrafficTravelTimeInSeconds?: number;
+        liveTrafficIncidentsTravelTimeInSeconds?: number;
         departureTime?: string;
         arrivalTime?: string;
       };
@@ -238,12 +337,19 @@ export function parseTomTomRouteResponse(
     const routeMode =
       r.sections?.[0]?.travelMode?.toLowerCase() || requestedMode.toLowerCase();
 
+    const noTraffic =
+      typeof summary.noTrafficTravelTimeInSeconds === "number"
+        ? summary.noTrafficTravelTimeInSeconds
+        : Math.max(0, (summary.travelTimeInSeconds || 0) - (summary.trafficDelayInSeconds || 0));
+
     result.push({
       coords,
       distanceMeters: summary.lengthInMeters || 0,
       travelTimeSeconds: summary.travelTimeInSeconds || 0,
       trafficDelaySeconds: summary.trafficDelayInSeconds || 0,
       trafficLengthMeters: summary.trafficLengthInMeters || 0,
+      noTrafficTravelTimeSeconds: noTraffic,
+      liveTrafficIncidentsTravelTimeSeconds: summary.liveTrafficIncidentsTravelTimeInSeconds,
       departureTime: summary.departureTime,
       arrivalTime: summary.arrivalTime,
       travelMode: routeMode,
@@ -460,6 +566,7 @@ export interface FlowSegmentResult {
   freeFlowSpeed: number;
   confidence: number;
   frc: string;
+  coordinates?: Array<{ latitude: number; longitude: number }>;
 }
 
 // 15-minute flow segment cache
@@ -522,6 +629,9 @@ export async function getFlowSegment(
         freeFlowSpeed?: number;
         confidence?: number;
         frc?: string;
+        coordinates?: {
+          coordinate?: Array<{ latitude: number; longitude: number }>;
+        };
       };
     };
     const flow = json?.flowSegmentData;
@@ -540,6 +650,9 @@ export async function getFlowSegment(
       freeFlowSpeed: flow.freeFlowSpeed,
       confidence: typeof flow.confidence === "number" ? flow.confidence : 0,
       frc: typeof flow.frc === "string" ? flow.frc : "FRC4",
+      coordinates: Array.isArray(flow.coordinates?.coordinate)
+        ? flow.coordinates?.coordinate
+        : undefined,
     };
 
     flowCache.set(cacheKey, { data: result, timestamp: Date.now() });

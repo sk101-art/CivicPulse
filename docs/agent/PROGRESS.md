@@ -8,6 +8,40 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Phase 1 · Real Per-Place Traffic Profile & Live Traffic Flow Intelligence · 2026-10-29
+- **Goal:** Implement true per-place traffic profiles (without waiting for sparse live samples) using TomTom historic routing probes across 48 hourly slots, 14-day validity caching, 150m segment sharing, live sample blending, daily 1,200 quota guard, and live Flow intelligence endpoint with 24h sparklines.
+- **Implemented Work:**
+  1. Data Model (`prisma/schema.prisma` & migration `20261029183000_place_traffic_profile`):
+     - Added `PlaceTrafficProfile` model (`id`, `issueId`, `segmentId`, `direction`, `dayType` WEEKDAY|WEEKEND, `hour` 0-23, `delayRatio`, `source` TOMTOM_HISTORIC|LIVE_SAMPLE|ESTIMATED, `fetchedAt`).
+     - Added relations to `Issue` and `RoadSegment`.
+     - Deployed migration to Supabase production (`public` schema) and synchronized to isolated `test` schema.
+  2. Per-Place Profile Builder (`src/lib/traffic/profile.ts`):
+     - `buildPlaceProfile(issue)`:
+       - 14-day validity cache check.
+       - Proximity sharing across issues within 150m on the same road segment.
+       - Constructs ~300m probe route along road bearing computed from TomTom Flow segment coordinates (or East-West fallback).
+       - Queries 48 hourly slots (24 weekday + 24 weekend) using TomTom Routing with `departAt` and `traffic=true` processed concurrently in batches.
+       - Extracts `delayRatio = (travelTimeSeconds - noTrafficTravelTimeSeconds) / noTrafficTravelTimeSeconds`.
+       - Blends in live `TrafficSample` rows when present (weighted by sample count), elevating source to `LIVE_SAMPLE`.
+       - Deterministic graceful degradation to `ESTIMATED` arterial/collector profile when key is missing or quota is exhausted.
+  3. Quota Management & Budget (`src/lib/external/tomtom.ts`):
+     - Tracked daily TomTom calls with `provider: "tomtom_daily"`, capped at 1,200 calls/day across all jobs.
+     - Preserved 20,000 monthly quota cap.
+     - Exported `tryIncrementDailyQuota`, `getDailyTomTomCallCount`, and `resetDailyTomTomCallCount`.
+  4. Scheduled Job (`src/lib/jobs/trafficProfile.ts` & `src/lib/jobs/runner.ts`):
+     - Registered `"traffic-profile"` scheduled job (runs every 2h).
+     - Processes up to 25 open issues per run ordered by highest Priority Index (`priority DESC`), respecting daily quota budget.
+  5. Live Traffic Endpoint & UI (`src/app/api/issues/[id]/traffic-live/route.ts` & `LiveTrafficCard.tsx`):
+     - `GET /api/issues/[id]/traffic-live`: authenticated endpoint with 5-minute cache returning current speed vs free-flow, slower %, confidence, summary text, and today's 24-hour profile with the current hour marked.
+     - Built `LiveTrafficCard` component with live status dot, speed metrics, 24-bar congestion sparkline highlighting the current hour, and data source attribution.
+     - Added `LiveTrafficCard` to the public issue page (`src/app/(public)/issue/[id]/page.tsx`) and the desk slide-over drawer (`src/components/desk/IssueDrawer.tsx`).
+  6. Test Database Isolation:
+     - Configured isolated `schema=test` in Supabase with fail-fast production checks in Vitest and Playwright.
+     - Ensured zero writes to production database from test runs.
+  7. Verification:
+     - Added `tests/unit/traffic-profile.test.ts` (13 tests) covering profile geometry, bearing, 150m offset, 48 slots, 14-day caching, 150m proximity sharing, live sample blending, daily 1,200 quota enforcement, endpoint 401/404/200, and scheduled job runner.
+     - Full gate passed: 54 test files passed (312 tests green).
+
 ### Phase 0 · Diagnosis: TomTom Flow, Routing, ApiUsage, and Repair Window Analysis · 2026-10-29
 - **Goal:** Probe live TomTom Flow and Routing APIs with the production key for the pilot point (12.9575, 77.7011), inspect ApiUsage and TrafficSample distribution across issues and hours of week, and document why repair windows were uniformly returning 00:30–02:30 / 04:00–06:00.
 - **Empirical Findings:**

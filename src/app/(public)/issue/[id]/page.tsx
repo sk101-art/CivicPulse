@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { PriorityBreakdown } from "@/components/priority/PriorityBreakdown";
 import { RepairWindowBadge } from "@/components/desk/RepairWindowBadge";
+import { LiveTrafficCard } from "@/components/traffic/LiveTrafficCard";
 import { getRepairWindowForIssue } from "@/lib/traffic/repairWindow";
 import type { PriorityBreakdown as PriorityBreakdownType } from "@/lib/priority";
 import { Status, Band, EvidenceRole, Role } from "@prisma/client";
@@ -303,6 +304,11 @@ export default async function PublicIssuePage({
             />
           </div>
         )}
+
+        {/* Real-time Traffic Intelligence Card & 24h Profile */}
+        <div className="space-y-2">
+          <LiveTrafficCard issueId={issue.id} variant="page" />
+        </div>
 
         {/* Evidence Photo Gallery */}
         <div className="space-y-4">

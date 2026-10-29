@@ -42,7 +42,7 @@ export async function setupTestDatabase() {
         ORDER BY e.enumsortorder;
       `, [row.typname]);
 
-      const vals = labelsRes.rows.map((r: any) => `'${r.enumlabel}'`).join(", ");
+      const vals = labelsRes.rows.map((r: { enumlabel: string }) => `'${r.enumlabel}'`).join(", ");
       await client.query(`DROP TYPE IF EXISTS test."${row.typname}" CASCADE;`);
       await client.query(`CREATE TYPE test."${row.typname}" AS ENUM (${vals});`);
     }

@@ -84,6 +84,17 @@ enum AuditObserved {
   CANNOT_SEE
 }
 
+enum DayType {
+  WEEKDAY
+  WEEKEND
+}
+
+enum ProfileSource {
+  TOMTOM_HISTORIC
+  LIVE_SAMPLE
+  ESTIMATED
+}
+
 enum SegmentEventType {
   REPORTED
   VERIFIED_FIX
@@ -150,6 +161,7 @@ model RoadSegment {
   issues               Issue[]
   events               SegmentEvent[]
   samples              TrafficSample[]
+  trafficProfiles      PlaceTrafficProfile[]
 }
 
 model Issue {
@@ -193,6 +205,7 @@ model Issue {
   comments             Comment[]
   assignments          Assignment[]
   trafficSamples       TrafficSample[]
+  trafficProfiles      PlaceTrafficProfile[]
   auditTasks           AuditTask[]
   segment              RoadSegment?                        @relation(fields: [segmentId], references: [id])
   agency               Agency?                             @relation(fields: [agencyId], references: [id])
@@ -300,6 +313,25 @@ model TrafficSample {
   @@index([issueId, sampledAt])
   @@index([segmentId, sampledAt])
   @@index([sampledAt])
+}
+
+model PlaceTrafficProfile {
+  id          String        @id @default(cuid())
+  issueId     String?
+  segmentId   String?
+  direction   String?       @default("BOTH")
+  dayType     DayType
+  hour        Int
+  delayRatio  Float
+  source      ProfileSource @default(ESTIMATED)
+  fetchedAt   DateTime      @default(now())
+
+  issue       Issue?        @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  segment     RoadSegment?  @relation(fields: [segmentId], references: [id], onDelete: SetNull)
+
+  @@index([issueId, dayType, hour])
+  @@index([segmentId, dayType, hour])
+  @@index([fetchedAt])
 }
 
 model WeatherForecast {

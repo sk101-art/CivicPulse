@@ -8,6 +8,7 @@ import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { syncWeatherForecast } from "@/lib/jobs/weather";
 import { runTrafficSample } from "@/lib/jobs/trafficSample";
 import { runDurability } from "@/lib/jobs/durability";
+import { runTrafficProfileJob } from "@/lib/jobs/trafficProfile";
 import { sanitizeErrorMessage } from "@/lib/api/errors";
 
 /** Each run must finish well inside a serverless function's time limit. */
@@ -32,6 +33,7 @@ export const JOB_NAMES = [
   "priority-recompute",
   "traffic-sample",
   "durability",
+  "traffic-profile",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -206,6 +208,9 @@ export async function runJob(name: JobName): Promise<JobResult> {
       break;
     case "durability":
       result = await runDurability(startedAt, TIME_BUDGET_MS);
+      break;
+    case "traffic-profile":
+      result = await runTrafficProfileJob(startedAt, TIME_BUDGET_MS);
       break;
     default:
       throw new Error(`Unknown job: ${String(name)}`);

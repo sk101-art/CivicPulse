@@ -25,7 +25,7 @@ process.env.APP_DATABASE_URL = testDbUrl;
 if (process.env.DIRECT_DATABASE_URL_TEST) {
   process.env.DIRECT_DATABASE_URL = process.env.DIRECT_DATABASE_URL_TEST;
 }
-process.env.NODE_ENV = 'test';
+(process.env as Record<string, string | undefined>).NODE_ENV = 'test';
 process.env.PLAYWRIGHT_TEST = 'true';
 
 const baseURL = process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
@@ -56,7 +56,7 @@ export default defineConfig({
       APP_DATABASE_URL: testDbUrl,
       DIRECT_DATABASE_URL: process.env.DIRECT_DATABASE_URL_TEST || testDbUrl,
       DATABASE_URL_TEST: testDbUrl,
-      PROD_DATABASE_URL: rawProdUrl,
+      PROD_DATABASE_URL: rawProdUrl || '',
       NODE_ENV: 'test',
       PLAYWRIGHT_TEST: 'true',
     },
