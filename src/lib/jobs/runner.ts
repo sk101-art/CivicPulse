@@ -6,6 +6,7 @@ import { processG1Job } from "@/lib/ai/triage";
 import { processG2Job } from "@/lib/ai/fixCheck";
 import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { syncWeatherForecast } from "@/lib/jobs/weather";
+import { sanitizeErrorMessage } from "@/lib/api/errors";
 
 /** Each run must finish well inside a serverless function's time limit. */
 const TIME_BUDGET_MS = 40_000;
@@ -30,6 +31,7 @@ export interface JobResult {
   processed: number;
   skipped?: string;
   failed?: number;
+  firstError?: string;
   durationMs: number;
 }
 
@@ -94,13 +96,26 @@ async function runAiQueue(startedAt: number): Promise<Omit<JobResult, "job" | "d
 
   let processed = 0;
   let failed = 0;
+  let firstError: string | undefined;
   for (const job of jobs) {
     if (!budgetLeft(startedAt)) break;
-    const ok = job.feature === "G1" ? await processG1Job(job.id) : await processG2Job(job.id);
-    if (ok) processed++;
-    else failed++;
+    const res = job.feature === "G1" ? await processG1Job(job.id) : await processG2Job(job.id);
+    if (res.ok) {
+      if (!res.skipped) {
+        processed++;
+      }
+    } else {
+      failed++;
+      if (!firstError && res.error) {
+        firstError = sanitizeErrorMessage(res.error);
+      }
+    }
   }
-  return { processed, failed };
+  return {
+    processed,
+    failed,
+    ...(firstError ? { firstError } : {}),
+  };
 }
 
 /** I1/M5: refreshes the 72-hour forecast for the pilot point and every imported ward. */

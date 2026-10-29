@@ -71,18 +71,28 @@ describe("T41 Contract Test: TomTom Routing Adapter & Safe Routes API", () => {
   });
 
   it("returns synthetic routes in keys-later mode when TOMTOM_API_KEY is not set", async () => {
-    const result = await calculateTomTomRoute({
-      origin: { latitude: 12.9558, longitude: 77.7012 }, // Marathahalli
-      destination: { latitude: 12.9352, longitude: 77.6946 }, // Kadubeesanahalli
-      travelMode: "motorcycle",
+    const envModule = await import("@/lib/env");
+    const isConfiguredSpy = vi.spyOn(envModule, "isConfigured").mockImplementation((key) => {
+      if (key === "TOMTOM_API_KEY") return false;
+      return envModule.isConfigured(key);
     });
 
-    expect(result.disabled).toBe(true);
-    expect(result._synthetic).toBe(true);
-    expect(result.fallbackNote).toContain("TomTom routing disabled – key not set");
-    expect(result.routes.length).toBeGreaterThan(0);
-    expect(result.routes[0].coords.length).toBeGreaterThan(1);
-    expect(result.routes[0].distanceMeters).toBeGreaterThan(0);
+    try {
+      const result = await calculateTomTomRoute({
+        origin: { latitude: 12.9558, longitude: 77.7012 }, // Marathahalli
+        destination: { latitude: 12.9352, longitude: 77.6946 }, // Kadubeesanahalli
+        travelMode: "motorcycle",
+      });
+
+      expect(result.disabled).toBe(true);
+      expect(result._synthetic).toBe(true);
+      expect(result.fallbackNote).toContain("TomTom routing disabled – key not set");
+      expect(result.routes.length).toBeGreaterThan(0);
+      expect(result.routes[0].coords.length).toBeGreaterThan(1);
+      expect(result.routes[0].distanceMeters).toBeGreaterThan(0);
+    } finally {
+      isConfiguredSpy.mockRestore();
+    }
   });
 
   it("caches identical routing requests within the 5-minute TTL", async () => {

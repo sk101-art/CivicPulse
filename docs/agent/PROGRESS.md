@@ -8,6 +8,59 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Review 29 Oct · AI Queue Error Diagnostics & Deleted Target Handling · 2026-10-29
+- **Goal:** Fix production `ai-queue` job failure (`{"processed":0,"failed":20}`) where jobs were failing silently. Add error logging in catch blocks (`console.error("[ai-queue] job failed", jobId, err)`), return sanitized `firstError` in `runJob("ai-queue")`, handle deleted target reports/issues by marking `status: "failed"` with `attempts: 3` (no retry) and moving on without reporting an error, add reproduction unit tests, reset failed jobs with `attempts < 3` to `queued`, and run full gate.
+- **Root Cause:**
+  - In `src/lib/ai/triage.ts` (`processG1Job`) and `src/lib/ai/fixCheck.ts` (`processG2Job`), when an enqueued job pointed to a report or issue that was deleted during testing/migration, `findUnique` returned `null` and `processG1Triage`/`processG2FixCheck` returned `null`.
+  - The functions treated `null` by updating `status: "failed"` and returning `false`, with `attempts` incremented by 1.
+  - In `src/lib/jobs/runner.ts` (`runAiQueue`), `failed++` was incremented for every such job. Because `attempts: { lt: 3 }` was checked and the 20 oldest jobs in the queue all pointed to deleted reports, the same 20 deleted-target jobs occupied all 20 slots of `take: 20` and returned `{"processed":0,"failed":20}` on each run, blocking newer valid jobs from being processed.
+- **Implemented Fixes:**
+  - `src/lib/ai/triage.ts` & `src/lib/ai/fixCheck.ts`:
+    - Detected when target report/issue no longer exists (`!report && !issueReport` or triage returning `null`).
+    - Handled deleted targets by updating `aiJob` with `{ status: "failed", attempts: 3 }` (permanent failure with no retry) and returning `{ ok: true, skipped: "target_deleted" }`.
+    - Catch blocks now log `console.error("[ai-queue] job failed", jobId, err)` and return `{ ok: false, error: err instanceof Error ? err.message : String(err) }`.
+  - `src/lib/jobs/runner.ts`:
+    - Updated `runAiQueue` to distinguish skipped jobs (`res.skipped`) from processed and failed jobs.
+    - Captured first error via `sanitizeErrorMessage` and returned `firstError` in `JobResult` (message only, secrets/paths redacted).
+  - `tests/contract/tomtom-routing.test.ts`:
+    - Isolated `isConfigured("TOMTOM_API_KEY")` spy for the keys-later test case so that when `TOMTOM_API_KEY` is present in developer's local environment, the keys-later test continues to test synthetic route fallback deterministically.
+  - `tests/unit/ai-queue-deleted-target.test.ts`:
+    - Added comprehensive unit tests verifying:
+      1. G1 job with deleted target is marked `status: "failed"`, `attempts: 3` and skipped cleanly.
+      2. G2 job with deleted target is marked `status: "failed"`, `attempts: 3` and skipped cleanly.
+      3. `processG1Job` catch block logs to `console.error` and returns sanitized error message when processing throws.
+  - Database Reset:
+    - Reset all 38 `AiJob` rows with `status: "failed"` and `attempts < 3` back to `status: "queued"`.
+- **Full Gate Results:**
+  ```
+  $ npm run lint
+  > miniproject@0.1.0 lint
+  > eslint
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    136:20  warning  Using `<img>` could result in slower LCP and higher bandwidth.  @next/next/no-img-element
+  ✖ 1 problem (0 errors, 1 warning)
+
+  $ npm run typecheck
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+  [exit 0]
+
+  $ npm test
+  > miniproject@0.1.0 test
+  > vitest run
+   Test Files  45 passed (45)
+        Tests  243 passed (243)
+     Duration  7.94s
+
+  $ npm run build
+  > miniproject@0.1.0 build
+  > next build --webpack
+  ▲ Next.js 16.2.4 (webpack)
+  ✓ Compiled successfully in 8.5s
+  Finished TypeScript in 8.1s ...
+  ✓ Generating static pages using 15 workers (21/21) in 568ms
+  ```
+
 ### Review 29 Oct · Gate Verification for Commit 1e257d3 · 2026-10-29
 - **Goal:** Run `npm ci`, full gate (`npm run lint && npm run typecheck && npm test && npm run build`), and `npm run e2e` following code review commit `1e257d3` (security hardening, AI wiring, scheduled jobs). Fix any failures caused by that commit with smallest changes without weakening tests.
 - **Verification Summary:**

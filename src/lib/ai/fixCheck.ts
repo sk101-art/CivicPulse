@@ -160,12 +160,18 @@ export async function processG2FixCheck(
   return fixCheckData;
 }
 
+export interface ProcessJobOutcome {
+  ok: boolean;
+  error?: string;
+  skipped?: string;
+}
+
 /**
  * Background worker processor for enqueued G2 AiJob rows.
  */
-export async function processG2Job(jobId: string, options?: ProcessG2FixCheckOptions): Promise<boolean> {
+export async function processG2Job(jobId: string, options?: ProcessG2FixCheckOptions): Promise<ProcessJobOutcome> {
   const job = await prisma.aiJob.findUnique({ where: { id: jobId } });
-  if (!job) return false;
+  if (!job) return { ok: false, error: `Job ${jobId} not found` };
 
   await prisma.aiJob.update({
     where: { id: jobId },
@@ -182,6 +188,13 @@ export async function processG2Job(jobId: string, options?: ProcessG2FixCheckOpt
       });
       if (claimReport) {
         claimReportId = claimReport.id;
+      } else {
+        // Target report/issue no longer exists: mark failed with no retry and move on (not an error)
+        await prisma.aiJob.update({
+          where: { id: jobId },
+          data: { status: "failed", attempts: 3 },
+        });
+        return { ok: true, skipped: "target_deleted" };
       }
     }
 
@@ -191,19 +204,20 @@ export async function processG2Job(jobId: string, options?: ProcessG2FixCheckOpt
         where: { id: jobId },
         data: { status: "completed" },
       });
-      return true;
+      return { ok: true };
     } else {
       await prisma.aiJob.update({
         where: { id: jobId },
-        data: { status: "failed" },
+        data: { status: "failed", attempts: 3 },
       });
-      return false;
+      return { ok: true, skipped: "target_deleted" };
     }
-  } catch {
+  } catch (err) {
+    console.error("[ai-queue] job failed", jobId, err);
     await prisma.aiJob.update({
       where: { id: jobId },
       data: { status: "failed" },
     });
-    return false;
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
