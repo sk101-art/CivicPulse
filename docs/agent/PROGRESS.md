@@ -8,6 +8,175 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Review 29 Oct · Gate Verification for Commit 1e257d3 · 2026-10-29
+- **Goal:** Run `npm ci`, full gate (`npm run lint && npm run typecheck && npm test && npm run build`), and `npm run e2e` following code review commit `1e257d3` (security hardening, AI wiring, scheduled jobs). Fix any failures caused by that commit with smallest changes without weakening tests.
+- **Verification Summary:**
+  - `npm ci`: Added 543 packages, Prisma client generated cleanly.
+  - `npm run lint`: 0 errors, 1 existing warning (`@next/next/no-img-element`).
+  - `npm run typecheck`: 0 errors (`tsc --noEmit` clean).
+  - `npm test`: 44 test files passed, 240 tests passed (including new `tests/unit/security-hardening.test.ts` and `tests/unit/jobs-route.test.ts`).
+  - `npm run build`: Compiled successfully in 15.1s, static pages generated (21/21) cleanly.
+  - `npm run e2e`: 16 passed, 2 skipped (legacy). Both `demo` and `mobile-flows` suites passed cleanly.
+  - Zero code changes required: all 14 review fixes in `1e257d3` compiled and passed all gate and E2E checks without errors.
+- **Real Output:**
+  ```
+  $ npm ci
+  > miniproject@0.1.0 postinstall
+  > prisma generate
+  Loaded Prisma config from prisma.config.ts.
+  Prisma schema loaded from prisma\schema.prisma.
+  ✔ Generated Prisma Client (v7.8.0) to .\node_modules\@prisma\client in 260ms
+  added 543 packages, and audited 544 packages in 1m
+
+  $ npm run lint
+  > miniproject@0.1.0 lint
+  > eslint
+  C:\Users\sujay\Downloads\miniproject_v2\miniproject\src\app\citizen\report\[id]\page.tsx
+    136:20  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+  ✖ 1 problem (0 errors, 1 warning)
+
+  $ npm run typecheck
+  > miniproject@0.1.0 typecheck
+  > tsc --noEmit
+  [exit 0]
+
+  $ npm test
+  > miniproject@0.1.0 test
+  > vitest run
+   RUN  v3.2.7 C:/Users/sujay/Downloads/miniproject_v2/miniproject
+   ✓ tests/unit/state-machine.test.ts (29 tests) 23ms
+   ✓ tests/unit/route-choice.test.ts (4 tests) 17ms
+   ✓ tests/unit/priority.test.ts (5 tests) 26ms
+   ✓ tests/unit/verification-eligibility-ui.test.tsx (12 tests) 80ms
+   ✓ tests/contract/ai-provider-chain.test.ts (6 tests) 1976ms
+   ✓ tests/unit/signing-verification.test.ts (8 tests) 1893ms
+   ✓ tests/unit/storage-error-handling.test.ts (4 tests) 1737ms
+   ✓ tests/contract/storage.test.ts (8 tests) 21ms
+   ✓ tests/contract/tomtom-routing.test.ts (8 tests) 2211ms
+   ✓ tests/unit/device-key.test.ts (6 tests) 766ms
+   ✓ tests/unit/priority-breakdown.test.tsx (3 tests) 42ms
+   ✓ tests/unit/security-hardening.test.ts (5 tests) 1478ms
+   ✓ tests/unit/photo-triage.test.ts (3 tests) 3551ms
+   ✓ tests/unit/segment-matching.test.ts (5 tests) 25ms
+   ✓ tests/unit/public-issue.test.ts (4 tests) 2985ms
+   ✓ tests/contract/actions.test.ts (4 tests) 3532ms
+   ✓ tests/unit/explainer.test.ts (4 tests) 1150ms
+   ✓ tests/unit/pwa.test.ts (4 tests) 32ms
+   ✓ tests/unit/points.test.ts (8 tests) 14ms
+   ✓ tests/unit/seed-location-display.test.ts (4 tests) 13ms
+   ✓ tests/unit/priority-display.test.ts (4 tests) 11ms
+   ✓ tests/unit/nonce.test.ts (7 tests) 1847ms
+   ✓ tests/unit/readme-audit.test.ts (3 tests) 686ms
+   ✓ tests/contract/merge.test.ts (5 tests) 5231ms
+   ✓ tests/unit/ai-quota.test.ts (3 tests) 13ms
+   ✓ tests/unit/pwa-install-banner.test.ts (3 tests) 15ms
+   ✓ tests/contract/weather.test.ts (4 tests) 955ms
+   ✓ tests/unit/claim-gap.test.ts (4 tests) 1760ms
+   ✓ tests/contract/road-timeline.test.ts (5 tests) 1469ms
+   ✓ tests/unit/verification.test.ts (4 tests) 6722ms
+   ✓ tests/contract/seed-auth.test.ts (6 tests) 1555ms
+   ✓ tests/contract/osm-snap.test.ts (6 tests) 2519ms
+   ✓ tests/unit/mobile-logout.test.tsx (3 tests) 39ms
+   ✓ tests/unit/config.test.ts (3 tests) 9ms
+   ✓ tests/unit/desk-nav.test.ts (3 tests) 309ms
+   ✓ tests/unit/jobs-route.test.ts (4 tests) 24ms
+   ✓ tests/contract/health-aiqueue.test.ts (3 tests) 1045ms
+   ✓ tests/contract/match-segments.test.ts (1 test) 827ms
+   ✓ tests/contract/geom-trigger.test.ts (1 test) 643ms
+   Test Files  44 passed (44)
+        Tests  240 passed (240)
+     Start at  00:20:30
+     Duration  11.58s (transform 7.18s, setup 0ms, collect 47.79s, tests 60.04s, environment 24ms, prepare 20.13s)
+
+  $ npm run build
+  > miniproject@0.1.0 build
+  > next build --webpack
+  ▲ Next.js 16.2.4 (webpack)
+  - Environments: .env.local, .env
+    Creating an optimized production build ...
+  ✓ Compiled successfully in 15.1s
+    Running TypeScript ...
+    Finished TypeScript in 9.8s ...
+    Collecting page data using 15 workers ...
+    Generating static pages using 15 workers (0/21) ...
+    Generating static pages using 15 workers (5/21) 
+    Generating static pages using 15 workers (10/21) 
+    Generating static pages using 15 workers (15/21) 
+  ✓ Generating static pages using 15 workers (21/21) in 645ms
+    Finalizing page optimization ...
+    Collecting build traces ...
+  Route (app)
+  ┌ ○ /
+  ├ ○ /_not-found
+  ├ ƒ /api/auth/[...nextauth]
+  ├ ƒ /api/auth/register
+  ├ ƒ /api/claim-gap
+  ├ ƒ /api/desk/queue
+  ├ ƒ /api/evidence/device
+  ├ ƒ /api/evidence/nonce
+  ├ ƒ /api/health
+  ├ ƒ /api/issues/[id]/actions
+  ├ ƒ /api/issues/[id]/log
+  ├ ƒ /api/issues/[id]/verify
+  ├ ƒ /api/jobs/[name]
+  ├ ƒ /api/personnels
+  ├ ƒ /api/personnels/[id]
+  ├ ƒ /api/reports
+  ├ ƒ /api/reports/[id]/comments
+  ├ ƒ /api/reports/authority
+  ├ ƒ /api/reports/nearby
+  ├ ƒ /api/routes/safe
+  ├ ƒ /api/segments/[id]/timeline
+  ├ ƒ /api/stats
+  ├ ƒ /citizen/dashboard
+  ├ ƒ /citizen/extra
+  ├ ƒ /citizen/map
+  ├ ƒ /citizen/profile
+  ├ ƒ /citizen/report
+  ├ ƒ /citizen/report/[id]
+  ├ ƒ /claim-gap
+  ├ ƒ /desk
+  ├ ƒ /desk/dashboard
+  ├ ƒ /desk/map
+  ├ ƒ /desk/personnels
+  ├ ƒ /desk/status
+  ├ ƒ /desk/tickets
+  ├ ƒ /issue/[id]
+  ├ ○ /login
+  └ ƒ /road/[segmentId]
+
+  $ npm run e2e
+  > miniproject@0.1.0 e2e
+  > playwright test
+  Running 18 tests using 1 worker
+    ok  1 [chromium] › tests\e2e\demo.spec.ts:55:7 › T73: End-to-End CivicPulse Demo Story › Demo Story: Citizen report -> No gallery picker -> Signed claim -> Citizen dispute -> Claim gap rises -> Road timeline recurrence (13.0s)
+    -   2 [chromium] › tests\e2e\legacy\sync.spec.ts:5:7 › legacy sync test › Cross-module sync between Citizen and Authority
+    -   3 [chromium] › tests\e2e\legacy\test-login.spec.js:5:3 › legacy login test › test login page
+    ok  4 [chromium] › tests\e2e\map-layers.spec.ts:6:7 › T46: Map Layers Acceptance E2E › toggles issues and live traffic layers without console errors (5.0s)
+    ok  5 [chromium] › tests\e2e\map-refactor.spec.ts:15:7 › T40 Map Refactor Acceptance: Citizen and Desk Maps › renders Citizen Map (/citizen/map) with Leaflet container and controls (4.2s)
+    ok  6 [chromium] › tests\e2e\map-refactor.spec.ts:47:7 › T40 Map Refactor Acceptance: Citizen and Desk Maps › renders Desk Map (/desk/map) with Leaflet container and routing grid (4.1s)
+    ok  7 [chromium] › tests\e2e\map-refactor.spec.ts:79:7 › T40 Map Refactor Acceptance: Citizen and Desk Maps › line counts of both wrapper components are below 150 lines (11ms)
+    ok  8 [chromium] › tests\e2e\mobile-flows.spec.ts:48:7 › Mobile Viewport E2E: Desk Actions & Mobile Logout Flows › Desk logs in on mobile, opens /desk, confirms an issue via IssueDrawer and sees it logged, then logs out (2.6s)
+    ok  9 [chromium] › tests\e2e\mobile-flows.spec.ts:107:7 › Mobile Viewport E2E: Desk Actions & Mobile Logout Flows › Citizen logs in on mobile, views profile, and logs out (1.9s)
+    ok 10 [chromium] › tests\e2e\phase2-acceptance.spec.ts:52:7 › Phase 2 E2E Acceptance Suite (T20–T29) › T20 e2e: after login, a DeviceKey row exists; reloading the page reuses the same key (5.1s)
+    ok 11 [chromium] › tests\e2e\phase2-acceptance.spec.ts:92:7 › Phase 2 E2E Acceptance Suite (T20–T29) › T22 e2e: capture page has no file input on camera component (2.2s)
+    ok 12 [chromium] › tests\e2e\phase2-acceptance.spec.ts:121:7 › Phase 2 E2E Acceptance Suite (T20–T29) › T23 e2e: citizen files a report and lands on /issue/<id> with the photo visible; a second report 10 m away merges (3.3s)
+    ok 13 [chromium] › tests\e2e\phase2-acceptance.spec.ts:243:7 › Phase 2 E2E Acceptance Suite (T20–T29) › T26 e2e: desk-a confirms an issue, desk-b sees "Confirmed by Desk A" (3.6s)
+    ok 14 [chromium] › tests\e2e\phase2-acceptance.spec.ts:308:7 › Phase 2 E2E Acceptance Suite (T20–T29) › T27 e2e: desk claims, citizen disputes → DISPUTED (5.0s)
+    ok 15 [chromium] › tests\e2e\phase2-acceptance.spec.ts:464:7 › Phase 2 E2E Acceptance Suite (T20–T29) › T28 e2e: logged-out visitor sees the timeline and photos; no desk-only controls rendered (574ms)
+    ok 16 [chromium] › tests\e2e\phase2-acceptance.spec.ts:538:7 › Phase 2 E2E Acceptance Suite (T20–T29) › T29 e2e: claim-gap page renders with seed data labelled "seed" (491ms)
+    ok 17 [chromium] › tests\e2e\pwa.spec.ts:4:7 › T70: PWA Installability and Static Shell › serves manifest.json and links it in page head (291ms)
+    ok 18 [chromium] › tests\e2e\road-timeline.spec.ts:6:7 › T60: Road timeline public page › loads road timeline page, shows metadata, stats, chronological order, and seed tags (343ms)
+    2 skipped
+    16 passed (2.2m)
+
+  $ npm run e2e -- demo
+  1 passed (10.8s)
+
+  $ npm run e2e -- mobile-flows
+  2 passed (41.1s)
+  ```
+
 ### Fix · Use SUPABASE_URL only, keep safe errors · 2026-10-28
 - **Goal:** Remove workaround URL derivation, guessed retries, and stale project string detection from `src/lib/external/storage.ts`. Ensure the app strictly uses `SUPABASE_URL` from environment, fails cleanly with clear diagnostics if wrong, and preserves `sanitizeErrorMessage`, `formatSafeApiError`, `StorageUploadError`, and clear API error reporting.
 - **Implemented:**
