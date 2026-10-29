@@ -8,6 +8,24 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Fixes · Citizen Account Registration & Validation Feedback · 2026-10-29
+- **Goal:** Resolve issues preventing users from creating accounts on `/login`, fix silent UI failures, and provide clear password length and email collision guidance.
+- **Implemented Work:**
+  1. UI Error Visibility:
+     - Rendered an alert box with `AlertCircle` in `src/app/(auth)/login/page.tsx` displaying exact server error text (e.g. "Password must be at least 8 characters", "User already exists", "A valid email is required").
+     - Added quick one-click switch action when email is already registered: "Switch to LOGIN to sign in with this email →".
+  2. Input Requirements & Accessibility:
+     - Added live password character length counter & emerald status dot (`password.length >= 8 ? '8+ chars (Valid)' : 'Min. 8 chars (x/8)'`).
+     - Added pre-flight client-side validation for name (required), email (format), and password (min 8 chars) before making the network request.
+     - Changed email placeholder from `citizen@example.com` (which was already registered in seed data) to `your.email@example.com` / `you@example.com`.
+     - Added standard HTML `name` attributes (`name="name"`, `name="email"`, `name="password"`) for autofill and test selector compatibility.
+     - Added `/register` route redirecting to `/login?signup=true`.
+  3. Session Persistence:
+     - Upgraded post-registration redirect to use `window.location.href = target` to avoid client-side RSC cookie desync and ensure clean document navigation into `/citizen/dashboard`.
+  4. Tests:
+     - Added `tests/unit/auth-register.test.ts` covering password length, missing name, invalid email, successful registration with profile creation, and duplicate rejection.
+     - Full gate passed: `typecheck`, `lint` (0 errors), `test` (53 suites, 299 tests passing), `build` (all routes compiled).
+
 ### Fixes · Blind Repair Audit Sole Decision Path & Defect Liability Clause · 2026-10-29
 - **Goal:**
   1. Enforce blind repair audit as the ONLY mechanism to decide `CLAIMED_FIXED` issues.
