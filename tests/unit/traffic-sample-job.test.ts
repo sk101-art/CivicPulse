@@ -46,8 +46,11 @@ describe("Traffic Sample Job & Budget Limiting", () => {
     const findManyCalls: unknown[] = [];
     vi.spyOn(prisma.issue, "findMany").mockImplementation((args) => {
       findManyCalls.push(args);
-      const where = args?.where as { status?: unknown } | undefined;
-      if (where?.status === Status.OPEN) {
+      const where = args?.where as { status?: { in?: unknown[] } | unknown } | undefined;
+      const statusIn = typeof where?.status === "object" && where?.status !== null && "in" in where.status
+        ? (where.status as { in: unknown[] }).in
+        : [];
+      if (statusIn.includes(Status.OPEN)) {
         return Promise.resolve(mockOpenIssues) as unknown as ReturnType<typeof prisma.issue.findMany>;
       }
       return Promise.resolve(mockActiveIssues) as unknown as ReturnType<typeof prisma.issue.findMany>;
@@ -73,7 +76,10 @@ describe("Traffic Sample Job & Budget Limiting", () => {
     expect(findManyCalls).toHaveLength(2);
     expect(findManyCalls[0]).toEqual(
       expect.objectContaining({
-        where: expect.objectContaining({ status: Status.OPEN, isSeed: false }),
+        where: expect.objectContaining({
+          status: { in: [Status.OPEN, Status.CONFIRMED, Status.IN_PROGRESS, Status.DISPUTED] },
+          isSeed: false,
+        }),
         take: 40,
         orderBy: { priority: "desc" },
       })

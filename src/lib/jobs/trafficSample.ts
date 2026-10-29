@@ -53,9 +53,12 @@ export async function runTrafficSample(
 
   const remainingDailyBudget = DAILY_TOMTOM_BUDGET - samplesToday;
 
-  // 1. Top 40 open issues by Priority Index (excluding seeds)
+  // 1. Top 40 open/unfixed issues by Priority Index (excluding seeds)
   const openIssues = await prisma.issue.findMany({
-    where: { status: Status.OPEN, isSeed: false },
+    where: {
+      status: { in: [Status.OPEN, Status.CONFIRMED, Status.IN_PROGRESS, Status.DISPUTED] },
+      isSeed: false,
+    },
     orderBy: { priority: "desc" },
     take: 40,
     select: {
