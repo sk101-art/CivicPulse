@@ -681,6 +681,216 @@ export async function seedDemoData() {
     }
   }
 
+  // 10. Seed Demo Wards & Completed Claims for Claim-Gap & Lifespan Scorecards
+  console.log('[Seed Demo] Seeding demo wards and completed claim-gap audits...');
+  const demoWards = [
+    { id: 'seed-ward-bellandur', code: 'WARD-150', name: 'Bellandur (Demo)' },
+    { id: 'seed-ward-mahadevapura', code: 'WARD-85', name: 'Mahadevapura (Demo)' },
+    { id: 'seed-ward-marathahalli', code: 'WARD-84', name: 'Marathahalli (Demo)' },
+  ];
+
+  for (const w of demoWards) {
+    await prisma.ward.upsert({
+      where: { code: w.code },
+      update: { name: w.name },
+      create: { id: w.id, code: w.code, name: w.name },
+    });
+  }
+
+  interface SeedClaimDef {
+    id: string;
+    wardId: string;
+    contractorName: string;
+    category: Category;
+    address: string;
+    lat: number;
+    lng: number;
+    daysAgoClaimed: number;
+    lifespanDays?: number;
+    status: Status;
+    hoursToVerify?: number;
+    verifier: typeof citizenB;
+  }
+
+  const demoClaims: SeedClaimDef[] = [
+    // Bellandur (Demo) — Cauvery Infrastructure Ltd. (Demo)
+    { id: 'seed-claim-blr-1', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.POTHOLES, address: 'Sarjapur-ORR Junction', lat: 12.9260, lng: 77.6770, daysAgoClaimed: 18, hoursToVerify: 34, lifespanDays: 140, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-blr-2', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.DRAINAGE, address: 'Bellandur Central Flyover', lat: 12.9295, lng: 77.6810, daysAgoClaimed: 14, hoursToVerify: 28, lifespanDays: 160, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-blr-3', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.POTHOLES, address: 'Green Glen Layout Access', lat: 12.9310, lng: 77.6740, daysAgoClaimed: 10, hoursToVerify: 42, lifespanDays: 120, status: Status.VERIFIED_FIXED, verifier: citizenC },
+    { id: 'seed-claim-blr-4', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.ROAD_CUT, address: 'Outer Ring Road Sector 2', lat: 12.9340, lng: 77.6850, daysAgoClaimed: 7, hoursToVerify: 30, lifespanDays: 180, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-blr-5', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.POTHOLES, address: 'Kaverappa Layout Service Road', lat: 12.9348, lng: 77.6925, daysAgoClaimed: 12, hoursToVerify: 22, status: Status.DISPUTED, verifier: citizenC },
+    { id: 'seed-claim-blr-6', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.ROAD_CUT, address: 'Bellandur South Underpass Service Road', lat: 12.9282, lng: 77.6784, daysAgoClaimed: 22, hoursToVerify: 26, lifespanDays: 42, status: Status.REOPENED_IN_WARRANTY, verifier: citizenC },
+
+    // Mahadevapura (Demo) — Southern Asphalt Works (Demo)
+    { id: 'seed-claim-mdp-1', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Whitefield Main Road near Metro', lat: 12.9860, lng: 77.7120, daysAgoClaimed: 20, hoursToVerify: 22, lifespanDays: 95, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-mdp-2', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.DRAINAGE, address: 'ITPL Main Road Junction', lat: 12.9890, lng: 77.7200, daysAgoClaimed: 15, hoursToVerify: 24, lifespanDays: 110, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-mdp-3', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Hoodi Circle North', lat: 12.9920, lng: 77.7150, daysAgoClaimed: 11, hoursToVerify: 26, lifespanDays: 105, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-mdp-4', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.ROAD_CUT, address: 'Garudacharpalya Service Lane', lat: 12.9830, lng: 77.7050, daysAgoClaimed: 8, hoursToVerify: 28, lifespanDays: 125, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-mdp-5', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Seetharampalya Underpass', lat: 12.9810, lng: 77.7020, daysAgoClaimed: 16, hoursToVerify: 18, status: Status.DISPUTED, verifier: citizenC },
+    { id: 'seed-claim-mdp-6', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Mahadevapura Ring Road Crossing', lat: 12.9870, lng: 77.7080, daysAgoClaimed: 9, hoursToVerify: 20, status: Status.DISPUTED, verifier: citizenC },
+    { id: 'seed-claim-mdp-7', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.DRAINAGE, address: 'Channasandra Main Road', lat: 12.9950, lng: 77.7250, daysAgoClaimed: 2, status: Status.CLAIMED_FIXED, verifier: citizenB },
+
+    // Marathahalli (Demo) — Apex Urban Build (Demo)
+    { id: 'seed-claim-mrh-1', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.POTHOLES, address: 'Marathahalli Bridge Eastbound', lat: 12.9560, lng: 77.6980, daysAgoClaimed: 21, hoursToVerify: 16, lifespanDays: 240, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-mrh-2', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.DRAINAGE, address: 'Varthur Road Cross', lat: 12.9540, lng: 77.7020, daysAgoClaimed: 17, hoursToVerify: 18, lifespanDays: 260, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-mrh-3', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.POTHOLES, address: 'HAL Airport Road Junction', lat: 12.9580, lng: 77.6950, daysAgoClaimed: 13, hoursToVerify: 15, lifespanDays: 280, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-mrh-4', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.ROAD_CUT, address: 'Kalamandir Service Road', lat: 12.9520, lng: 77.6990, daysAgoClaimed: 9, hoursToVerify: 20, lifespanDays: 250, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-mrh-5', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.POTHOLES, address: 'Munnekollal Main Road', lat: 12.9500, lng: 77.7050, daysAgoClaimed: 5, hoursToVerify: 19, lifespanDays: 300, status: Status.VERIFIED_FIXED, verifier: citizenB },
+    { id: 'seed-claim-mrh-6', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.DRAINAGE, address: 'Spice Garden Junction', lat: 12.9480, lng: 77.7080, daysAgoClaimed: 1, status: Status.CLAIMED_FIXED, verifier: citizenB },
+  ];
+
+  for (const c of demoClaims) {
+    const claimedDate = new Date(now.getTime() - c.daysAgoClaimed * dayMs);
+    const verifyDate = c.hoursToVerify ? new Date(claimedDate.getTime() + c.hoursToVerify * 3600 * 1000) : undefined;
+
+    // 1. Issue
+    await prisma.issue.upsert({
+      where: { id: c.id },
+      update: {
+        category: c.category,
+        status: c.status,
+        address: c.address,
+        lat: c.lat,
+        lng: c.lng,
+        wardId: c.wardId,
+        contractorName: c.contractorName,
+        tenderId: `DEMO-TENDER-${c.wardId.toUpperCase()}`,
+        lifespanDays: c.lifespanDays,
+        repairClaimedAt: claimedDate,
+        warrantyUntil: new Date(claimedDate.getTime() + 365 * dayMs),
+        priority: 50,
+        band: Band.MEDIUM,
+        agencyId: agencyMap['GBA'],
+        isSeed: true,
+        slaDueAt: new Date(claimedDate.getTime() + 48 * 3600 * 1000),
+      },
+      create: {
+        id: c.id,
+        category: c.category,
+        status: c.status,
+        address: c.address,
+        lat: c.lat,
+        lng: c.lng,
+        wardId: c.wardId,
+        contractorName: c.contractorName,
+        tenderId: `DEMO-TENDER-${c.wardId.toUpperCase()}`,
+        lifespanDays: c.lifespanDays,
+        repairClaimedAt: claimedDate,
+        warrantyUntil: new Date(claimedDate.getTime() + 365 * dayMs),
+        priority: 50,
+        band: Band.MEDIUM,
+        agencyId: agencyMap['GBA'],
+        isSeed: true,
+        slaDueAt: new Date(claimedDate.getTime() + 48 * 3600 * 1000),
+      },
+    });
+
+    // 2. ActionLog: CLAIM_FIX (created if not exists)
+    const claimLogId = `seed-act-claim-${c.id}`;
+    const existingClaimLog = await prisma.actionLog.findUnique({ where: { id: claimLogId } });
+    if (!existingClaimLog) {
+      await prisma.actionLog.create({
+        data: {
+          id: claimLogId,
+          issueId: c.id,
+          action: 'CLAIM_FIX',
+          actorId: deskA.id,
+          fromStatus: Status.OPEN,
+          toStatus: Status.CLAIMED_FIXED,
+          note: `Contractor repair completed: ${c.contractorName}`,
+          createdAt: claimedDate,
+        },
+      });
+    }
+
+    // 3. If verified or disputed, create Verification, ActionLog, AuditTask, and AuditVote
+    if (verifyDate && (c.status === Status.VERIFIED_FIXED || c.status === Status.DISPUTED || c.status === Status.REOPENED_IN_WARRANTY)) {
+      const isFixed = c.status === Status.VERIFIED_FIXED;
+      const verdict = isFixed ? 'FIXED' : 'NOT_FIXED';
+      const auditAction = isFixed ? 'VERIFY_FIX' : 'DISPUTE_FIX';
+
+      // Verification
+      const verifId = `seed-verif-${c.id}`;
+      const existingVerif = await prisma.verification.findUnique({ where: { id: verifId } });
+      if (!existingVerif) {
+        await prisma.verification.create({
+          data: {
+            id: verifId,
+            issueId: c.id,
+            verifierId: c.verifier.id,
+            reportId: `seed-rep-${c.id}`,
+            verdict,
+            weight: 1.0,
+            createdAt: verifyDate,
+          },
+        });
+      }
+
+      // ActionLog: VERIFY_FIX or DISPUTE_FIX
+      const auditActLogId = `seed-act-${auditAction.toLowerCase()}-${c.id}`;
+      const existingAuditActLog = await prisma.actionLog.findUnique({ where: { id: auditActLogId } });
+      if (!existingAuditActLog) {
+        await prisma.actionLog.create({
+          data: {
+            id: auditActLogId,
+            issueId: c.id,
+            action: auditAction as any,
+            actorId: deskA.id,
+            fromStatus: Status.CLAIMED_FIXED,
+            toStatus: c.status,
+            note: isFixed ? 'Citizen blind audit accepted fix.' : 'Citizen blind audit disputed repair quality.',
+            createdAt: verifyDate,
+          },
+        });
+      }
+
+      // AuditTask
+      const taskId = `seed-task-${c.id}`;
+      await prisma.auditTask.upsert({
+        where: { id: taskId },
+        update: {
+          issueId: c.id,
+          assigneeId: c.verifier.id,
+          kind: AuditKind.CLAIM_CHECK,
+          status: AuditTaskStatus.DONE,
+          completedAt: verifyDate,
+          isSeed: true,
+        },
+        create: {
+          id: taskId,
+          issueId: c.id,
+          assigneeId: c.verifier.id,
+          kind: AuditKind.CLAIM_CHECK,
+          dueAt: new Date(claimedDate.getTime() + 48 * 3600 * 1000),
+          challengeBearingDeg: 90,
+          challengeNonce: `nonce-${c.id}`,
+          status: AuditTaskStatus.DONE,
+          completedAt: verifyDate,
+          isSeed: true,
+        },
+      });
+
+      // AuditVote
+      const voteId = `seed-vote-${c.id}`;
+      await prisma.auditVote.upsert({
+        where: { taskId_userId: { taskId, userId: c.verifier.id } },
+        update: {
+          observed: isFixed ? AuditObserved.INTACT : AuditObserved.DAMAGED,
+          weight: 1.0,
+          createdAt: verifyDate,
+        },
+        create: {
+          id: voteId,
+          taskId,
+          userId: c.verifier.id,
+          observed: isFixed ? AuditObserved.INTACT : AuditObserved.DAMAGED,
+          weight: 1.0,
+          createdAt: verifyDate,
+        },
+      });
+    }
+  }
+
   console.log('[Seed Demo] Demo environment seeded successfully!');
 }
 

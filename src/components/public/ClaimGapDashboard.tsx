@@ -163,7 +163,14 @@ export function ClaimGapDashboard({
                   className={`p-4 rounded-xl border ${border} space-y-2`}
                 >
                   <div className="flex items-center justify-between text-xs font-mono">
-                    <span className="font-bold text-white">{ward.name}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-white">{ward.name}</span>
+                      {(ward.name.toLowerCase().includes('demo') || ward.code?.toLowerCase().includes('demo') || ward.code === 'PILOT-ORR' || ward.id?.startsWith('seed-')) && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                          demo data
+                        </span>
+                      )}
+                    </div>
                     <span className="text-white/40">{ward.code}</span>
                   </div>
                   <div className="flex items-center justify-between pt-1">
@@ -214,7 +221,14 @@ export function ClaimGapDashboard({
                         <Users className="w-4 h-4 text-cyan-400 shrink-0" />
                       )}
                       <div>
-                        <div>{item.name}</div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{item.name}</span>
+                          {(item.name.toLowerCase().includes('demo') || item.code?.toLowerCase().includes('demo') || item.code === 'PILOT-ORR' || item.id?.startsWith('seed-')) && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                              demo data
+                            </span>
+                          )}
+                        </div>
                         {item.code && (
                           <div className="text-[10px] text-white/40 font-normal">{item.code}</div>
                         )}

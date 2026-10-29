@@ -67,10 +67,17 @@ export function DeskMetricsBar({
         {wardLifespans.length === 0 ? (
           <div className="text-xs font-mono text-white/40 pt-1">No ward samples</div>
         ) : (
-          <div className="space-y-1 pt-1 max-h-16 overflow-y-auto">
-            {wardLifespans.slice(0, 2).map((w) => (
-              <div key={w.name} className="flex justify-between text-xs font-mono">
-                <span className="text-white/70 truncate max-w-[120px]">{w.name}</span>
+          <div className="space-y-1 pt-1 max-h-20 overflow-y-auto">
+            {wardLifespans.slice(0, 3).map((w) => (
+              <div key={w.name} className="flex justify-between items-center text-xs font-mono">
+                <div className="flex items-center gap-1 truncate max-w-[150px]">
+                  <span className="text-white/70 truncate">{w.name}</span>
+                  {(w.name.toLowerCase().includes('demo') || w.name.includes('Pilot Area')) && (
+                    <span className="px-1 py-0.5 rounded text-[8px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20 shrink-0">
+                      demo
+                    </span>
+                  )}
+                </div>
                 <span className="font-bold text-cyan-300">{w.medianDays}d</span>
               </div>
             ))}
@@ -89,10 +96,17 @@ export function DeskMetricsBar({
         {contractorLifespans.length === 0 ? (
           <div className="text-xs font-mono text-white/40 pt-1">No contractor data</div>
         ) : (
-          <div className="space-y-1 pt-1 max-h-16 overflow-y-auto">
-            {contractorLifespans.slice(0, 2).map((c) => (
-              <div key={c.name} className="flex justify-between text-xs font-mono">
-                <span className="text-white/70 truncate max-w-[120px]">{c.name}</span>
+          <div className="space-y-1 pt-1 max-h-20 overflow-y-auto">
+            {contractorLifespans.slice(0, 3).map((c) => (
+              <div key={c.name} className="flex justify-between items-center text-xs font-mono">
+                <div className="flex items-center gap-1 truncate max-w-[150px]">
+                  <span className="text-white/70 truncate">{c.name}</span>
+                  {(c.name.toLowerCase().includes('demo') || c.name.includes('Cauvery')) && (
+                    <span className="px-1 py-0.5 rounded text-[8px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/20 shrink-0">
+                      demo
+                    </span>
+                  )}
+                </div>
                 <span className="font-bold text-amber-300">{c.medianDays}d</span>
               </div>
             ))}

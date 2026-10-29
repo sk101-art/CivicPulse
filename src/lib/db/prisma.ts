@@ -15,9 +15,12 @@ const isTestEnv =
 
 if (isTestEnv) {
   const testUrl = process.env.DATABASE_URL_TEST;
-  const prodUrl = process.env.PROD_DATABASE_URL;
+  const prodUrl = process.env.PROD_DATABASE_URL || process.env.APP_DATABASE_URL;
   if (!testUrl) {
     throw new Error('DATABASE_URL_TEST must be defined in test environment');
+  }
+  if (!testUrl.includes('schema=test')) {
+    throw new Error('DATABASE_URL_TEST must explicitly target schema=test');
   }
   if (prodUrl && testUrl === prodUrl) {
     throw new Error(

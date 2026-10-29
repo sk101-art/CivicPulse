@@ -8,6 +8,30 @@ Current task: T71 · Production Deploy Preparation (Awaiting User Execution)
 
 ## Done
 
+### Production Database Sanitization & Realistic Claim-Gap Demo Seeding · 2026-10-29
+- **Goal:** Execute production data cleanup: delete 1,135 synthetic non-seed issues (preserving 6 phone/real citizen reports), delete test accounts (@test.local) and offensive accounts, rename test user sujayk7139@gmail.com, verify schema isolation, seed realistic multi-ward claim-gap demo data with completed blind audits, and label demo data in UI.
+- **Implemented Work:**
+  1. Database Cleanup & User Sanitization:
+     - Deleted 1,135 synthetic non-seed issues with cascading child records (reports, action logs, verifications, traffic samples).
+     - Preserved 6 phone-reported issues (4 by sujaykrishna111@gmail.com, 2 by demo citizen).
+     - Deleted user negro@gmail.com, its CitizenProfile, and 34 PointLogs.
+     - Deleted all 6 @test.local test accounts and their point logs / profiles.
+     - Renamed sujayk7139@gmail.com display name to "Sujay K (test)".
+     - Cleaned offensive contractorName on issue cmvtaiq4v000807jnex2c1sg5.
+  2. Database Isolation Verification:
+     - Updated src/lib/db/prisma.ts to enforce DATABASE_URL_TEST explicitly contains schema=test.
+     - Confirmed post-test runs write strictly to test schema; public schema contains 0 test accounts and 0 test issues.
+  3. Realistic Claim-Gap & Lifespan Scorecards Seeding:
+     - Added 3 demo wards to scripts/seed-demo.ts: Bellandur (Demo) (WARD-150), Mahadevapura (Demo) (WARD-85), Marathahalli (Demo) (WARD-84).
+     - Seeded 19 realistic claims across the 3 wards with completed blind audits, ActionLogs (CLAIM_FIX, VERIFY_FIX, DISPUTE_FIX), citizen verifications, audit votes, and lifespans:
+       - Bellandur: 6 claims (4 verified, 2 disputed / 33.3% dispute rate, median 29h verify time, 140d median lifespan, 1 REOPENED_IN_WARRANTY defect).
+       - Mahadevapura: 7 claims (4 verified, 2 disputed, 1 pending / 28.6% dispute rate, median 23h verify time, 107d median lifespan).
+       - Marathahalli: 6 claims (5 verified, 0 disputed, 1 pending / 0.0% dispute rate, median 18h verify time, 260d median lifespan).
+     - Applied demo data tags in ClaimGapDashboard.tsx and DeskMetricsBar.tsx.
+  4. Verification:
+     - 57/57 Vitest test suites green (332/332 tests passed).
+     - Next.js production build green (all 47 routes compiled).
+
 ### Post-Epic Operations & Follow-Ups Gate · 2026-10-29
 - **Goal:** Complete operational follow-ups for Epic Upgrade (ac0df84): schedule new jobs in GitHub Actions, deploy & verify database migrations on production, diagnose test skips and verify full suite, audit non-seed test leftover rows in production database, and correct AI model references in documentation.
 - **Implemented Work:**
