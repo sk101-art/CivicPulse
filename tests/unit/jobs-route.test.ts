@@ -12,7 +12,7 @@ vi.mock("@/lib/env", async (importOriginal) => {
 });
 
 import { POST as jobPOST } from "@/app/api/jobs/[name]/route";
-import { runJob, JOB_NAMES } from "@/lib/jobs/runner";
+import { runJob, JOB_NAMES, JOB_HARD_TIMEOUT_MS } from "@/lib/jobs/runner";
 
 function call(name: string, secret?: string) {
   return jobPOST(
@@ -53,5 +53,17 @@ describe("Scheduled job endpoint (/api/jobs/[name])", () => {
     const result = await runJob("ai-queue");
     expect(result.processed).toBe(0);
     expect(result.skipped).toMatch(/No LLM key/);
+  });
+
+  it("enforces a 50s hard timeout guard to prevent Vercel 60s gateway timeouts", async () => {
+    expect(JOB_HARD_TIMEOUT_MS).toBe(50_000);
+
+    const { prisma } = await import("@/lib/db/prisma");
+    vi.spyOn(prisma.issue, "findMany").mockImplementationOnce(
+      (() => new Promise((resolve) => setTimeout(() => resolve([]), 50))) as any
+    );
+
+    // Call runJob with a simulated short timeout (10ms) while task takes 50ms
+    await expect(runJob("sla-check", 10)).rejects.toThrow(/exceeded 50s hard timeout guard/);
   });
 });

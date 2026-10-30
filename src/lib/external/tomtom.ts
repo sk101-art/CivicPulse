@@ -497,22 +497,25 @@ export async function calculateTomTomRoute(
   );
 
   let response: Response;
-  const fetchOptions: RequestInit = hasAvoidAreas
-    ? {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          avoidAreas: {
-            rectangles: options.avoidAreas,
-          },
+  const getFetchOptions = (): RequestInit => ({
+    ...(hasAvoidAreas
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            avoidAreas: {
+              rectangles: options.avoidAreas,
+            },
+          }),
+        }
+      : {
+          method: "GET",
         }),
-      }
-    : {
-        method: "GET",
-      };
+    signal: AbortSignal.timeout(6000),
+  });
 
   try {
-    response = await fetch(url, fetchOptions);
+    response = await fetch(url, getFetchOptions());
   } catch (err) {
     throw new Error(
       `Failed to reach TomTom Routing API: ${err instanceof Error ? err.message : String(err)}`
@@ -523,7 +526,7 @@ export async function calculateTomTomRoute(
   if (!response.ok && travelModeParam === "motorcycle") {
     queryParams.set("travelMode", "car");
     const retryUrl = `https://api.tomtom.com/routing/1/calculateRoute/${locationsParam}/json?${queryParams.toString()}`;
-    const retryRes = await fetch(retryUrl, fetchOptions);
+    const retryRes = await fetch(retryUrl, getFetchOptions());
     if (retryRes.ok) {
       const data = await retryRes.json();
       const routes = parseTomTomRouteResponse(data, "car");
@@ -620,7 +623,7 @@ export async function getFlowSegment(
   try {
     const apiKey = env.TOMTOM_API_KEY!;
     const url = `https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json?key=${encodeURIComponent(apiKey)}&point=${lat},${lng}&unit=KMPH`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) {
       return null;
     }
@@ -725,7 +728,7 @@ export async function getTomTomTrafficIncidents(
       apiKey
     )}&bbox=${minLon},${minLat},${maxLon},${maxLat}&language=en-GB`;
 
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
     if (!res.ok) {
       return { incidents: [], hasNearbyIncident: false, cached: false };
     }

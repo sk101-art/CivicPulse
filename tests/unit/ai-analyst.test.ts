@@ -16,6 +16,7 @@ import {
 } from "@/lib/ai/analyst";
 import { prisma } from "@/lib/db/prisma";
 import * as tomtomModule from "@/lib/external/tomtom";
+import * as overpassModule from "@/lib/external/overpass";
 import * as runAiModule from "@/lib/ai/run";
 import { getRulesFallback } from "@/lib/ai/providers/rules";
 
@@ -54,6 +55,32 @@ describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () =>
       expect(result.summary).toContain("75");
       expect(result.summary).toContain("80");
       expect(result.summary).toContain("40");
+    });
+
+    it("does not call Overpass live during assessment to protect against network timeouts", async () => {
+      const overpassSpy = vi.spyOn(overpassModule, "getSurroundingsAndRoadInfo");
+      vi.spyOn(prisma.issue, "findUnique").mockResolvedValue({
+        id: "issue-test-no-overpass",
+        category: "POTHOLES",
+        priority: 75,
+        lat: 12.95,
+        lng: 77.70,
+        address: "ORR Road",
+        sizeClass: "MEDIUM",
+        lanePosition: "CURB",
+        deteriorationScore: 80,
+        expectedDaysToWorsen: 14,
+        contractorName: "cauvery",
+        segment: { roadClass: "primary", busesPerHour: 40, name: "ORR" },
+        trafficProfiles: [{ delayRatio: 0.35, hour: 9, dayType: "WEEKDAY" }],
+        reports: [],
+      } as any);
+
+      vi.spyOn(tomtomModule, "getFlowSegment").mockResolvedValue(null as any);
+      vi.spyOn(prisma.aiRun, "findFirst").mockResolvedValue(null as any);
+
+      await assessIssue("issue-test-no-overpass", { skipCache: true }).catch(() => {});
+      expect(overpassSpy).not.toHaveBeenCalled();
     });
   });
 

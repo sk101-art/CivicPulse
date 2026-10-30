@@ -15,6 +15,8 @@ import { sanitizeErrorMessage } from "@/lib/api/errors";
 
 /** Each run must finish well inside a serverless function's time limit. */
 const TIME_BUDGET_MS = 40_000;
+/** Hard job timeout to prevent serverless function killing with HTTP 504 (Vercel 60s limit). */
+export const JOB_HARD_TIMEOUT_MS = 50_000;
 
 /** Pilot corridor centre (ORR, Marathahalli–Kadubeesanahalli); used as the default weather point. */
 const PILOT_WEATHER_POINT = { key: "pilot", lat: 12.9575, lng: 77.7011 };
@@ -191,51 +193,70 @@ async function runPriorityRecompute(startedAt: number): Promise<Omit<JobResult, 
   return { processed, failed };
 }
 
-export async function runJob(name: JobName): Promise<JobResult> {
+export async function runJob(
+  name: JobName,
+  hardTimeoutMs: number = JOB_HARD_TIMEOUT_MS
+): Promise<JobResult> {
   const startedAt = Date.now();
-  let result: Omit<JobResult, "job" | "durationMs">;
+  let timer: NodeJS.Timeout | undefined;
 
-  switch (name) {
-    case "sla-check":
-      result = await runSlaCheck(startedAt);
-      break;
-    case "ai-queue":
-      result = await runAiQueue(startedAt);
-      break;
-    case "weather":
-      result = await runWeather(startedAt);
-      break;
-    case "priority-recompute":
-      result = await runPriorityRecompute(startedAt);
-      break;
-    case "traffic-sample":
-      result = await runTrafficSample(startedAt, TIME_BUDGET_MS);
-      break;
-    case "durability":
-      result = await runDurability(startedAt, TIME_BUDGET_MS);
-      break;
-    case "traffic-profile":
-      result = await runTrafficProfileJob(startedAt, TIME_BUDGET_MS);
-      break;
-    case "insights": {
-      const insightsResult = await runDailyInsightsJob();
-      result = { processed: insightsResult.assessedIssuesCount, failed: 0 };
-      break;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Job '${name}' exceeded 50s hard timeout guard`));
+    }, hardTimeoutMs);
+  });
+
+  const jobPromise = (async (): Promise<JobResult> => {
+    let result: Omit<JobResult, "job" | "durationMs">;
+
+    switch (name) {
+      case "sla-check":
+        result = await runSlaCheck(startedAt);
+        break;
+      case "ai-queue":
+        result = await runAiQueue(startedAt);
+        break;
+      case "weather":
+        result = await runWeather(startedAt);
+        break;
+      case "priority-recompute":
+        result = await runPriorityRecompute(startedAt);
+        break;
+      case "traffic-sample":
+        result = await runTrafficSample(startedAt, TIME_BUDGET_MS);
+        break;
+      case "durability":
+        result = await runDurability(startedAt, TIME_BUDGET_MS);
+        break;
+      case "traffic-profile":
+        result = await runTrafficProfileJob(startedAt, TIME_BUDGET_MS);
+        break;
+      case "insights": {
+        const insightsResult = await runDailyInsightsJob();
+        result = { processed: insightsResult.assessedIssuesCount, failed: 0 };
+        break;
+      }
+      case "ai-assess": {
+        const assessResult = await runAiAssessJob(startedAt, TIME_BUDGET_MS);
+        result = {
+          processed: assessResult.processed,
+          skipped: assessResult.skipped,
+          remaining: assessResult.remaining,
+          failed: assessResult.failed,
+          firstError: assessResult.firstError,
+        };
+        break;
+      }
+      default:
+        throw new Error(`Unknown job: ${String(name)}`);
     }
-    case "ai-assess": {
-      const assessResult = await runAiAssessJob(startedAt, TIME_BUDGET_MS);
-      result = {
-        processed: assessResult.processed,
-        skipped: assessResult.skipped,
-        remaining: assessResult.remaining,
-        failed: assessResult.failed,
-        firstError: assessResult.firstError,
-      };
-      break;
-    }
-    default:
-      throw new Error(`Unknown job: ${String(name)}`);
+
+    return { job: name, ...result, durationMs: Date.now() - startedAt };
+  })();
+
+  try {
+    return await Promise.race([jobPromise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
-
-  return { job: name, ...result, durationMs: Date.now() - startedAt };
 }

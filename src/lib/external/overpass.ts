@@ -244,16 +244,12 @@ export async function getSurroundingsAndRoadInfo(
       out center tags;
     `;
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 10000);
-
     const res = await fetch("https://overpass-api.de/api/interpreter", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: `data=${encodeURIComponent(query)}`,
-      signal: controller.signal,
+      signal: AbortSignal.timeout(6000),
     });
-    clearTimeout(timer);
 
     if (res.ok) {
       const data = await res.json();

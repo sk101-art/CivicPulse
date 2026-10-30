@@ -74,7 +74,7 @@ export async function fetchOpenMeteoForecast(
   days: number = 3
 ): Promise<HourlyWeatherRecord[]> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=precipitation,precipitation_probability,temperature_2m&forecast_days=${days}&timezone=Asia%2FKolkata`;
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(6000) });
   if (!res.ok) {
     throw new Error(`Open-Meteo forecast API returned status HTTP ${res.status}`);
   }
