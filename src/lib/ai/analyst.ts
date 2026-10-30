@@ -213,8 +213,8 @@ export async function assessIssueWithMeta(
   ];
 
   // Check cache hit before consuming quota or calling LLM
+  const inputHash = computeInputHash("G-ASSESS", "v1.2", inputPayload);
   if (!options?.skipCache) {
-    const inputHash = computeInputHash("G-ASSESS", "v1.2", inputPayload);
     const cachedRun = await prisma.aiRun.findFirst({
       where: {
         feature: "G-ASSESS",
@@ -232,6 +232,18 @@ export async function assessIssueWithMeta(
           (cachedRun.model.split(":")[0] as any) || "gemini",
           cachedRun.model
         );
+
+        // Update aiAssessedAt and aiInputHash on Issue for fast, persistent selection
+        await prisma.issue
+          .update({
+            where: { id: issue.id },
+            data: {
+              aiAssessedAt: cachedRun.createdAt,
+              aiInputHash: inputHash,
+            },
+          })
+          .catch(() => {});
+
         return {
           output: { ...parsed.data, engine },
           cached: true,
@@ -268,6 +280,17 @@ Recommend a priority adjustment (-10 to +10), summarize risks, and suggest actio
     factsForGrounding,
     skipCache: options?.skipCache,
   });
+
+  // Persist aiAssessedAt and aiInputHash on Issue when assessment is performed
+  await prisma.issue
+    .update({
+      where: { id: issue.id },
+      data: {
+        aiAssessedAt: new Date(),
+        aiInputHash: inputHash,
+      },
+    })
+    .catch(() => {});
 
   const engine = formatAiEngineName(aiResult.provider, aiResult.model);
   return {
@@ -595,9 +618,11 @@ export const JOB_TIME_BUDGET_MS = 40_000;
 
 export async function runAiAssessJob(
   startedAt: number = Date.now(),
-  timeBudgetMs: number = JOB_TIME_BUDGET_MS
+  timeBudgetMs: number = JOB_TIME_BUDGET_MS,
+  throttleMs: number = 1000
 ): Promise<AiAssessJobResult> {
   // Candidate issues that desk officers need assessment for
+  // Order: issues with no assessment first (aiAssessedAt is null), then oldest aiAssessedAt, tie-break by priority desc
   const openIssues = await prisma.issue.findMany({
     where: {
       status: {
@@ -613,8 +638,13 @@ export async function runAiAssessJob(
     select: {
       id: true,
       priority: true,
+      aiAssessedAt: true,
+      aiInputHash: true,
     },
-    orderBy: { priority: "desc" },
+    orderBy: [
+      { aiAssessedAt: { sort: "asc", nulls: "first" } },
+      { priority: "desc" },
+    ],
     take: 100,
   });
 
@@ -622,114 +652,35 @@ export async function runAiAssessJob(
     return { processed: 0, skipped: 0, remaining: 0 };
   }
 
-  // Find latest valid non-rules assessment timestamp for each issue
-  const issueIds = openIssues.map((i) => i.id);
-  const latestRuns = await prisma.aiRun.findMany({
-    where: {
-      feature: "G-ASSESS",
-      valid: true,
-      NOT: { model: { startsWith: "rules" } },
-    },
-    select: {
-      inputHash: true,
-      createdAt: true,
-      output: true,
-    },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
-
-  // Map issueId -> latest assessment time from cached output
-  const assessmentTimeMap = new Map<string, number>();
-  for (const run of latestRuns) {
-    if (run.output && typeof run.output === "object") {
-      const summary = (run.output as any).summary;
-      // Also match by checking which issue has this run's inputHash
-      // We can sort issues: oldest assessed (or unassessed = 0) first, tie-break by priority desc
-    }
-  }
-
-  // To precisely sort "oldest assessment first", find latest assessment date per issueId
-  // The inputPayload contains issueId. Let's map issues by their last assessed date:
-  // Issues with no assessment get timestamp 0 (evaluated first).
-  // Issues with older assessments get picked up next.
-  const allAssessments = await prisma.aiRun.findMany({
-    where: {
-      feature: "G-ASSESS",
-      valid: true,
-      NOT: { model: { startsWith: "rules" } },
-    },
-    select: {
-      createdAt: true,
-      output: true,
-    },
-    orderBy: { createdAt: "desc" },
-    take: 300,
-  });
-
-  const lastAssessedAtByIssueId = new Map<string, number>();
-  for (const r of allAssessments) {
-    const rawOut = r.output as any;
-    // We can inspect output or inputHash
-    if (rawOut && typeof rawOut === "object") {
-      for (const iss of openIssues) {
-        if (!lastAssessedAtByIssueId.has(iss.id)) {
-          // If the output mentions this issue or matches
-          if (JSON.stringify(rawOut).includes(iss.id)) {
-            lastAssessedAtByIssueId.set(iss.id, r.createdAt.getTime());
-          }
-        }
-      }
-    }
-  }
-
-  // Sort candidate issues: unassessed (0) or oldest assessment first, then highest priority
-  const prioritizedCandidates = [...openIssues].sort((a, b) => {
-    const timeA = lastAssessedAtByIssueId.get(a.id) ?? 0;
-    const timeB = lastAssessedAtByIssueId.get(b.id) ?? 0;
-    if (timeA !== timeB) {
-      return timeA - timeB; // Oldest first
-    }
-    return b.priority - a.priority;
-  });
-
-  // Pick at most MAX_AI_ASSESS_PER_RUN (8) issues for this run
-  const batch = prioritizedCandidates.slice(0, MAX_AI_ASSESS_PER_RUN);
-  const remainingCount = prioritizedCandidates.length - batch.length;
-
   let processed = 0;
   let skipped = 0;
   let failed = 0;
   let firstError: string | undefined;
 
-  for (let idx = 0; idx < batch.length; idx++) {
-    const issue = batch[idx];
-
-    // Require at least 22 s of the 40 s job budget left before starting each issue
+  let issueIdx = 0;
+  while (issueIdx < openIssues.length && processed < MAX_AI_ASSESS_PER_RUN) {
     const elapsedMs = Date.now() - startedAt;
     const remainingBudgetMs = timeBudgetMs - elapsedMs;
+
+    // Before starting each issue, require at least 22 s of the 40 s job budget left
     if (remainingBudgetMs < MIN_BUDGET_REMAINING_MS) {
-      // Stop and return what's done; uncompleted items in batch remain
-      const uncompletedInBatch = batch.length - idx;
-      return {
-        processed,
-        skipped,
-        remaining: remainingCount + uncompletedInBatch,
-        failed: failed > 0 ? failed : undefined,
-        firstError,
-      };
+      break;
     }
+
+    const issue = openIssues[issueIdx];
+    issueIdx++;
 
     try {
       const result = await assessIssueWithMeta(issue.id);
       if (result.cached) {
         skipped++;
+        // Don't count cache hits against the 8-issue batch (keep going until 8 real LLM calls or budget used)
       } else {
         processed++;
-        // Throttle between live LLM calls if budget permits
+        // Throttle slightly between live LLM calls if budget permits
         const budgetAfter = timeBudgetMs - (Date.now() - startedAt);
-        if (budgetAfter >= MIN_BUDGET_REMAINING_MS + 1000) {
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+        if (throttleMs > 0 && budgetAfter >= MIN_BUDGET_REMAINING_MS + throttleMs) {
+          await new Promise((resolve) => setTimeout(resolve, throttleMs));
         }
       }
     } catch (err: unknown) {
@@ -740,10 +691,12 @@ export async function runAiAssessJob(
     }
   }
 
+  const remaining = Math.max(0, openIssues.length - issueIdx);
+
   return {
     processed,
     skipped,
-    remaining: remainingCount,
+    remaining,
     failed: failed > 0 ? failed : undefined,
     firstError,
   };

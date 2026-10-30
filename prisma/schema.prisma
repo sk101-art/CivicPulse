@@ -209,6 +209,8 @@ model Issue {
   expectedDaysToWorsen Int?
   isHotspot            Boolean                             @default(false)
   deteriorationDrivers Json?
+  aiAssessedAt         DateTime?
+  aiInputHash          String?
   createdAt            DateTime                            @default(now())
   updatedAt            DateTime                            @updatedAt
   reports              Report[]

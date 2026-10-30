@@ -15,6 +15,8 @@ import {
   runAiAssessJob,
 } from "@/lib/ai/analyst";
 import { prisma } from "@/lib/db/prisma";
+import * as tomtomModule from "@/lib/external/tomtom";
+import * as runAiModule from "@/lib/ai/run";
 import { getRulesFallback } from "@/lib/ai/providers/rules";
 
 describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () => {
@@ -164,13 +166,12 @@ describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () =>
     it("stops immediately and returns remaining count when job budget is below 22s", async () => {
       // Mock open issues
       const mockIssues = [
-        { id: "iss-1", priority: 90 },
-        { id: "iss-2", priority: 80 },
-        { id: "iss-3", priority: 70 },
+        { id: "iss-1", priority: 90, aiAssessedAt: null, aiInputHash: null },
+        { id: "iss-2", priority: 80, aiAssessedAt: null, aiInputHash: null },
+        { id: "iss-3", priority: 70, aiAssessedAt: null, aiInputHash: null },
       ];
 
       vi.spyOn(prisma.issue, "findMany").mockResolvedValue(mockIssues as any);
-      vi.spyOn(prisma.aiRun, "findMany").mockResolvedValue([]);
 
       // Start time was 25s ago (40s - 25s = 15s remaining, which is < 22s)
       const startedAt = Date.now() - 25_000;
@@ -179,6 +180,124 @@ describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () =>
       expect(result.processed).toBe(0);
       expect(result.skipped).toBe(0);
       expect(result.remaining).toBe(3);
+    });
+
+    it("assesses different issues on two consecutive runs and prioritizes unassessed first", async () => {
+      // Simulate 16 open issues
+      const issuesDb: Array<{
+        id: string;
+        priority: number;
+        aiAssessedAt: Date | null;
+        aiInputHash: string | null;
+      }> = Array.from({ length: 16 }, (_, i) => ({
+        id: `iss-${i + 1}`,
+        priority: 100 - i,
+        aiAssessedAt: null,
+        aiInputHash: null,
+      }));
+
+      // Mock prisma.issue.findMany:
+      // 1) When called with orderBy (in runAiAssessJob)
+      // 2) When called with where: { id: issueId } (in assessIssueWithMeta)
+      vi.spyOn(prisma.issue, "findMany").mockImplementation((async () => {
+        return [...issuesDb].sort((a, b) => {
+          if (a.aiAssessedAt === null && b.aiAssessedAt !== null) return -1;
+          if (a.aiAssessedAt !== null && b.aiAssessedAt === null) return 1;
+          if (a.aiAssessedAt && b.aiAssessedAt) {
+            const diff = a.aiAssessedAt.getTime() - b.aiAssessedAt.getTime();
+            if (diff !== 0) return diff;
+          }
+          return b.priority - a.priority;
+        });
+      }) as any);
+
+      vi.spyOn(prisma.issue, "findUnique").mockImplementation((async (args: any) => {
+        const id = args.where.id;
+        const found = issuesDb.find((i) => i.id === id);
+        if (!found) return null;
+        return {
+          id: found.id,
+          category: "POTHOLES",
+          priority: found.priority,
+          lat: 12.95,
+          lng: 77.70,
+          address: "ORR Road",
+          sizeClass: "MEDIUM",
+          lanePosition: "CURB",
+          deteriorationRisk: "MED",
+          deteriorationScore: 50,
+          expectedDaysToWorsen: 14,
+          contractorName: "cauvery",
+          segment: { roadClass: "primary", busesPerHour: 30, name: "ORR" },
+          trafficProfiles: [{ delayRatio: 0.35, hour: 9, dayType: "WEEKDAY" }],
+          reports: [],
+        };
+      }) as any);
+
+      // Mock TomTom getFlowSegment so tests do not make real network requests
+      vi.spyOn(tomtomModule, "getFlowSegment").mockResolvedValue(null as any);
+
+      // Mock runAi so it returns immediately without network / LLM calls
+      vi.spyOn(runAiModule, "runAi").mockResolvedValue({
+        data: {
+          summary: "POTHOLES detected on ORR Road",
+          priorityAdjustmentRecommended: 2,
+          reasoning: "High traffic",
+          keyRisks: ["Pavement damage"],
+          suggestedAction: "Patch immediately",
+        },
+        provider: "rules",
+        model: "rules-fallback",
+        valid: true,
+        cached: false,
+      });
+
+      // Mock quota increment to always allow in unit test
+      const analystModule = await import("@/lib/ai/analyst");
+      vi.spyOn(analystModule, "tryIncrementAnalystQuota").mockResolvedValue(true);
+
+      // No cached AiRun initially
+      vi.spyOn(prisma.aiRun, "findFirst").mockResolvedValue(null as any);
+      vi.spyOn(prisma.aiRun, "create").mockResolvedValue({} as any);
+
+      // Track which issues are updated with aiAssessedAt
+      const run1AssessedIds: string[] = [];
+      const run2AssessedIds: string[] = [];
+      let isRun1 = true;
+
+      vi.spyOn(prisma.issue, "update").mockImplementation((async (args: any) => {
+        const issue = issuesDb.find((i) => i.id === args.where.id);
+        if (issue) {
+          issue.aiAssessedAt = args.data.aiAssessedAt || new Date();
+          issue.aiInputHash = args.data.aiInputHash || "hash";
+        }
+        if (isRun1) {
+          run1AssessedIds.push(args.where.id);
+        } else {
+          run2AssessedIds.push(args.where.id);
+        }
+        return issue;
+      }) as any);
+
+      // Run 1: Should assess first 8 issues (iss-1 to iss-8)
+      isRun1 = true;
+      const res1 = await runAiAssessJob(Date.now(), 40_000, 0);
+      expect(res1.processed).toBe(8);
+      expect(run1AssessedIds).toEqual([
+        "iss-1", "iss-2", "iss-3", "iss-4", "iss-5", "iss-6", "iss-7", "iss-8"
+      ]);
+
+      // Run 2: Should pick up the remaining unassessed issues (iss-9 to iss-16)
+      isRun1 = false;
+      const res2 = await runAiAssessJob(Date.now(), 40_000, 0);
+      expect(res2.processed).toBe(8);
+      expect(run2AssessedIds).toEqual([
+        "iss-9", "iss-10", "iss-11", "iss-12", "iss-13", "iss-14", "iss-15", "iss-16"
+      ]);
+
+      // Verify zero overlap between run 1 and run 2
+      const overlap = run1AssessedIds.filter((id) => run2AssessedIds.includes(id));
+      expect(overlap).toEqual([]);
     });
   });
 });

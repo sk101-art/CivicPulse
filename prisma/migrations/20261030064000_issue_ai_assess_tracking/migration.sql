@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Issue" ADD COLUMN IF NOT EXISTS "aiAssessedAt" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "aiInputHash" TEXT;
