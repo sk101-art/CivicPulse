@@ -26,6 +26,7 @@ export interface RunAiOptions<T> {
   minConfidence?: number;
   isNightlyBatch?: boolean;
   timeoutMs?: number;
+  chainTimeoutMs?: number;
   model?: string;
   adapters?: LlmAdapter[];
   skipCache?: boolean;
@@ -74,7 +75,8 @@ export async function runAi<T>(options: RunAiOptions<T>): Promise<RunAiResult<T>
     factsForGrounding,
     minConfidence,
     isNightlyBatch = false,
-    timeoutMs = 15000,
+    timeoutMs = 12000,
+    chainTimeoutMs = 20000,
     model,
     adapters,
   } = options;
@@ -145,7 +147,15 @@ export async function runAi<T>(options: RunAiOptions<T>): Promise<RunAiResult<T>
     : `${userPrompt}\n\nRespond with a single JSON object.`;
 
   // 4. Try Providers in Order
+  const chainStartTime = Date.now();
   for (const adapter of chain) {
+    // Check if the whole fallback chain per issue has exceeded its maximum allowance (max 20 s)
+    const elapsedChain = Date.now() - chainStartTime;
+    if (elapsedChain >= chainTimeoutMs) {
+      lastFailReason = lastFailReason || `CHAIN_TIMEOUT_EXCEEDED (${elapsedChain}ms >= ${chainTimeoutMs}ms)`;
+      break;
+    }
+
     if (!adapter.isConfigured()) {
       continue;
     }
@@ -157,13 +167,21 @@ export async function runAi<T>(options: RunAiOptions<T>): Promise<RunAiResult<T>
       continue;
     }
 
+    // Remaining time budget for this specific provider call (cannot exceed 12s, nor the remaining chain budget)
+    const remainingChainTime = chainTimeoutMs - (Date.now() - chainStartTime);
+    if (remainingChainTime <= 0) {
+      lastFailReason = lastFailReason || "CHAIN_TIMEOUT_EXCEEDED";
+      break;
+    }
+    const effectiveTimeoutMs = Math.min(timeoutMs, remainingChainTime);
+
     try {
       const result = await adapter.generate({
         system: systemPrompt,
         text: promptWithSchema,
         images,
         jsonSchema,
-        timeoutMs,
+        timeoutMs: effectiveTimeoutMs,
         model,
       });
 

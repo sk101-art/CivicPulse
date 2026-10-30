@@ -79,7 +79,7 @@ export class GeminiAdapter implements LlmAdapter {
       }
     }
 
-    const timeout = options.timeoutMs ?? 15000;
+    const timeout = options.timeoutMs ?? 12000;
     let lastError: Error | null = null;
 
     for (const model of modelsToTry) {

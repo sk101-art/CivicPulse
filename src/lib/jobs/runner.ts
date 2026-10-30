@@ -44,7 +44,8 @@ export type JobName = (typeof JOB_NAMES)[number];
 export interface JobResult {
   job: JobName;
   processed: number;
-  skipped?: string;
+  skipped?: string | number;
+  remaining?: number;
   failed?: number;
   firstError?: string;
   durationMs: number;
@@ -222,8 +223,14 @@ export async function runJob(name: JobName): Promise<JobResult> {
       break;
     }
     case "ai-assess": {
-      const assessResult = await runAiAssessJob();
-      result = { processed: assessResult.assessedCount, failed: assessResult.failedCount };
+      const assessResult = await runAiAssessJob(startedAt, TIME_BUDGET_MS);
+      result = {
+        processed: assessResult.processed,
+        skipped: assessResult.skipped,
+        remaining: assessResult.remaining,
+        failed: assessResult.failed,
+        firstError: assessResult.firstError,
+      };
       break;
     }
     default:

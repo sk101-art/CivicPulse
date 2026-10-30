@@ -5,6 +5,7 @@ import { runAi } from "@/lib/ai/run";
 import { getRulesFallback } from "@/lib/ai/providers/rules";
 import { getFlowSegment } from "@/lib/external/tomtom";
 import { Status } from "@prisma/client";
+import { computeInputHash } from "@/lib/ai/run";
 
 // Quota constants (Free tier budget protection)
 export const MAX_ANALYST_DAILY_CALLS = 250;
@@ -109,7 +110,23 @@ export const assessJsonSchema: Record<string, unknown> = {
   },
 };
 
-export async function assessIssue(issueId: string): Promise<AssessOutput> {
+export interface AssessIssueResult {
+  output: AssessOutput;
+  cached: boolean;
+}
+
+export async function assessIssue(
+  issueId: string,
+  options?: { skipCache?: boolean }
+): Promise<AssessOutput> {
+  const res = await assessIssueWithMeta(issueId, options);
+  return res.output;
+}
+
+export async function assessIssueWithMeta(
+  issueId: string,
+  options?: { skipCache?: boolean }
+): Promise<AssessIssueResult> {
   const issue = await prisma.issue.findUnique({
     where: { id: issueId },
     select: {
@@ -195,10 +212,41 @@ export async function assessIssue(issueId: string): Promise<AssessOutput> {
     "-10", "-9", "-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1",
   ];
 
+  // Check cache hit before consuming quota or calling LLM
+  if (!options?.skipCache) {
+    const inputHash = computeInputHash("G-ASSESS", "v1.2", inputPayload);
+    const cachedRun = await prisma.aiRun.findFirst({
+      where: {
+        feature: "G-ASSESS",
+        inputHash,
+        valid: true,
+        NOT: { model: { startsWith: "rules" } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (cachedRun && cachedRun.output) {
+      const parsed = AssessOutputSchema.safeParse(cachedRun.output);
+      if (parsed.success) {
+        const engine = formatAiEngineName(
+          (cachedRun.model.split(":")[0] as any) || "gemini",
+          cachedRun.model
+        );
+        return {
+          output: { ...parsed.data, engine },
+          cached: true,
+        };
+      }
+    }
+  }
+
   const quotaOk = await tryIncrementAnalystQuota();
   if (!quotaOk) {
     const fallback = getRulesFallback("G-ASSESS", inputPayload) as AssessOutput;
-    return { ...fallback, engine: "Rules estimate" };
+    return {
+      output: { ...fallback, engine: "Rules estimate" },
+      cached: false,
+    };
   }
 
   const prompt = `Assess civic issue ${issue.id} (${issue.category}):
@@ -218,12 +266,16 @@ Recommend a priority adjustment (-10 to +10), summarize risks, and suggest actio
     jsonSchema: assessJsonSchema,
     inputPayload,
     factsForGrounding,
+    skipCache: options?.skipCache,
   });
 
   const engine = formatAiEngineName(aiResult.provider, aiResult.model);
   return {
-    ...aiResult.data,
-    engine,
+    output: {
+      ...aiResult.data,
+      engine,
+    },
+    cached: aiResult.cached,
   };
 }
 
@@ -528,28 +580,171 @@ Do not output a generic one-size-fits-all answer; directly address the specific 
   };
 }
 
-// 5. Scheduled Job: "ai-assess" (Top Issues with rate-limit protection)
-export async function runAiAssessJob(): Promise<{ assessedCount: number; failedCount: number }> {
-  const topIssues = await prisma.issue.findMany({
-    where: { status: { in: [Status.OPEN, Status.CONFIRMED, Status.IN_PROGRESS, Status.ASSIGNED] } },
+// 5. Scheduled Job: "ai-assess" (Top Issues with rate-limit and time budget protection)
+export interface AiAssessJobResult {
+  processed: number;
+  skipped: number;
+  remaining: number;
+  failed?: number;
+  firstError?: string;
+}
+
+export const MAX_AI_ASSESS_PER_RUN = 8;
+export const MIN_BUDGET_REMAINING_MS = 22_000;
+export const JOB_TIME_BUDGET_MS = 40_000;
+
+export async function runAiAssessJob(
+  startedAt: number = Date.now(),
+  timeBudgetMs: number = JOB_TIME_BUDGET_MS
+): Promise<AiAssessJobResult> {
+  // Candidate issues that desk officers need assessment for
+  const openIssues = await prisma.issue.findMany({
+    where: {
+      status: {
+        in: [
+          Status.OPEN,
+          Status.CONFIRMED,
+          Status.IN_PROGRESS,
+          Status.ASSIGNED,
+          Status.REOPENED_IN_WARRANTY,
+        ],
+      },
+    },
+    select: {
+      id: true,
+      priority: true,
+    },
     orderBy: { priority: "desc" },
-    take: 20,
-    select: { id: true },
+    take: 100,
   });
 
-  let assessed = 0;
-  let failed = 0;
+  if (openIssues.length === 0) {
+    return { processed: 0, skipped: 0, remaining: 0 };
+  }
 
-  for (const issue of topIssues) {
-    try {
-      await assessIssue(issue.id);
-      assessed++;
-      // Rate-limit throttle: sleep 2.5 seconds between assessments to preserve free tier quota
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-    } catch {
-      failed++;
+  // Find latest valid non-rules assessment timestamp for each issue
+  const issueIds = openIssues.map((i) => i.id);
+  const latestRuns = await prisma.aiRun.findMany({
+    where: {
+      feature: "G-ASSESS",
+      valid: true,
+      NOT: { model: { startsWith: "rules" } },
+    },
+    select: {
+      inputHash: true,
+      createdAt: true,
+      output: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+
+  // Map issueId -> latest assessment time from cached output
+  const assessmentTimeMap = new Map<string, number>();
+  for (const run of latestRuns) {
+    if (run.output && typeof run.output === "object") {
+      const summary = (run.output as any).summary;
+      // Also match by checking which issue has this run's inputHash
+      // We can sort issues: oldest assessed (or unassessed = 0) first, tie-break by priority desc
     }
   }
 
-  return { assessedCount: assessed, failedCount: failed };
+  // To precisely sort "oldest assessment first", find latest assessment date per issueId
+  // The inputPayload contains issueId. Let's map issues by their last assessed date:
+  // Issues with no assessment get timestamp 0 (evaluated first).
+  // Issues with older assessments get picked up next.
+  const allAssessments = await prisma.aiRun.findMany({
+    where: {
+      feature: "G-ASSESS",
+      valid: true,
+      NOT: { model: { startsWith: "rules" } },
+    },
+    select: {
+      createdAt: true,
+      output: true,
+    },
+    orderBy: { createdAt: "desc" },
+    take: 300,
+  });
+
+  const lastAssessedAtByIssueId = new Map<string, number>();
+  for (const r of allAssessments) {
+    const rawOut = r.output as any;
+    // We can inspect output or inputHash
+    if (rawOut && typeof rawOut === "object") {
+      for (const iss of openIssues) {
+        if (!lastAssessedAtByIssueId.has(iss.id)) {
+          // If the output mentions this issue or matches
+          if (JSON.stringify(rawOut).includes(iss.id)) {
+            lastAssessedAtByIssueId.set(iss.id, r.createdAt.getTime());
+          }
+        }
+      }
+    }
+  }
+
+  // Sort candidate issues: unassessed (0) or oldest assessment first, then highest priority
+  const prioritizedCandidates = [...openIssues].sort((a, b) => {
+    const timeA = lastAssessedAtByIssueId.get(a.id) ?? 0;
+    const timeB = lastAssessedAtByIssueId.get(b.id) ?? 0;
+    if (timeA !== timeB) {
+      return timeA - timeB; // Oldest first
+    }
+    return b.priority - a.priority;
+  });
+
+  // Pick at most MAX_AI_ASSESS_PER_RUN (8) issues for this run
+  const batch = prioritizedCandidates.slice(0, MAX_AI_ASSESS_PER_RUN);
+  const remainingCount = prioritizedCandidates.length - batch.length;
+
+  let processed = 0;
+  let skipped = 0;
+  let failed = 0;
+  let firstError: string | undefined;
+
+  for (let idx = 0; idx < batch.length; idx++) {
+    const issue = batch[idx];
+
+    // Require at least 22 s of the 40 s job budget left before starting each issue
+    const elapsedMs = Date.now() - startedAt;
+    const remainingBudgetMs = timeBudgetMs - elapsedMs;
+    if (remainingBudgetMs < MIN_BUDGET_REMAINING_MS) {
+      // Stop and return what's done; uncompleted items in batch remain
+      const uncompletedInBatch = batch.length - idx;
+      return {
+        processed,
+        skipped,
+        remaining: remainingCount + uncompletedInBatch,
+        failed: failed > 0 ? failed : undefined,
+        firstError,
+      };
+    }
+
+    try {
+      const result = await assessIssueWithMeta(issue.id);
+      if (result.cached) {
+        skipped++;
+      } else {
+        processed++;
+        // Throttle between live LLM calls if budget permits
+        const budgetAfter = timeBudgetMs - (Date.now() - startedAt);
+        if (budgetAfter >= MIN_BUDGET_REMAINING_MS + 1000) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      }
+    } catch (err: unknown) {
+      failed++;
+      if (!firstError) {
+        firstError = err instanceof Error ? err.message : String(err);
+      }
+    }
+  }
+
+  return {
+    processed,
+    skipped,
+    remaining: remainingCount,
+    failed: failed > 0 ? failed : undefined,
+    firstError,
+  };
 }

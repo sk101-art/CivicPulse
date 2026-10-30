@@ -63,7 +63,7 @@ export class GroqAdapter implements LlmAdapter {
       response_format: { type: "json_object" },
     };
 
-    const timeout = options.timeoutMs ?? 15000;
+    const timeout = options.timeoutMs ?? 12000;
     const response = await fetch(url, {
       method: "POST",
       headers: {

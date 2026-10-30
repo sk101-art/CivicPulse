@@ -9,7 +9,12 @@ import {
   assistAudit,
   askDeskAnalyst,
   MAX_ANALYST_DAILY_CALLS,
+  MAX_AI_ASSESS_PER_RUN,
+  MIN_BUDGET_REMAINING_MS,
+  JOB_TIME_BUDGET_MS,
+  runAiAssessJob,
 } from "@/lib/ai/analyst";
+import { prisma } from "@/lib/db/prisma";
 import { getRulesFallback } from "@/lib/ai/providers/rules";
 
 describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () => {
@@ -146,6 +151,34 @@ describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () =>
   describe("Quota Configuration", () => {
     it("enforces daily budget cap of 250 analyst calls", () => {
       expect(MAX_ANALYST_DAILY_CALLS).toBe(250);
+    });
+  });
+
+  describe("ai-assess Job Time Budget & Limits", () => {
+    it("configures max 8 issues per run and requires 22s minimum remaining budget", () => {
+      expect(MAX_AI_ASSESS_PER_RUN).toBe(8);
+      expect(MIN_BUDGET_REMAINING_MS).toBe(22_000);
+      expect(JOB_TIME_BUDGET_MS).toBe(40_000);
+    });
+
+    it("stops immediately and returns remaining count when job budget is below 22s", async () => {
+      // Mock open issues
+      const mockIssues = [
+        { id: "iss-1", priority: 90 },
+        { id: "iss-2", priority: 80 },
+        { id: "iss-3", priority: 70 },
+      ];
+
+      vi.spyOn(prisma.issue, "findMany").mockResolvedValue(mockIssues as any);
+      vi.spyOn(prisma.aiRun, "findMany").mockResolvedValue([]);
+
+      // Start time was 25s ago (40s - 25s = 15s remaining, which is < 22s)
+      const startedAt = Date.now() - 25_000;
+      const result = await runAiAssessJob(startedAt, 40_000);
+
+      expect(result.processed).toBe(0);
+      expect(result.skipped).toBe(0);
+      expect(result.remaining).toBe(3);
     });
   });
 });
