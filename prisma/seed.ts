@@ -146,7 +146,7 @@ async function main() {
       slaHours: 72,
       reporterId: citizenA.id,
       note: 'Deep crater pothole in the right lane slowing down bus traffic.',
-      photoUrl: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=800&auto=format&fit=crop&q=60',
+      photoUrl: 'https://ofkshdculpzvqergntcs.supabase.co/storage/v1/object/public/evidence/demo/demo-evidence-potholes.jpg',
     },
     {
       id: 'seed-light-indiranagar',
@@ -162,7 +162,7 @@ async function main() {
       slaHours: 24,
       reporterId: citizenB.id,
       note: 'Three continuous sodium vapor fixtures flickering and dark at night.',
-      photoUrl: 'https://images.unsplash.com/photo-1508873696983-2df5293cb32b?w=800&auto=format&fit=crop&q=60',
+      photoUrl: 'https://ofkshdculpzvqergntcs.supabase.co/storage/v1/object/public/evidence/demo/demo-evidence-streetlights.jpg',
     },
     {
       id: 'seed-water-koramangala',
@@ -178,7 +178,7 @@ async function main() {
       slaHours: 48,
       reporterId: citizenA.id,
       note: 'Severe water buildup after rain near Sony World junction.',
-      photoUrl: 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=800&auto=format&fit=crop&q=60',
+      photoUrl: 'https://ofkshdculpzvqergntcs.supabase.co/storage/v1/object/public/evidence/demo/demo-evidence-waterlogging.jpg',
     },
   ];
 

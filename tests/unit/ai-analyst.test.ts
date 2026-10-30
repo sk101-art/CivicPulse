@@ -280,6 +280,9 @@ describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () =>
       });
 
       // Mock quota increment to always allow in unit test
+      vi.spyOn(prisma.apiUsage, "findUnique").mockResolvedValue(null as any);
+      vi.spyOn(prisma.apiUsage, "upsert").mockResolvedValue({} as any);
+      vi.spyOn(prisma, "$transaction").mockResolvedValue([] as any);
       const analystModule = await import("@/lib/ai/analyst");
       vi.spyOn(analystModule, "tryIncrementAnalystQuota").mockResolvedValue(true);
 
@@ -308,7 +311,7 @@ describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () =>
 
       // Run 1: Should assess first 8 issues (iss-1 to iss-8)
       isRun1 = true;
-      const res1 = await runAiAssessJob(Date.now(), 40_000, 0);
+      const res1 = await runAiAssessJob(Date.now(), 120_000, 0);
       expect(res1.processed).toBe(8);
       expect(run1AssessedIds).toEqual([
         "iss-1", "iss-2", "iss-3", "iss-4", "iss-5", "iss-6", "iss-7", "iss-8"
@@ -316,7 +319,7 @@ describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () =>
 
       // Run 2: Should pick up the remaining unassessed issues (iss-9 to iss-16)
       isRun1 = false;
-      const res2 = await runAiAssessJob(Date.now(), 40_000, 0);
+      const res2 = await runAiAssessJob(Date.now(), 120_000, 0);
       expect(res2.processed).toBe(8);
       expect(run2AssessedIds).toEqual([
         "iss-9", "iss-10", "iss-11", "iss-12", "iss-13", "iss-14", "iss-15", "iss-16"

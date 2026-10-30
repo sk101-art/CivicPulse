@@ -19,10 +19,9 @@ export interface CaptureCameraProps {
   targetCoords?: { lat: number; lng: number };
   overrideNonce?: string;
   onDeviceUpload?: () => void;
-  onSkip?: () => void;
 }
 
-export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrideNonce, onDeviceUpload, onSkip }: CaptureCameraProps) {
+export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrideNonce, onDeviceUpload }: CaptureCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -342,15 +341,6 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrid
                   📁 Choose from Device
                 </button>
               )}
-              {onSkip && (
-                <button
-                  type="button"
-                  onClick={onSkip}
-                  className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5 cursor-pointer"
-                >
-                  ⚡ Skip Photo (Dev Mode)
-                </button>
-              )}
               <button
                 type="button"
                 onClick={startCamera}
@@ -479,27 +469,15 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrid
           </button>
         </div>
 
-        {(onDeviceUpload || onSkip) && (
+        {onDeviceUpload && (
           <div className="flex items-center justify-center gap-4 py-1 text-xs">
-            {onDeviceUpload && (
-              <button
-                type="button"
-                onClick={onDeviceUpload}
-                className="text-zinc-400 hover:text-white underline cursor-pointer transition"
-              >
-                📁 Choose from Device
-              </button>
-            )}
-            {onDeviceUpload && onSkip && <span className="text-zinc-600">•</span>}
-            {onSkip && (
-              <button
-                type="button"
-                onClick={onSkip}
-                className="text-amber-400 hover:text-amber-300 underline cursor-pointer transition"
-              >
-                ⚡ Skip Photo (Temporary Dev Mode)
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={onDeviceUpload}
+              className="text-zinc-400 hover:text-white underline cursor-pointer transition"
+            >
+              📁 Choose from Device
+            </button>
           </div>
         )}
 

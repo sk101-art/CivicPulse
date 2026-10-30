@@ -37,11 +37,12 @@ export interface RepairWindow {
   delayRatio?: number;
   display: string;                     // e.g. "Tue 23:00-01:00"
   dayOfWeek: string;                   // e.g. "Tue"
+  dayType?: "WEEKDAY" | "WEEKEND";     // Day classification for profile matching
   timeRange: string;                   // e.g. "23:00-01:00"
   score: number;                       // 0-100 composite score
   expectedCongestion: number;          // 0..1 (avg delay ratio)
   condition: string;                   // e.g. "low traffic, dry"
-  basis: "live" | "estimated";
+  basis: "live" | "estimated" | "tomtom_historic";
   sampleCount: number;
   factors: SlotFactorBreakdown;
   laneClosure: LaneClosureDetails;
@@ -55,7 +56,7 @@ export interface CandidateSlot extends RepairWindow {
 
 export interface RepairWindowResult {
   issueId: string;
-  basis: "live" | "estimated";
+  basis: "live" | "estimated" | "tomtom_historic";
   sampleCount: number;
   bestWindow: RepairWindow | null;
   windows: RepairWindow[];             // Top 3 non-overlapping windows
@@ -186,6 +187,8 @@ export function computeMultiFactorRepairWindows(options: {
   surroundings?: SurroundingsResult;
   incidentsResult?: TrafficIncidentsResult;
   sampleCount?: number;
+  profileSource?: string | null;
+  basis?: "live" | "estimated" | "tomtom_historic";
   now?: Date;
 }): RepairWindowResult {
   const {
@@ -202,6 +205,7 @@ export function computeMultiFactorRepairWindows(options: {
     surroundings,
     incidentsResult,
     sampleCount = 0,
+    profileSource,
   } = options;
 
   const safeSurroundings: SurroundingsResult = surroundings || {
@@ -218,7 +222,13 @@ export function computeMultiFactorRepairWindows(options: {
   };
 
   const now = options.now ?? new Date();
-  const basis: "live" | "estimated" = sampleCount > 0 ? "live" : "estimated";
+  const basis: "live" | "estimated" | "tomtom_historic" =
+    options.basis ??
+    (profileSource === "TOMTOM_HISTORIC"
+      ? "tomtom_historic"
+      : sampleCount > 0
+        ? "live"
+        : "estimated");
 
   // Road characterization
   const rc = (roadClass || safeSurroundings.road.highway || "residential").toLowerCase();
@@ -431,9 +441,20 @@ export function computeMultiFactorRepairWindows(options: {
       endsInMorningPeak ||
       endsInEveningPeak;
 
-    if (dayType === DayType.WEEKDAY && overlapsPeak) {
+    if (dayType === DayType.WEEKDAY && overlapsPeak && capacityDropPercent > 0) {
       if (isHighSpeed) {
         rawCompositeScore -= 25; // Arterial peak period closure penalty: shutting lanes inside or spilling past 08:00 morning rush
+      }
+    }
+
+    // Never recommend a slot whose hours are red (delay >= 0.6) in that day's profile unless urgency requires it, and say so in the reason
+    const hasRedHours = delay1 >= 0.6 || delay2 >= 0.6 || (fStart.minute > 0 && delay3 >= 0.6) || avgDelayRatio >= 0.6;
+    let redAcceptedUrgency = false;
+    if (hasRedHours) {
+      if (!isUrgent) {
+        rawCompositeScore = -999; // Disqualify red slots for non-urgent defects
+      } else {
+        redAcceptedUrgency = true;
       }
     }
 
@@ -447,7 +468,7 @@ export function computeMultiFactorRepairWindows(options: {
 
     // Continuous score: differentiate by exact delay ratio so identical scores do not saturate
     const delayPenalty = (avgDelayRatio * 6) + (capacityDropPercent > 0 ? 1.5 : 0);
-    rawCompositeScore = Math.max(5, rawCompositeScore - delayPenalty);
+    rawCompositeScore = hasRedHours && !isUrgent ? -999 : Math.max(5, rawCompositeScore - delayPenalty);
     // Continuous score with 1 decimal precision, no clamping at 100
     const compositeScore = Math.round(rawCompositeScore * 10) / 10;
 
@@ -506,9 +527,18 @@ export function computeMultiFactorRepairWindows(options: {
     }
 
     const scoreDisplay = compositeScore > 100 ? `Score ${compositeScore}` : `score ${compositeScore}/100`;
-    const explanation = `${timeDisplay} (${scoreDisplay}): ${trafficDesc}, ${rainDesc}. ${closureText}${surroundingText}${incidentText}`.trim();
+    let explanation = `${timeDisplay} (${scoreDisplay}): ${trafficDesc}, ${rainDesc}. ${closureText}${surroundingText}${incidentText}`.trim();
+    if (redAcceptedUrgency) {
+      explanation += " Peak congestion (delay >= 0.6) accepted due to defect urgency.";
+    }
 
-    const condition = `${avgDelayRatio < 0.20 ? "low traffic" : avgDelayRatio < 0.45 ? "moderate traffic" : "heavy traffic"}, ${maxPrecip > 0 ? "rain likely" : "dry"}`;
+    let condition = `${avgDelayRatio < 0.20 ? "low traffic" : avgDelayRatio < 0.45 ? "moderate traffic" : "heavy traffic"}, ${maxPrecip > 0 ? "rain likely" : "dry"}`;
+    if (redAcceptedUrgency) {
+      condition += " (peak congestion accepted due to urgency)";
+    }
+
+    const slotDayType: "WEEKDAY" | "WEEKEND" =
+      dayType === DayType.WEEKEND ? "WEEKEND" : "WEEKDAY";
 
     const isWeekendDay = dayType === DayType.WEEKEND && !isNight;
     const windowType: "NIGHT" | "DAY_OFF_PEAK" | "DAY_PEAK" | "WEEKEND_DAY" =
@@ -526,6 +556,7 @@ export function computeMultiFactorRepairWindows(options: {
       delayRatio: avgDelayRatio,
       display: timeDisplay,
       dayOfWeek: fStart.dayOfWeek,
+      dayType: slotDayType,
       timeRange: `${fStart.time}-${fEnd.time}`,
       score: compositeScore,
       expectedCongestion: avgDelayRatio,
@@ -705,7 +736,7 @@ export async function getRepairWindowForIssue(
         select: { hourOfWeek: true, congestionR: true },
       },
       trafficProfiles: {
-        select: { dayType: true, hour: true, delayRatio: true },
+        select: { dayType: true, hour: true, delayRatio: true, source: true },
       },
     },
   });
@@ -714,12 +745,15 @@ export async function getRepairWindowForIssue(
     return null;
   }
 
-  // 1. Gather hourly profile map
+  // 1. Gather hourly profile map & determine profile source
   const hourlyProfiles = new Map<string, number>();
+  let profileSource = "ESTIMATED";
   if (issue.trafficProfiles && issue.trafficProfiles.length > 0) {
     for (const p of issue.trafficProfiles) {
       hourlyProfiles.set(`${p.dayType}-${p.hour}`, p.delayRatio);
     }
+    const hasTomTom = issue.trafficProfiles.some((p) => p.source === "TOMTOM_HISTORIC");
+    profileSource = hasTomTom ? "TOMTOM_HISTORIC" : issue.trafficProfiles[0].source;
   } else {
     const fallbackProfile = getDefaultRoadClassProfile(issue.segment?.roadClass);
     for (let h = 0; h < 168; h++) {
@@ -772,6 +806,50 @@ export async function getRepairWindowForIssue(
     surroundings,
     incidentsResult: incidents,
     sampleCount: issue.trafficSamples?.length || 0,
+    profileSource,
     now,
   });
+}
+
+/**
+ * Recomputes the repair window for an issue using the latest traffic profile,
+ * road class, surroundings, weather, and lanePosition/category defaults,
+ * and persists the result directly to Issue.bestRepairWindow.
+ */
+export async function recomputeAndSaveBestRepairWindow(
+  issueId: string,
+  now: Date = new Date()
+): Promise<RepairWindow | null> {
+  const result = await getRepairWindowForIssue(issueId, now).catch((err) => {
+    console.error(`Failed to recompute repair window for ${issueId}:`, err);
+    return null;
+  });
+
+  if (!result || !result.bestWindow) {
+    return null;
+  }
+
+  const bw = result.bestWindow;
+  const bestWindowData = {
+    start: bw.start,
+    end: bw.end,
+    score: bw.score,
+    reason: bw.condition || "Optimal window",
+    condition: bw.condition,
+    display: bw.display,
+    basis: bw.basis,
+    sampleCount: bw.sampleCount,
+    dayType: bw.dayType,
+  };
+
+  await prisma.issue.update({
+    where: { id: issueId },
+    data: {
+      bestRepairWindow: bestWindowData,
+    },
+  }).catch((err) => {
+    console.error(`Failed to save bestRepairWindow on Issue ${issueId}:`, err);
+  });
+
+  return bw;
 }

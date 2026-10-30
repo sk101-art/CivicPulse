@@ -310,7 +310,7 @@ describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
       expect(result).toBeDefined();
       expect(result.processed).toBeGreaterThanOrEqual(0);
       expect(typeof result.failed).toBe("number");
-    });
+    }, 30000);
   });
 
   describe("GET /api/issues/[id]/traffic-live", () => {

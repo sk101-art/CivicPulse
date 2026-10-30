@@ -693,7 +693,7 @@ export async function seedDemoData() {
   const demoIssuesEnrichment = [
     {
       issueId: 'seed-demo-critical-bellandur',
-      photoUrl: 'https://images.unsplash.com/photo-1517649763962-0c623266ddc0?w=800&auto=format&fit=crop&q=60',
+      photoUrl: 'https://ofkshdculpzvqergntcs.supabase.co/storage/v1/object/public/evidence/demo/demo-evidence-waterlogging.jpg',
       note: 'Severe waterlogging blocking outer corridor lanes near EcoWorld (demo)',
       lat: 12.9280,
       lng: 77.6820,
@@ -706,7 +706,7 @@ export async function seedDemoData() {
     },
     {
       issueId: 'seed-demo-medium-cessna',
-      photoUrl: 'https://images.unsplash.com/photo-1507034589631-9433cc6bc453?w=800&auto=format&fit=crop&q=60',
+      photoUrl: 'https://ofkshdculpzvqergntcs.supabase.co/storage/v1/object/public/evidence/demo/demo-evidence-streetlights.jpg',
       note: 'Multiple dark streetlights along Cessna access corridor (demo)',
       lat: 12.9390,
       lng: 77.6910,
@@ -719,7 +719,7 @@ export async function seedDemoData() {
     },
     {
       issueId: 'seed-demo-low-agara',
-      photoUrl: 'https://images.unsplash.com/photo-1584438784894-089d6a62b8fa?w=800&auto=format&fit=crop&q=60',
+      photoUrl: 'https://ofkshdculpzvqergntcs.supabase.co/storage/v1/object/public/evidence/demo/demo-evidence-traffic_signs.jpg',
       note: 'Damaged traffic signage on Agara residential section (demo)',
       lat: 12.9210,
       lng: 77.6530,
@@ -732,7 +732,7 @@ export async function seedDemoData() {
     },
     {
       issueId: 'seed-demo-claimed-audit',
-      photoUrl: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?w=800&auto=format&fit=crop&q=60',
+      photoUrl: 'https://ofkshdculpzvqergntcs.supabase.co/storage/v1/object/public/evidence/demo/demo-evidence-potholes.jpg',
       note: 'Deep asphalt pothole near Ecospace East Gate (demo)',
       lat: 12.9355,
       lng: 77.6890,
@@ -748,7 +748,7 @@ export async function seedDemoData() {
     },
     {
       issueId: 'seed-demo-reopened-warranty',
-      photoUrl: 'https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=800&auto=format&fit=crop&q=60',
+      photoUrl: 'https://ofkshdculpzvqergntcs.supabase.co/storage/v1/object/public/evidence/demo/demo-evidence-road_cut.jpg',
       note: 'Subsiding road cut trench along Bellandur Underpass (demo)',
       lat: 12.9280,
       lng: 77.6780,

@@ -2,7 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { Status, ProfileSource } from "@prisma/client";
 import { buildPlaceProfile, PROFILE_TTL_DAYS } from "@/lib/traffic/profile";
-import { getRepairWindowForIssue } from "@/lib/traffic/repairWindow";
+import { recomputeAndSaveBestRepairWindow } from "@/lib/traffic/repairWindow";
 import {
   getDailyTomTomCallCount,
   MAX_DAILY_QUOTA,
@@ -107,26 +107,8 @@ export async function runTrafficProfileJob(
         issue.id.startsWith("seed-demo-")
       );
 
-      // Store best repair window on Issue for desk queue single-query badge rendering
-      const rwResult = await getRepairWindowForIssue(issue.id).catch(() => null);
-      if (rwResult?.bestWindow) {
-        const bw = rwResult.bestWindow;
-        await prisma.issue.update({
-          where: { id: issue.id },
-          data: {
-            bestRepairWindow: {
-              start: bw.start,
-              end: bw.end,
-              score: bw.score,
-              reason: bw.condition || "Optimal window",
-              condition: bw.condition,
-              display: bw.display,
-              basis: rwResult.basis,
-              sampleCount: rwResult.sampleCount,
-            },
-          },
-        }).catch(() => {});
-      }
+      // Recompute and store best repair window on Issue
+      await recomputeAndSaveBestRepairWindow(issue.id).catch(() => {});
 
       processed++;
     } catch (err) {

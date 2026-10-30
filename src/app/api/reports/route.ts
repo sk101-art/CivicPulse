@@ -87,6 +87,14 @@ export async function POST(req: Request) {
       const data = signedParsed.data;
       const photoBuffer = Buffer.from(data.photoBase64, "base64");
 
+      if (photoBuffer.length === 0) {
+        return apiError(
+          400,
+          "INVALID_PHOTO",
+          "Evidence photo is missing or empty"
+        );
+      }
+
       // Every report photo must be signed with role REPORT
       if (data.payload.role !== "REPORT") {
         return apiError(
@@ -213,10 +221,13 @@ export async function POST(req: Request) {
     }
 
     // Branch 2: Direct/Test Report Schema.
-    // Unsigned reports are ONLY accepted inside the automated test runner. In development and
-    // production every report must carry signed, on-site evidence (V1–V3).
+    // Unsigned reports are ONLY accepted inside the automated test runner and only for raw direct reports.
+    // In development and production every report must carry signed, on-site evidence (V1–V3).
+    const isSignedAttempt = Boolean(
+      body && typeof body === "object" && ("payload" in body || "photoBase64" in body)
+    );
     const allowUnsignedTestReports =
-      process.env.NODE_ENV === "test" || process.env.VITEST === "true";
+      !isSignedAttempt && (process.env.NODE_ENV === "test" || process.env.VITEST === "true");
     const directParsed = allowUnsignedTestReports
       ? directReportSchema.safeParse(body)
       : null;

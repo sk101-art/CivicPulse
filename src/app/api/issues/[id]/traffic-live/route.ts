@@ -25,6 +25,9 @@ export async function GET(
     }
 
     const { id } = await params;
+    const { searchParams } = new URL(_req.url);
+    const reqDayType = searchParams.get("dayType")?.toUpperCase();
+
     const issue = await prisma.issue.findUnique({
       where: { id },
       select: {
@@ -32,6 +35,7 @@ export async function GET(
         lat: true,
         lng: true,
         segmentId: true,
+        bestRepairWindow: true,
         segment: {
           select: { roadClass: true },
         },
@@ -59,11 +63,21 @@ export async function GET(
         ? `Live: ${currentSpeed} km/h vs ${freeFlowSpeed} free-flow (${slowerPct}% slower) · updated just now`
         : `Live: ${currentSpeed} km/h (free-flow) · updated just now`;
 
-    // 2. 24-hour profile for today
+    // 2. 24-hour profile for matched day type (best repair window day type or requested day type)
     const now = new Date();
     const currentHour = now.getHours();
     const isWeekend = now.getDay() === 0 || now.getDay() === 6;
     const todayDayType = isWeekend ? DayType.WEEKEND : DayType.WEEKDAY;
+
+    const storedDayType = (issue.bestRepairWindow as { dayType?: string } | null)?.dayType;
+    const targetDayType: DayType =
+      reqDayType === "WEEKDAY" || reqDayType === "WEEKEND"
+        ? (reqDayType as DayType)
+        : storedDayType === "WEEKEND"
+          ? DayType.WEEKEND
+          : storedDayType === "WEEKDAY"
+            ? DayType.WEEKDAY
+            : todayDayType;
 
     const profileResult = await buildPlaceProfile({
       id: issue.id,
@@ -73,14 +87,14 @@ export async function GET(
       roadClass: issue.segment?.roadClass,
     });
 
-    const todayProfile = profileResult.points
-      .filter((p) => p.dayType === todayDayType)
+    const targetProfile = profileResult.points
+      .filter((p) => p.dayType === targetDayType)
       .sort((a, b) => a.hour - b.hour)
       .map((p) => ({
         hour: p.hour,
         delayRatio: p.delayRatio,
         congestionPct: Math.min(100, Math.round(p.delayRatio * 100)),
-        isCurrentHour: p.hour === currentHour,
+        isCurrentHour: p.hour === currentHour && targetDayType === todayDayType,
         source: p.source,
         isEstimated: p.source === "ESTIMATED",
       }));
@@ -97,9 +111,9 @@ export async function GET(
           summary,
           updatedAt: now.toISOString(),
         },
-        profile24h: todayProfile,
+        profile24h: targetProfile,
         currentHour,
-        dayType: todayDayType,
+        dayType: targetDayType,
         source: profileResult.source,
         fromCache: profileResult.fromCache,
       },

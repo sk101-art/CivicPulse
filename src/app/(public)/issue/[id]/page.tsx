@@ -397,7 +397,12 @@ export default async function PublicIssuePage({
                   <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-[10px] font-mono font-bold text-white border border-white/10">
                     {getRoleLabel(report.role)}
                   </div>
-                  {report.aiTriage && typeof report.aiTriage === "object" && (
+                  {report.photoUrl.includes("photo-missing") && (
+                    <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-rose-600/90 text-white font-mono font-bold text-[10px] uppercase tracking-wider shadow-lg">
+                      Photo Missing
+                    </div>
+                  )}
+                  {report.aiTriage && typeof report.aiTriage === "object" && !report.photoUrl.includes("photo-missing") && (
                     <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-cyan text-black font-mono font-bold text-[10px] uppercase tracking-wider flex items-center gap-1 shadow-lg shadow-cyan/20">
                       <Sparkles className="w-3 h-3 text-black" />
                       <span>AI-assisted</span>

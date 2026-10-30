@@ -207,6 +207,11 @@ export async function assessIssueWithMeta(
     String(Math.round(busesPerHour)),
     String(liveCongestionPct),
     String(peakDelayPct),
+    inputPayload.roadName,
+    String(issue.lat),
+    String(issue.lng),
+    issue.lat.toFixed(4),
+    issue.lng.toFixed(4),
     // Standard numerical scales
     ...Array.from({ length: 101 }, (_, i) => String(i)),
     "-10", "-9", "-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1",

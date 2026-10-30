@@ -69,7 +69,8 @@ export function RepairWindowBadge({
   }
 
   const { bestWindow, basis, sampleCount, windows, allSlots = [] } = data;
-  const isLive = basis === 'live';
+  const isHistoric = basis === 'tomtom_historic' || (bestWindow as any)?.basis === 'tomtom_historic';
+  const isLive = basis === 'live' || (bestWindow as any)?.basis === 'live';
 
   if (variant === 'card') {
     return (
@@ -84,12 +85,14 @@ export function RepairWindowBadge({
         <span
           data-testid="repair-window-basis-chip"
           className={`px-1.5 py-0.2 rounded text-[9px] uppercase font-bold shrink-0 border ${
-            isLive
-              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-              : 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'
+            isHistoric
+              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+              : isLive
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                : 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'
           }`}
         >
-          {basis}
+          {isHistoric ? 'TomTom Historic' : isLive ? 'Live Samples' : 'Estimated'}
         </span>
       </div>
     );
@@ -111,12 +114,18 @@ export function RepairWindowBadge({
         <span
           data-testid="repair-window-basis-chip"
           className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
-            isLive
-              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-              : 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'
+            isHistoric
+              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
+              : isLive
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                : 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'
           }`}
         >
-          {isLive ? `Live Traffic (${sampleCount} samples)` : 'Estimated Road Profile'}
+          {isHistoric
+            ? 'TomTom Historic Profile'
+            : isLive
+              ? `Live Traffic (${sampleCount} samples)`
+              : 'Estimated Urban Baseline'}
         </span>
       </div>
 

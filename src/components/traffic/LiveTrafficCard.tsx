@@ -31,9 +31,10 @@ interface LiveTrafficData {
 interface LiveTrafficCardProps {
   issueId: string;
   variant?: 'card' | 'drawer' | 'page';
+  dayType?: 'WEEKDAY' | 'WEEKEND';
 }
 
-export function LiveTrafficCard({ issueId, variant = 'card' }: LiveTrafficCardProps) {
+export function LiveTrafficCard({ issueId, variant = 'card', dayType: targetDayType }: LiveTrafficCardProps) {
   const [data, setData] = useState<LiveTrafficData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +44,10 @@ export function LiveTrafficCard({ issueId, variant = 'card' }: LiveTrafficCardPr
     async function fetchTraffic() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/issues/${issueId}/traffic-live`);
+        const url = targetDayType
+          ? `/api/issues/${issueId}/traffic-live?dayType=${targetDayType}`
+          : `/api/issues/${issueId}/traffic-live`;
+        const res = await fetch(url);
         if (!res.ok) {
           if (res.status === 401) {
             setError('Sign in to view live traffic intelligence');
@@ -69,7 +73,7 @@ export function LiveTrafficCard({ issueId, variant = 'card' }: LiveTrafficCardPr
     return () => {
       mounted = false;
     };
-  }, [issueId]);
+  }, [issueId, targetDayType]);
 
   if (loading) {
     return (

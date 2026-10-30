@@ -38,7 +38,6 @@ function FileReportContent() {
   const { isOnline, queueReport } = useOfflineSync();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isBypassProcessing, setIsBypassProcessing] = useState(false);
 
   const [step, setStep] = useState<Step>('CATEGORY');
   const [loading, setLoading] = useState(false);
@@ -73,38 +72,14 @@ function FileReportContent() {
     setStep('DETAILS');
   };
 
-  const createEvidenceFromBlob = async (customBlob?: Blob) => {
-    setIsBypassProcessing(true);
+  const createEvidenceFromBlob = async (customBlob: Blob) => {
+    if (!customBlob || customBlob.size < 500) {
+      setErrorMessage('A valid photo must be captured or selected from your device.');
+      return;
+    }
     setErrorMessage(null);
     try {
-      let blob = customBlob;
-      if (!blob) {
-        // Create 600x400 canvas placeholder
-        const canvas = document.createElement('canvas');
-        canvas.width = 600;
-        canvas.height = 400;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#0a0f1d';
-          ctx.fillRect(0, 0, 600, 400);
-          ctx.strokeStyle = 'rgba(0, 245, 212, 0.4)';
-          ctx.lineWidth = 4;
-          ctx.strokeRect(10, 10, 580, 380);
-          ctx.fillStyle = '#00F5D4';
-          ctx.font = 'bold 22px ui-monospace, monospace';
-          ctx.textAlign = 'center';
-          ctx.fillText('CIVICPULSE EVIDENCE', 300, 170);
-          ctx.fillStyle = '#f59e0b';
-          ctx.font = 'bold 15px ui-monospace, monospace';
-          ctx.fillText('TEMPORARY BYPASS (NO PHOTO ATTACHED)', 300, 210);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-          ctx.font = '12px ui-monospace, monospace';
-          ctx.fillText(new Date().toISOString(), 300, 250);
-        }
-        blob = await new Promise<Blob>((resolve) =>
-          canvas.toBlob((b) => resolve(b || new Blob()), 'image/jpeg', 0.85)
-        );
-      }
+      const blob = customBlob;
 
       // Determine coordinates: query device geolocation or fallback to Central Bengaluru
       let coords = { lat: 12.9716, lng: 77.5946, accuracy: 10 };
@@ -166,8 +141,6 @@ function FileReportContent() {
       setStep('DETAILS');
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to process evidence');
-    } finally {
-      setIsBypassProcessing(false);
     }
   };
 
@@ -422,61 +395,17 @@ function FileReportContent() {
                 <span className="text-xs uppercase font-mono tracking-widest text-zinc-400">
                   Category: <strong className="text-white">{category}</strong>
                 </span>
-                <span className="text-xs text-amber-400 font-mono font-bold">
-                  Temporary: Photo Optional / Upload Allowed
+                <span className="text-xs text-cyan-400 font-mono font-bold flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                  Hardware-Signed Evidence Required
                 </span>
               </div>
-
-              {/* Temporary Cam Bypass Options */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-amber-950/20 border border-amber-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono uppercase tracking-widest text-amber-400 font-bold">
-                      Camera Not Working?
-                    </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">
-                      Temporary Mode
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Upload an existing picture from your device or skip photo evidence right away.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto">
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isBypassProcessing}
-                    className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs border border-white/10 transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>From Device</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => createEvidenceFromBlob()}
-                    disabled={isBypassProcessing}
-                    className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>Skip Photo</span>
-                  </button>
-                </div>
-              </div>
-
-              {isBypassProcessing && (
-                <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 text-center text-xs text-cyan-400 flex items-center justify-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Processing evidence and signing with device key...</span>
-                </div>
-              )}
 
               <CaptureCamera
                 role="REPORT"
                 onCapture={handleCaptured}
                 onCancel={prevStep}
                 onDeviceUpload={() => fileInputRef.current?.click()}
-                onSkip={() => createEvidenceFromBlob()}
               />
             </div>
           )}

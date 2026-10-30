@@ -57,7 +57,9 @@ describe("Priority Recomputation with Real Traffic", () => {
 
     let updatedData: UpdatedIssueData | null = null;
     vi.spyOn(prisma.issue, "update").mockImplementation((args) => {
-      updatedData = args.data as unknown as UpdatedIssueData;
+      if ((args.data as Record<string, unknown>)?.piBreakdown) {
+        updatedData = args.data as unknown as UpdatedIssueData;
+      }
       return Promise.resolve({ id: mockIssue.id, priority: (args.data as { priority?: number }).priority ?? 0 }) as unknown as ReturnType<typeof prisma.issue.update>;
     });
 
@@ -106,7 +108,9 @@ describe("Priority Recomputation with Real Traffic", () => {
 
     let updatedData: UpdatedIssueData | null = null;
     vi.spyOn(prisma.issue, "update").mockImplementation((args) => {
-      updatedData = args.data as unknown as UpdatedIssueData;
+      if ((args.data as Record<string, unknown>)?.piBreakdown) {
+        updatedData = args.data as unknown as UpdatedIssueData;
+      }
       return Promise.resolve({ id: mockIssue.id, priority: (args.data as { priority?: number }).priority ?? 0 }) as unknown as ReturnType<typeof prisma.issue.update>;
     });
 

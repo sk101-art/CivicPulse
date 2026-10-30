@@ -3,6 +3,7 @@ import { computePriority, PriorityInputs } from "@/lib/priority";
 import { PRIORITY_CONFIG } from "@/config/priority";
 import { Band } from "@prisma/client";
 import { calculateMedianCongestionR, mapFrcToRoadClass } from "@/lib/traffic/congestion";
+import { recomputeAndSaveBestRepairWindow } from "@/lib/traffic/repairWindow";
 
 /**
  * Recomputes the Priority Index (PI), Band, Breakdown, and Sentence Facts for a single issue.
@@ -134,6 +135,8 @@ export async function recomputeIssuePriority(issueId: string): Promise<number> {
       piText: summaryWithTraffic,
     },
   });
+
+  await recomputeAndSaveBestRepairWindow(issue.id).catch(() => {});
 
   return result.pi;
 }

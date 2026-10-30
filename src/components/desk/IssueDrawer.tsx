@@ -404,7 +404,11 @@ export function IssueDrawer({
           <RepairWindowBadge issueId={issue.id} variant="drawer" />
 
           {/* Live Traffic Intelligence & 24h Profile */}
-          <LiveTrafficCard issueId={issue.id} variant="drawer" />
+          <LiveTrafficCard
+            issueId={issue.id}
+            variant="drawer"
+            dayType={(issue.bestRepairWindow as any)?.dayType}
+          />
 
           {/* Pavement Deterioration Intelligence Panel */}
           <div data-testid="pavement-deterioration-panel" className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
@@ -521,6 +525,11 @@ export function IssueDrawer({
                   className="object-cover"
                   unoptimized
                 />
+                {issue.reports[0].photoUrl.includes("photo-missing") && (
+                  <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-rose-600/90 text-white font-mono font-bold text-[10px] uppercase tracking-wider shadow-lg">
+                    Photo Missing
+                  </div>
+                )}
               </div>
             </div>
           )}
