@@ -326,7 +326,35 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                         : `${issue.lat.toFixed(4)}° N, ${issue.lng.toFixed(4)}° E`}
                     </p>
                     <div className="pt-1.5">
-                      <RepairWindowBadge issueId={issue.id} variant="card" />
+                      {issue.bestRepairWindow ? (
+                        <RepairWindowBadge
+                          issueId={issue.id}
+                          variant="card"
+                          initialResult={{
+                            issueId: issue.id,
+                            basis: (issue.bestRepairWindow.basis as any) || 'estimated',
+                            sampleCount: issue.bestRepairWindow.sampleCount || 0,
+                            bestWindow: {
+                              start: issue.bestRepairWindow.start,
+                              end: issue.bestRepairWindow.end,
+                              score: issue.bestRepairWindow.score,
+                              display: issue.bestRepairWindow.display || `${issue.bestRepairWindow.start} - ${issue.bestRepairWindow.end}`,
+                              dayOfWeek: '',
+                              timeRange: '',
+                              expectedCongestion: 0.1,
+                              condition: issue.bestRepairWindow.condition || issue.bestRepairWindow.reason,
+                              basis: (issue.bestRepairWindow.basis as any) || 'estimated',
+                              sampleCount: issue.bestRepairWindow.sampleCount || 0,
+                              factors: { trafficScore: 80, weatherScore: 100, surroundingsScore: 100, crewScore: 90 },
+                            } as any,
+                            windows: [],
+                            allSlots: [],
+                            displayText: issue.bestRepairWindow.display || '',
+                          }}
+                        />
+                      ) : (
+                        <RepairWindowBadge issueId={issue.id} variant="card" />
+                      )}
                     </div>
                   </div>
                 </div>

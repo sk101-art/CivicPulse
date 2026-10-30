@@ -111,11 +111,35 @@ export async function GET(
       }
     );
   } catch (error: unknown) {
-    console.error("GET /api/issues/[id]/traffic-live error:", error);
-    return apiError(
-      500,
-      "INTERNAL_ERROR",
-      "Failed to retrieve live traffic and profile data"
+    console.error("GET /api/issues/[id]/traffic-live error (returning graceful unavailable):", error);
+    // Graceful fallback on DB errors or overload instead of 500
+    const now = new Date();
+    return NextResponse.json(
+      {
+        live: {
+          currentSpeed: 25,
+          freeFlowSpeed: 40,
+          congestionPct: 0,
+          slowerPct: 0,
+          roadClass: "FRC2",
+          confidence: 0,
+          summary: "Live traffic estimate temporarily unavailable",
+          updatedAt: now.toISOString(),
+          unavailable: true,
+        },
+        profile24h: [],
+        currentHour: now.getHours(),
+        dayType: now.getDay() === 0 || now.getDay() === 6 ? DayType.WEEKEND : DayType.WEEKDAY,
+        source: "ESTIMATED",
+        fromCache: false,
+        unavailable: true,
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control": "private, max-age=60",
+        },
+      }
     );
   }
 }

@@ -20,12 +20,17 @@ export function RepairWindowBadge({
   onSlotSelect,
 }: RepairWindowBadgeProps) {
   const [data, setData] = useState<RepairWindowResult | null>(initialResult || null);
-  const [loading, setLoading] = useState<boolean>(!initialResult);
+  const [loading, setLoading] = useState<boolean>(!initialResult && variant !== 'card');
   const [showCalendar, setShowCalendar] = useState<boolean>(false);
   const [selectedSlot, setSelectedSlot] = useState<CandidateSlot | null>(null);
 
   useEffect(() => {
-    if (initialResult) {
+    // CRITICAL: Desk queue cards must NEVER call /repair-window live!
+    // Cards only render from stored initialResult.
+    // Only the issue drawer (variant === 'drawer' or 'page') may call /repair-window live.
+    if (variant === 'card' || initialResult) {
+      if (initialResult) setData(initialResult);
+      setLoading(false);
       return;
     }
 
@@ -48,7 +53,7 @@ export function RepairWindowBadge({
     return () => {
       isMounted = false;
     };
-  }, [issueId, initialResult]);
+  }, [issueId, initialResult, variant]);
 
   if (loading) {
     return (
@@ -74,7 +79,7 @@ export function RepairWindowBadge({
       >
         <CalendarClock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
         <span className="truncate">
-          Best repair window: <strong className="text-white font-semibold">{bestWindow.display}</strong> ({bestWindow.condition}) · based on {sampleCount} samples
+          Best repair window: <strong className="text-white font-semibold">{bestWindow.display}</strong> ({bestWindow.condition || (bestWindow as any).reason}) · based on {sampleCount} samples
         </span>
         <span
           data-testid="repair-window-basis-chip"

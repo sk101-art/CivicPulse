@@ -68,6 +68,16 @@ export interface DeskIssueItem {
   expectedDaysToWorsen?: number | null;
   isHotspot?: boolean;
   deteriorationDrivers?: Array<{ name: string; impactScore: number }> | null;
+  bestRepairWindow?: {
+    start: string;
+    end: string;
+    score: number;
+    reason: string;
+    basis: "live" | "estimated";
+    display?: string;
+    condition?: string;
+    sampleCount?: number;
+  } | null;
 }
 
 interface AgencyOption {

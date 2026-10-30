@@ -57,8 +57,8 @@ function getOrCreatePool(): Pool {
   const pool = new Pool({
     connectionString,
     ...(isTestEnv ? { options: '-c search_path=test,public' } : {}),
-    max: 10,
-    idleTimeoutMillis: 20000,
+    max: isTestEnv ? 10 : 3,
+    idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 10000,
   });
 
@@ -67,9 +67,8 @@ function getOrCreatePool(): Pool {
     console.warn('PostgreSQL pool idle client notice:', err.message);
   });
 
-  if (env.NODE_ENV !== 'production') {
-    globalForPrisma.newPool = pool;
-  }
+  // Cache on globalThis in production too so warm serverless instances reuse it
+  globalForPrisma.newPool = pool;
 
   return pool;
 }
@@ -84,6 +83,5 @@ export const prisma =
   globalForPrisma.newPrisma ??
   new PrismaClient({ adapter });
 
-if (env.NODE_ENV !== 'production') {
-  globalForPrisma.newPrisma = prisma;
-}
+// Cache on globalThis in production too so warm serverless instances reuse it
+globalForPrisma.newPrisma = prisma;

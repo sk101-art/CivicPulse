@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { DeteriorationRisk, Category, Status } from "@prisma/client";
+import { getRepairWindowForIssue } from "@/lib/traffic/repairWindow";
 
 export interface DeteriorationDriver {
   name: string;
@@ -274,6 +275,21 @@ export async function assessIssueDeterioration(issueId: string): Promise<Deterio
     recurrenceCount12m,
   });
 
+  // Calculate best repair window if possible
+  const rwResult = await getRepairWindowForIssue(issue.id).catch(() => null);
+  const bestWindowData = rwResult?.bestWindow
+    ? {
+        start: rwResult.bestWindow.start,
+        end: rwResult.bestWindow.end,
+        score: rwResult.bestWindow.score,
+        reason: rwResult.bestWindow.condition || "Optimal window",
+        condition: rwResult.bestWindow.condition,
+        display: rwResult.bestWindow.display,
+        basis: rwResult.basis,
+        sampleCount: rwResult.sampleCount,
+      }
+    : undefined;
+
   // Persist to Issue
   await prisma.issue.update({
     where: { id: issue.id },
@@ -282,6 +298,7 @@ export async function assessIssueDeterioration(issueId: string): Promise<Deterio
       deteriorationScore: result.score,
       expectedDaysToWorsen: result.expectedDaysToWorsen,
       deteriorationDrivers: result.drivers as any,
+      ...(bestWindowData ? { bestRepairWindow: bestWindowData } : {}),
     },
   });
 
