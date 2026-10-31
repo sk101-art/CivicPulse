@@ -204,6 +204,18 @@ async function resolveStageEngines(issue: {
   return { triage, fixCheck };
 }
 
+function roadClassLabel(rc: string | null | undefined): string {
+  if (!rc) return "local road";
+  const n = rc.trim().toUpperCase();
+  if (n === "FRC0" || n === "TRUNK" || n === "MOTORWAY") return "motorway/trunk road";
+  if (n === "FRC1" || n === "PRIMARY") return "primary arterial road";
+  if (n === "FRC2" || n === "SECONDARY") return "secondary road";
+  if (n === "FRC3" || n === "TERTIARY") return "tertiary road";
+  if (n === "FRC4" || n === "FRC5" || n === "RESIDENTIAL") return "residential road";
+  if (n === "FRC6" || n === "FRC7" || n === "SERVICE" || n === "UNCLASSIFIED") return "service/unclassified road";
+  return rc.toLowerCase().replace(/_/g, " ");
+}
+
 function enrichAssessOutput(
   issue: any,
   rawOutput: AssessOutput,
@@ -240,6 +252,14 @@ function enrichAssessOutput(
       time: formatDateTimeIST(reportReport.createdAt),
       flags,
       status: stageEngines.triage === RULES_ENGINE ? "unavailable" : "completed",
+    };
+  } else if (!reportReport?.photoUrl) {
+    triageMeta = {
+      result: "No photo to check",
+      engine: "N/A",
+      time: "N/A",
+      flags: [],
+      status: "no-photo",
     };
   } else {
     triageMeta = {
@@ -422,6 +442,7 @@ export async function assessIssueWithMeta(
     liveCongestionPct,
     peakDelayPct,
     roadName: issue.address || issue.segment?.name || "Corridor Segment",
+    roadClass: issue.segment?.roadClass || "",
     contractorName: issue.contractorName,
   };
 
@@ -493,7 +514,7 @@ export async function assessIssueWithMeta(
 - Location: ${inputPayload.roadName}
 - Pavement Deterioration Score: ${detScore}/100
 - Priority Index: ${Math.round(priority)}
-- Road Corridor: ${issue.segment?.name || "Primary corridor"} (${Math.round(busesPerHour)} buses/h)
+- Road Class: ${roadClassLabel(issue.segment?.roadClass)} — ${issue.segment?.name || issue.address || "segment"} (${Math.round(busesPerHour)} buses/h)
 - Live Congestion: ${liveCongestionPct}% slower than free-flow (liveCongestionPct=${liveCongestionPct})
 - Historical Peak Delay: ${peakDelayPct}% (peakDelayPct=${peakDelayPct})
 Recommend a priority adjustment (-10 to +10), summarize risks, and suggest actionable desk next steps.`;
