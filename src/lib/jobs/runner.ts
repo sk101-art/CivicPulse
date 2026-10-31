@@ -11,6 +11,7 @@ import { runDurability } from "@/lib/jobs/durability";
 import { runTrafficProfileJob } from "@/lib/jobs/trafficProfile";
 import { runDailyInsightsJob } from "@/lib/insights/deterioration";
 import { runAiAssessJob } from "@/lib/ai/analyst";
+import { runRepairWindowsJob } from "@/lib/jobs/repairWindows";
 import { sanitizeErrorMessage } from "@/lib/api/errors";
 
 /** Each run must finish well inside a serverless function's time limit. */
@@ -40,6 +41,7 @@ export const JOB_NAMES = [
   "traffic-profile",
   "insights",
   "ai-assess",
+  "repair-windows",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -49,6 +51,7 @@ export interface JobResult {
   skipped?: string | number;
   remaining?: number;
   failed?: number;
+  partial?: boolean;
   firstError?: string;
   durationMs: number;
 }
@@ -199,10 +202,19 @@ export async function runJob(
 ): Promise<JobResult> {
   const startedAt = Date.now();
   let timer: NodeJS.Timeout | undefined;
+  const tracker = { processed: 0, remaining: 0 };
 
-  const timeoutPromise = new Promise<never>((_, reject) => {
+  const timeoutPromise = new Promise<JobResult>((resolve) => {
     timer = setTimeout(() => {
-      reject(new Error(`Job '${name}' exceeded 50s hard timeout guard`));
+      console.warn(`[jobs] Job '${name}' reached ${hardTimeoutMs}ms hard timeout guard`);
+      resolve({
+        job: name,
+        processed: tracker.processed,
+        remaining: tracker.remaining,
+        partial: true,
+        skipped: `Job '${name}' exceeded ${hardTimeoutMs / 1000}s hard timeout guard`,
+        durationMs: Date.now() - startedAt,
+      });
     }, hardTimeoutMs);
   });
 
@@ -232,8 +244,25 @@ export async function runJob(
         result = await runTrafficProfileJob(startedAt, TIME_BUDGET_MS);
         break;
       case "insights": {
-        const insightsResult = await runDailyInsightsJob();
-        result = { processed: insightsResult.assessedIssuesCount, failed: 0 };
+        const insightsResult = await runDailyInsightsJob(startedAt, TIME_BUDGET_MS, tracker);
+        result = {
+          processed: insightsResult.assessedIssuesCount,
+          remaining: insightsResult.remaining,
+          partial: insightsResult.partial,
+          failed: 0,
+        };
+        break;
+      }
+      case "repair-windows": {
+        const rwResult = await runRepairWindowsJob(startedAt, TIME_BUDGET_MS, tracker);
+        result = {
+          processed: rwResult.processed,
+          remaining: rwResult.remaining,
+          partial: rwResult.partial,
+          failed: rwResult.failed,
+          firstError: rwResult.firstError,
+          skipped: rwResult.skipped,
+        };
         break;
       }
       case "ai-assess": {
@@ -255,7 +284,11 @@ export async function runJob(
   })();
 
   try {
-    return await Promise.race([jobPromise, timeoutPromise]);
+    const finalResult = await Promise.race([jobPromise, timeoutPromise]);
+    console.log(
+      `[jobs] Job '${name}' completed in ${finalResult.durationMs}ms (processed: ${finalResult.processed}, remaining: ${finalResult.remaining ?? 0}, partial: ${finalResult.partial ?? false})`
+    );
+    return finalResult;
   } finally {
     if (timer) clearTimeout(timer);
   }

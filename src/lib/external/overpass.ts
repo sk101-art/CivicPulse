@@ -110,7 +110,8 @@ function loadPilotOsm(): any {
 export async function getSurroundingsAndRoadInfo(
   lat: number,
   lng: number,
-  radiusM: number = 500
+  radiusM: number = 500,
+  options?: { allowLive?: boolean }
 ): Promise<SurroundingsResult> {
   const tileKey = `tile_${Math.floor(lat * 200)}_${Math.floor(lng * 200)}`;
   const cached = tileCache.get(tileKey);
@@ -232,7 +233,23 @@ export async function getSurroundingsAndRoadInfo(
     return result;
   }
 
-  // 2. Query Overpass API for coordinates outside pilot
+  // 2. Query Overpass API for coordinates outside pilot (only when allowLive is not false)
+  if (options?.allowLive === false) {
+    const fallbackResult: SurroundingsResult = {
+      schools,
+      hospitals,
+      markets,
+      road: {
+        lanes: 2,
+        oneway: false,
+      },
+      cached: false,
+      source: "fallback",
+    };
+    tileCache.set(tileKey, { data: fallbackResult, timestamp: Date.now() });
+    return fallbackResult;
+  }
+
   try {
     const query = `
       [out:json][timeout:10];

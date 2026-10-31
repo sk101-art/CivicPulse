@@ -768,7 +768,8 @@ export function computeRepairWindows(options: {
  */
 export async function getRepairWindowForIssue(
   issueId: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  options?: { allowLiveOverpass?: boolean }
 ): Promise<RepairWindowResult | null> {
   const issue = await prisma.issue.findUnique({
     where: { id: issueId },
@@ -839,8 +840,10 @@ export async function getRepairWindowForIssue(
     });
   }
 
-  // 3. Query Overpass Surroundings and Road Details
-  const surroundings = await getSurroundingsAndRoadInfo(issue.lat, issue.lng, 500);
+  // 3. Query Overpass Surroundings and Road Details (cache-only in jobs)
+  const surroundings = await getSurroundingsAndRoadInfo(issue.lat, issue.lng, 500, {
+    allowLive: options?.allowLiveOverpass ?? false,
+  });
 
   // 4. Query TomTom Incidents (500m bbox)
   const incidents = await getTomTomTrafficIncidents(issue.lat, issue.lng, 500);
@@ -875,9 +878,12 @@ export async function getRepairWindowForIssue(
  */
 export async function recomputeAndSaveBestRepairWindow(
   issueId: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  options?: { allowLiveOverpass?: boolean; inputHash?: string }
 ): Promise<RepairWindow | null> {
-  const result = await getRepairWindowForIssue(issueId, now).catch((err) => {
+  const result = await getRepairWindowForIssue(issueId, now, {
+    allowLiveOverpass: options?.allowLiveOverpass ?? false,
+  }).catch((err) => {
     console.error(`Failed to recompute repair window for ${issueId}:`, err);
     return null;
   });
@@ -903,6 +909,7 @@ export async function recomputeAndSaveBestRepairWindow(
     where: { id: issueId },
     data: {
       bestRepairWindow: bestWindowData,
+      ...(options?.inputHash ? { repairWindowInputHash: options.inputHash } : {}),
     },
   }).catch((err) => {
     console.error(`Failed to save bestRepairWindow on Issue ${issueId}:`, err);

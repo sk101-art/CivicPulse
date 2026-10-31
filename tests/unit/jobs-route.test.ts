@@ -36,6 +36,7 @@ describe("Scheduled job endpoint (/api/jobs/[name])", () => {
       "traffic-profile",
       "insights",
       "ai-assess",
+      "repair-windows",
     ]);
   });
 
@@ -55,7 +56,7 @@ describe("Scheduled job endpoint (/api/jobs/[name])", () => {
     expect(result.skipped).toMatch(/No LLM key/);
   });
 
-  it("enforces a 50s hard timeout guard to prevent Vercel 60s gateway timeouts", async () => {
+  it("enforces a 50s hard timeout guard returning partial: true and HTTP 200 without error", async () => {
     expect(JOB_HARD_TIMEOUT_MS).toBe(50_000);
 
     const { prisma } = await import("@/lib/db/prisma");
@@ -64,6 +65,10 @@ describe("Scheduled job endpoint (/api/jobs/[name])", () => {
     );
 
     // Call runJob with a simulated short timeout (10ms) while task takes 50ms
-    await expect(runJob("sla-check", 10)).rejects.toThrow(/exceeded 50s hard timeout guard/);
+    const res = await runJob("sla-check", 10);
+    expect(res.partial).toBe(true);
+    expect(res.processed).toBe(0);
+    expect(res.remaining).toBe(0);
+    expect(res.skipped).toMatch(/hard timeout guard/);
   });
 });

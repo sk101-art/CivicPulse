@@ -11,6 +11,7 @@ on:
     - cron: "15 * * * *"     # weather and priority-recompute, hourly
     - cron: "0 */2 * * *"    # traffic-sample, every 2 hours
     - cron: "30 */2 * * *"   # traffic-profile: every 2 hours at minute 30
+    - cron: "40 */2 * * *"   # repair-windows: every 2 hours at minute 40
     - cron: "45 0 * * *"     # insights: daily at 00:45 UTC (06:15 IST)
     - cron: "50 */6 * * *"   # ai-assess: every 6 hours at minute 50
   workflow_dispatch:
@@ -20,7 +21,7 @@ on:
         required: true
         default: "ai-queue"
         type: choice
-        options: [sla-check, ai-queue, weather, priority-recompute, traffic-sample, durability, traffic-profile, insights, ai-assess]
+        options: [sla-check, ai-queue, weather, priority-recompute, traffic-sample, durability, traffic-profile, insights, ai-assess, repair-windows]
 
 jobs:
   run:
@@ -50,6 +51,8 @@ jobs:
             echo "list=traffic-sample" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "30 */2 * * *" ]; then
             echo "list=traffic-profile" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "40 */2 * * *" ]; then
+            echo "list=repair-windows" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "45 0 * * *" ]; then
             echo "list=insights" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "50 */6 * * *" ]; then

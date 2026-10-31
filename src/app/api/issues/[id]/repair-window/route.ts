@@ -48,7 +48,7 @@ export async function GET(
       });
     }
 
-    const result = await getRepairWindowForIssue(id);
+    const result = await getRepairWindowForIssue(id, new Date(), { allowLiveOverpass: true });
 
     if (!result) {
       return apiError(404, "NOT_FOUND", `Issue '${id}' not found`);

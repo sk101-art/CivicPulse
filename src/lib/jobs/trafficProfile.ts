@@ -2,7 +2,6 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { Status, ProfileSource } from "@prisma/client";
 import { buildPlaceProfile, PROFILE_TTL_DAYS } from "@/lib/traffic/profile";
-import { recomputeAndSaveBestRepairWindow } from "@/lib/traffic/repairWindow";
 import {
   getDailyTomTomCallCount,
   MAX_DAILY_QUOTA,
@@ -106,9 +105,6 @@ export async function runTrafficProfileJob(
         },
         issue.id.startsWith("seed-demo-")
       );
-
-      // Recompute and store best repair window on Issue
-      await recomputeAndSaveBestRepairWindow(issue.id).catch(() => {});
 
       processed++;
     } catch (err) {

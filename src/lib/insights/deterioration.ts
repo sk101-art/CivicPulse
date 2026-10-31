@@ -1,7 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { DeteriorationRisk, Category, Status } from "@prisma/client";
-import { recomputeAndSaveBestRepairWindow } from "@/lib/traffic/repairWindow";
 
 export interface DeteriorationDriver {
   name: string;
@@ -275,23 +274,7 @@ export async function assessIssueDeterioration(issueId: string): Promise<Deterio
     recurrenceCount12m,
   });
 
-  // Calculate and recompute best repair window
-  const rw = await recomputeAndSaveBestRepairWindow(issue.id).catch(() => null);
-  const bestWindowData = rw
-    ? {
-        start: rw.start,
-        end: rw.end,
-        score: rw.score,
-        reason: rw.condition || "Optimal window",
-        condition: rw.condition,
-        display: rw.display,
-        basis: rw.basis,
-        sampleCount: rw.sampleCount,
-        dayType: rw.dayType,
-      }
-    : undefined;
-
-  // Persist to Issue
+  // Persist deterioration intelligence to Issue (bestRepairWindow is managed by the repair-windows job)
   await prisma.issue.update({
     where: { id: issue.id },
     data: {
@@ -299,7 +282,7 @@ export async function assessIssueDeterioration(issueId: string): Promise<Deterio
       deteriorationScore: result.score,
       expectedDaysToWorsen: result.expectedDaysToWorsen,
       deteriorationDrivers: result.drivers as any,
-      ...(bestWindowData ? { bestRepairWindow: bestWindowData } : {}),
+      insightsComputedAt: now,
     },
   });
 
@@ -310,31 +293,62 @@ export interface DailyInsightsResult {
   assessedIssuesCount: number;
   hotspotsDetected: number;
   warrantyRiskCount: number;
+  remaining: number;
+  partial?: boolean;
   timestamp: string;
 }
 
+const MAX_INSIGHTS_PER_RUN = 15;
+
 /**
  * Scheduled job 'insights' (daily, 05:00):
- * - Computes deterioration for all OPEN / IN_PROGRESS issues.
+ * - Computes deterioration for active issues in batches of 15 per run, least-recently-computed first.
+ * - Stops starting new issues when < 15s of the 40s budget remains.
  * - Detects recurring defect hotspots: segment with >= 3 issues in 90 days (flags segment and issue: isHotspot: true).
  * - Contractor warranty risk: repairs near warranty expiry (within 30 days of warrantyUntil) with score > 50.
  */
-export async function runDailyInsightsJob(): Promise<DailyInsightsResult> {
+export async function runDailyInsightsJob(
+  startedAt: number = Date.now(),
+  timeBudgetMs: number = 40_000,
+  tracker?: { processed: number; remaining: number }
+): Promise<DailyInsightsResult> {
   const now = new Date();
   const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 3600 * 1000);
 
-  // 1. Fetch active issues
-  const openIssues = await prisma.issue.findMany({
+  // Total active issues
+  const totalActive = await prisma.issue.count({
+    where: {
+      status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED] },
+    },
+  });
+
+  // 1. Fetch active issues in batches (max 15 per run), least-recently-computed first
+  const candidateIssues = await prisma.issue.findMany({
     where: {
       status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED] },
     },
     select: { id: true, segmentId: true },
+    orderBy: [
+      { insightsComputedAt: { sort: "asc", nulls: "first" } },
+      { priority: "desc" },
+    ],
+    take: MAX_INSIGHTS_PER_RUN,
   });
 
   let assessedCount = 0;
-  for (const issue of openIssues) {
+  for (const issue of candidateIssues) {
+    // Stop starting new issues when < 15s of a 40s budget remains
+    if (Date.now() - startedAt > timeBudgetMs - 15_000) {
+      break;
+    }
+
     await assessIssueDeterioration(issue.id);
     assessedCount++;
+
+    if (tracker) {
+      tracker.processed = assessedCount;
+      tracker.remaining = Math.max(0, totalActive - assessedCount);
+    }
   }
 
   // 2. Identify Hotspot Segments (>= 3 issues created in 90 days)
@@ -383,10 +397,14 @@ export async function runDailyInsightsJob(): Promise<DailyInsightsResult> {
     select: { id: true },
   });
 
+  const remaining = Math.max(0, totalActive - assessedCount);
+
   return {
     assessedIssuesCount: assessedCount,
     hotspotsDetected: hotspotSegmentIds.length,
     warrantyRiskCount: warrantyRisks.length,
+    remaining,
+    partial: remaining > 0,
     timestamp: now.toISOString(),
   };
 }
