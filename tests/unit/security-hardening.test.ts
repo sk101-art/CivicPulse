@@ -4,7 +4,6 @@ import { getServerSession } from "next-auth/next";
 import { prisma } from "@/lib/db/prisma";
 import { POST as registerPOST } from "@/app/api/auth/register/route";
 import { POST as actionsPOST } from "@/app/api/issues/[id]/actions/route";
-import { POST as verifyPOST } from "@/app/api/issues/[id]/verify/route";
 import { POST as safeRoutePOST } from "@/app/api/routes/safe/route";
 
 vi.mock("next-auth/next", () => ({
@@ -15,7 +14,7 @@ vi.mock("next-auth/next", () => ({
  * Review fixes (security hardening):
  * 1. Public registration can never create a desk (AUTHORITY) account.
  * 2. A desk cannot claim a fix without a signed on-site photo.
- * 3. Desk accounts cannot verify fixes (citizens only).
+ * 3. There is no direct verify route (fix decisions come only from the blind audit quorum).
  * 4. Safe routing (TomTom quota) requires a signed-in user.
  */
 describe("Security hardening (review fixes)", () => {
@@ -115,22 +114,11 @@ describe("Security hardening (review fixes)", () => {
     expect(after?.status).toBe(Status.CONFIRMED);
   });
 
-  it("desk (AUTHORITY) accounts cannot verify fixes", async () => {
-    vi.mocked(getServerSession).mockResolvedValueOnce({
-      user: { id: "test-sec-desk", email: "desk@example.com", role: Role.AUTHORITY },
-      expires: new Date(Date.now() + 3600_000).toISOString(),
-    });
-
-    const res = await verifyPOST(
-      new Request("http://localhost:3000/api/issues/any/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      }),
-      { params: Promise.resolve({ id: "any" }) }
-    );
-
-    expect(res.status).toBe(403);
+  it("the direct /verify route is gone: repairs are only decided by the blind audit quorum", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    expect(fs.existsSync(path.join(process.cwd(), "src/app/api/issues/[id]/verify/route.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(process.cwd(), "src/components/public/VerifyFixModal.tsx"))).toBe(false);
   });
 
   it("safe routing requires a signed-in user", async () => {

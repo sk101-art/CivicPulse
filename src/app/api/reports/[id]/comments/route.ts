@@ -1,3 +1,4 @@
+import { TEXT_LIMITS } from "@/lib/validation/limits";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
@@ -13,6 +14,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const text = typeof body.text === 'string' ? body.text : '';
     const userId = session.user.id;
     if (!text.trim()) return new NextResponse("Invalid comment", { status: 400 });
+    if (text.length > TEXT_LIMITS.comment) {
+      return new NextResponse(`Comments must be ${TEXT_LIMITS.comment} characters or fewer`, { status: 400 });
+    }
 
     let issueId = id;
     const report = await prisma.report.findUnique({

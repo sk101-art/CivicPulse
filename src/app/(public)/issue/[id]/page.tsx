@@ -7,13 +7,16 @@ import { authOptions } from "@/lib/auth";
 import { 
   MapPin, Clock, ArrowLeft, ShieldCheck, 
   Building2, ArrowRightLeft, 
-  Activity, CheckCircle2, Sparkles, AlertTriangle, FileText, CloudSun
+  Activity, CheckCircle2, Sparkles, AlertTriangle, FileText, CloudSun, Route
 } from "lucide-react";
 import { PriorityBreakdown } from "@/components/priority/PriorityBreakdown";
 import { RepairWindowBadge } from "@/components/desk/RepairWindowBadge";
 import { LiveTrafficCard } from "@/components/traffic/LiveTrafficCard";
 import { getRepairWindowForIssue } from "@/lib/traffic/repairWindow";
-import { assessIssue } from "@/lib/ai/analyst";
+import { getStoredAssessmentSummary } from "@/lib/ai/storedAssessment";
+import { SectionBoundary } from "@/components/ui/SectionBoundary";
+import { actorDisplayName } from "@/lib/issues/actors";
+import { displayLocation } from "@/lib/issues/display";
 import type { PriorityBreakdown as PriorityBreakdownType } from "@/lib/priority";
 import { Status, Band, EvidenceRole, Role } from "@prisma/client";
 import { formatDateIST, formatDateTimeIST } from "@/lib/time/ist";
@@ -25,103 +28,59 @@ export default async function PublicIssuePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
-  const session = await getServerSession(authOptions);
+  const [{ id }, session] = await Promise.all([params, getServerSession(authOptions)]);
 
-  let issue = await prisma.issue.findUnique({
-    where: { id },
-    include: {
-      agency: { select: { id: true, code: true, name: true, slaHours: true } },
-      reports: {
-        orderBy: { createdAt: "desc" },
-      },
-      actions: {
-        orderBy: { createdAt: "asc" },
-      },
-      verifications: {
-        orderBy: { createdAt: "desc" },
-      },
-    },
-  });
+  const issueInclude = {
+    agency: { select: { id: true, code: true, name: true, slaHours: true } },
+    reports: { orderBy: { createdAt: "desc" as const } },
+    actions: { orderBy: { createdAt: "asc" as const } },
+    verifications: { orderBy: { createdAt: "desc" as const } },
+  };
 
-  if (!issue) {
-    const report = await prisma.report.findUnique({
-      where: { id },
-      include: {
-        issue: {
-          include: {
-            agency: { select: { id: true, code: true, name: true, slaHours: true } },
-            reports: { orderBy: { createdAt: "desc" } },
-            actions: { orderBy: { createdAt: "asc" } },
-            verifications: { orderBy: { createdAt: "desc" } },
-          },
-        },
-      },
-    });
-    if (report && report.issue) {
-      issue = report.issue;
-    }
-  }
+  // The id may be an issue id or (older links) a report id: look both up in parallel.
+  const [byIssue, byReport] = await Promise.all([
+    prisma.issue.findUnique({ where: { id }, include: issueInclude }),
+    prisma.report.findUnique({ where: { id }, select: { issue: { include: issueInclude } } }),
+  ]);
+  const issue = byIssue ?? byReport?.issue ?? null;
 
   if (!issue) {
     notFound();
   }
 
-  // Compute current user eligibility attributes for fix verification
-  let currentUser = null;
-  let userHasOpenAuditTask = false;
-  if (session?.user?.id) {
-    currentUser = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { id: true, createdAt: true, role: true, email: true },
-    });
-    if (currentUser) {
-      const openTask = await prisma.auditTask.findFirst({
-        where: {
-          issueId: issue.id,
-          assigneeId: currentUser.id,
-          status: "OPEN",
-        },
-      });
-      userHasOpenAuditTask = Boolean(openTask);
-    }
-  }
-
-  const isDesk = currentUser?.role === "AUTHORITY" || session?.user?.role === "AUTHORITY";
-  const repairWindow = isDesk ? await getRepairWindowForIssue(issue.id) : null;
-  const aiAssessment = await assessIssue(issue.id).catch(() => null);
-
-  // Enrich action log actor names
+  const viewerId = session?.user?.id ?? null;
+  const isDesk = session?.user?.role === "AUTHORITY";
   const actorIds = Array.from(new Set(issue.actions.map((a) => a.actorId)));
-  const users = await prisma.user.findMany({
-    where: { id: { in: actorIds } },
-    select: { id: true, email: true, name: true, role: true },
-  });
-  const userMap = new Map(users.map((u) => [u.id, u]));
 
-  const enrichedActions = issue.actions.map((action) => {
-    let actorName = "Citizen";
-    if (action.actorId === "system" || action.actorId === "SYSTEM") {
-      actorName = "System";
-    } else {
-      const u = userMap.get(action.actorId);
-      if (u) {
-        if (u.email === "desk-a@civicpulse.local") {
-          actorName = "Desk A";
-        } else if (u.email === "desk-b@civicpulse.local") {
-          actorName = "Desk B";
-        } else if (u.name) {
-          actorName = u.name;
-        } else if (u.role === "AUTHORITY") {
-          actorName = "Desk Officer";
-        }
-      }
-    }
-    return {
-      ...action,
-      actorName,
-    };
-  });
+  // Everything else this page needs, in one parallel batch. Optional sections degrade to null.
+  const [openTask, users, aiSummary, repairWindow] = await Promise.all([
+    viewerId
+      ? prisma.auditTask.findFirst({
+          where: { issueId: issue.id, assigneeId: viewerId, status: "OPEN" },
+          select: { id: true },
+        })
+      : Promise.resolve(null),
+    actorIds.length
+      ? prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, email: true, name: true, role: true },
+        })
+      : Promise.resolve([]),
+    getStoredAssessmentSummary(issue.aiInputHash).catch(() => null),
+    isDesk ? getRepairWindowForIssue(issue.id).catch(() => null) : Promise.resolve(null),
+  ]);
+
+  // Compute current user eligibility attributes for fix verification
+  const userHasOpenAuditTask = Boolean(openTask);
+  const currentUser = session?.user ? { role: session.user.role } : null;
+  const aiAssessment = aiSummary ? { summary: aiSummary } : null;
+
+  // Public action log labels: display names only, never emails
+  const userMap = new Map(users.map((u) => [u.id, u]));
+  const enrichedActions = issue.actions.map((action) => ({
+    ...action,
+    actorName: actorDisplayName(action.actorId, userMap.get(action.actorId)),
+  }));
 
   const effectiveBand = (issue.bandOverride || issue.band) as Band;
   const bandBadgeColor =
@@ -196,13 +155,21 @@ export default async function PublicIssuePage({
             {issue.category.replace(/_/g, " ")}
           </span>
           <h1 className="text-2xl sm:text-3xl font-display font-black text-white">
-            {(issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending') && !issue.address.includes('Report Location'))
-              ? issue.address
-              : `Near ${issue.lat.toFixed(4)}, ${issue.lng.toFixed(4)}`}
+            {displayLocation(issue.address, issue.lat, issue.lng)}
           </h1>
-          <p className="text-xs font-mono text-white/50 flex items-center gap-1.5">
-            <MapPin className="w-4 h-4 text-cyan" />
+          <p className="text-xs font-mono text-white/70 flex flex-wrap items-center gap-1.5">
+            <MapPin className="w-4 h-4 text-cyan" aria-hidden="true" />
             Lat: {issue.lat.toFixed(5)}, Lng: {issue.lng.toFixed(5)}
+            {issue.segmentId && (
+              <Link
+                href={`/road/${issue.segmentId}`}
+                data-testid="road-timeline-link"
+                className="ml-3 inline-flex items-center gap-1 text-cyan-300 hover:text-cyan-200 underline underline-offset-2"
+              >
+                <Route className="w-3.5 h-3.5" aria-hidden="true" />
+                Road timeline
+              </Link>
+            )}
           </p>
         </div>
 
@@ -333,13 +300,18 @@ export default async function PublicIssuePage({
             </div>
             {Array.isArray(issue.deteriorationDrivers) && issue.deteriorationDrivers.length > 0 && (
               <div className="text-[11px] font-mono text-white/60">
-                Drivers: {(issue.deteriorationDrivers as any[]).map((d) => d.name).slice(0, 2).join(", ")}
+                Drivers: {(issue.deteriorationDrivers as Array<{ name?: string } | null>)
+                  .map((d) => d?.name)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .join(", ")}
               </div>
             )}
           </div>
         )}
 
         {/* Civic Analyst Assessment (Citizen-Safe) */}
+        <SectionBoundary title="AI assessment">
         {aiAssessment?.summary && (
           <div data-testid="citizen-ai-summary-card" className="p-4 rounded-2xl bg-cyan-950/20 border border-cyan-500/30 space-y-2">
             <div className="flex items-center justify-between">
@@ -354,25 +326,30 @@ export default async function PublicIssuePage({
             </p>
           </div>
         )}
+        </SectionBoundary>
 
         {/* Desk View: Recommended Repair Window */}
         {isDesk && (
           <div className="space-y-2">
-            <RepairWindowBadge
-              issueId={issue.id}
-              initialResult={repairWindow}
-              variant="page"
-            />
+            <SectionBoundary title="Repair window">
+              <RepairWindowBadge
+                issueId={issue.id}
+                initialResult={repairWindow}
+                variant="page"
+              />
+            </SectionBoundary>
           </div>
         )}
 
         {/* Real-time Traffic Intelligence Card & 24h Profile */}
         <div className="space-y-2">
-          <LiveTrafficCard
-            issueId={issue.id}
-            variant="page"
-            dayType={(issue.bestRepairWindow as { dayType?: "WEEKDAY" | "WEEKEND" } | null)?.dayType}
-          />
+          <SectionBoundary title="Live traffic">
+            <LiveTrafficCard
+              issueId={issue.id}
+              variant="page"
+              dayType={(issue.bestRepairWindow as { dayType?: "WEEKDAY" | "WEEKEND" } | null)?.dayType}
+            />
+          </SectionBoundary>
         </div>
 
         {/* Evidence Photo Gallery */}
@@ -425,7 +402,7 @@ export default async function PublicIssuePage({
                     </span>
                   </div>
                   {report.note && (
-                    <p className="text-xs text-white/80 bg-white/5 p-2 rounded-lg font-sans border border-white/5">
+                    <p className="text-xs text-white/80 bg-white/5 p-2 rounded-lg font-sans border border-white/5 whitespace-pre-line break-words">
                       &quot;{report.note}&quot;
                     </p>
                   )}

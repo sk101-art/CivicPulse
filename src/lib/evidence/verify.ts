@@ -7,6 +7,7 @@ import {
   toCanonicalJson,
 } from "./sign";
 import { PILOT_BOUNDS } from "@/lib/api/validate";
+import { isDefaultedCoordinate } from "./coords";
 
 export const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -26,6 +27,7 @@ export type VerifyEvidenceResult =
         | "INVALID_NONCE"
         | "ACCURACY_TOO_LOW"
         | "OUT_OF_BOUNDS"
+        | "DEFAULTED_COORDINATES"
         | "NO_REGISTERED_DEVICE_KEY"
         | "INVALID_SIGNATURE"
         | "WRONG_EVIDENCE_ROLE";
@@ -107,6 +109,11 @@ export async function verifyEvidence(
       reason: "OUT_OF_BOUNDS",
       details: { lat: payload.lat, lng: payload.lng, bounds: PILOT_BOUNDS },
     };
+  }
+
+  // 4b. Coordinates substituted by a client without a GPS fix are never on-site evidence
+  if (isDefaultedCoordinate(payload.lat, payload.lng)) {
+    return { valid: false, reason: "DEFAULTED_COORDINATES" };
   }
 
   // 5. Consume single-use nonce (AUDIT tasks use server-issued challengeNonce checked and consumed by AuditTask)

@@ -4,6 +4,8 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Camera, Navigation, AlertTriangle, CheckCircle, RefreshCw, X } from 'lucide-react';
 import { EvidenceRole, EvidencePayload, computePhotoHash, signEvidencePayload, haversineDistanceM } from '@/lib/evidence/sign';
 import { getOrCreateDeviceKey } from '@/lib/evidence/deviceKey';
+import { isInServiceArea } from '@/lib/evidence/coords';
+import { SERVICE_AREA_MESSAGE } from '@/lib/validation/limits';
 
 export interface CapturedEvidence {
   blob: Blob;
@@ -18,10 +20,13 @@ export interface CaptureCameraProps {
   onCancel?: () => void;
   targetCoords?: { lat: number; lng: number };
   overrideNonce?: string;
-  onDeviceUpload?: () => void;
 }
 
-export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrideNonce, onDeviceUpload }: CaptureCameraProps) {
+/**
+ * Live-camera evidence capture. There is deliberately no gallery/file upload: evidence must be a
+ * fresh frame signed together with a real GPS fix (accuracy ≤ 30 m) inside the service area.
+ */
+export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrideNonce }: CaptureCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -186,6 +191,10 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrid
       setCameraError('GPS accuracy must be 30m or better before capturing evidence.');
       return;
     }
+    if (!isInServiceArea(gpsFix.lat, gpsFix.lng)) {
+      setCameraError(SERVICE_AREA_MESSAGE);
+      return;
+    }
 
     setIsProcessing(true);
     setCaptureStatusMessage('Capturing high-resolution frame...');
@@ -280,7 +289,8 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrid
     }
   };
 
-  const isGpsLocked = gpsFix !== null && gpsFix.accuracy <= 30;
+  const outsideServiceArea = gpsFix !== null && !isInServiceArea(gpsFix.lat, gpsFix.lng);
+  const isGpsLocked = gpsFix !== null && gpsFix.accuracy <= 30 && !outsideServiceArea;
 
   return (
     <div className="relative w-full max-w-2xl mx-auto rounded-2xl overflow-hidden bg-zinc-950 border border-zinc-800 shadow-2xl flex flex-col">
@@ -332,15 +342,6 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrid
             <AlertTriangle className="w-10 h-10 mb-2" />
             <p className="font-semibold text-sm">{cameraError}</p>
             <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-              {onDeviceUpload && (
-                <button
-                  type="button"
-                  onClick={onDeviceUpload}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow-lg flex items-center gap-1.5 cursor-pointer"
-                >
-                  📁 Choose from Device
-                </button>
-              )}
               <button
                 type="button"
                 onClick={startCamera}
@@ -369,7 +370,9 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrid
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
                 )}
                 <span>
-                  {isGpsLocked
+                  {outsideServiceArea
+                    ? SERVICE_AREA_MESSAGE
+                    : isGpsLocked
                     ? `GPS Locked: ±${Math.round(gpsFix.accuracy)}m (${gpsFix.lat.toFixed(5)}, ${gpsFix.lng.toFixed(5)})`
                     : `Accuracy: ±${Math.round(gpsFix.accuracy)}m — Move to open sky (≤30m required)`}
                 </span>
@@ -469,22 +472,12 @@ export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrid
           </button>
         </div>
 
-        {onDeviceUpload && (
-          <div className="flex items-center justify-center gap-4 py-1 text-xs">
-            <button
-              type="button"
-              onClick={onDeviceUpload}
-              className="text-zinc-400 hover:text-white underline cursor-pointer transition"
-            >
-              📁 Choose from Device
-            </button>
-          </div>
-        )}
-
         {/* Status Hint */}
         <div className="text-center text-[11px] text-zinc-500">
-          {!isGpsLocked
-            ? 'Camera locked: Move into open sky until GPS accuracy is 30 metres or less.'
+          {outsideServiceArea
+            ? SERVICE_AREA_MESSAGE
+            : !isGpsLocked
+            ? 'Camera locked: a live GPS fix of 30 metres or better is required.'
             : 'Signed with device hardware key (Web Crypto ECDSA P-256) and single-use server nonce.'}
         </div>
       </div>

@@ -25,6 +25,8 @@ export interface IngestReportInput {
   blockedShare?: string;
   /** Evidence captured offline without a live nonce (counts as half a report in Confidence). */
   offline?: boolean;
+  /** Client-generated id; unique, so a resubmission can never create a second report. */
+  clientReportId?: string;
 }
 
 export interface IngestReportResult {
@@ -67,6 +69,7 @@ export async function ingestReportWithSpatialMerge(
     sizeClass,
     blockedShare,
     offline = false,
+    clientReportId,
   } = input;
 
   // Query nearby open issues within 40 metres using PostGIS ST_DWithin on geography
@@ -110,6 +113,7 @@ export async function ingestReportWithSpatialMerge(
           note,
           isSeed,
           offline,
+          clientReportId,
         },
       });
 
@@ -200,6 +204,7 @@ export async function ingestReportWithSpatialMerge(
         note,
         isSeed,
         offline,
+        clientReportId,
       },
     });
 

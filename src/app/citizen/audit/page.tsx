@@ -24,6 +24,7 @@ interface AuditTaskItem {
 export default function CitizenAuditPage() {
   const [tasks, setTasks] = useState<AuditTaskItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ineligible, setIneligible] = useState<{ message: string; eligibleAt?: string } | null>(null);
   const [activeTask, setActiveTask] = useState<AuditTaskItem | null>(null);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -78,7 +79,10 @@ export default function CitizenAuditPage() {
         const res = await fetch(`/api/audit/tasks${query}`);
         if (res.ok) {
           const data = await res.json();
-          if (isMounted) setTasks(data.tasks || []);
+          if (isMounted) {
+            setTasks(data.tasks || []);
+            setIneligible(data.eligible === false ? { message: data.message, eligibleAt: data.eligibleAt } : null);
+          }
         }
       } catch (err) {
         console.error('Failed to load audit tasks:', err);
@@ -349,6 +353,21 @@ export default function CitizenAuditPage() {
           <div className="p-12 text-center text-xs font-mono text-white/40 flex items-center justify-center gap-2">
             <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
             Loading active audit missions...
+          </div>
+        ) : ineligible ? (
+          <div
+            data-testid="audit-not-eligible"
+            role="status"
+            className="p-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-center space-y-3"
+          >
+            <Clock className="w-8 h-8 text-amber-300 mx-auto" aria-hidden="true" />
+            <div className="text-sm font-bold font-mono text-white">Not eligible yet</div>
+            <p className="text-xs font-mono text-white/70 max-w-sm mx-auto">{ineligible.message}</p>
+            {ineligible.eligibleAt && (
+              <p className="text-xs font-mono text-amber-200">
+                Audits unlock on {formatDateTimeIST(ineligible.eligibleAt)}.
+              </p>
+            )}
           </div>
         ) : tasks.length === 0 ? (
           <div className="p-12 rounded-2xl bg-white/5 border border-white/10 text-center space-y-3">

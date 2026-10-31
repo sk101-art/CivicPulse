@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { LayoutDashboard, Navigation, LogOut, Radio } from 'lucide-react';
 
 export function AuthoritySidebarNav() {
@@ -74,9 +75,10 @@ export function AuthoritySidebarNav() {
             SECURE LINK ACTIVE
           </span>
         </div>
-        <form action="/api/auth/signout" method="POST">
-          <button
-            type="submit"
+        <button
+            type="button"
+            onClick={() => void signOut({ callbackUrl: '/login' })}
+            aria-label="Sign out"
             className="flex items-center gap-4 text-xs font-black transition-all hover:text-white uppercase tracking-widest"
             style={{ color: 'var(--text-muted)' }}
           >
@@ -85,7 +87,6 @@ export function AuthoritySidebarNav() {
               TERMINATE
             </span>
           </button>
-        </form>
       </div>
     </aside>
   );

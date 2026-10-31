@@ -97,6 +97,8 @@ export function CommentSection({ reportId }: { reportId: string }) {
           {/* Comment Input */}
           <div className="flex gap-3">
             <input
+              maxLength={500}
+              aria-label="Add a comment"
               type="text"
               value={text}
               onChange={(e) => setText(e.target.value)}

@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { LogOut, Radio, TrendingUp, User, Map, FileText, LayoutDashboard, Compass } from 'lucide-react';
 
 const iconMap = {
@@ -109,15 +110,16 @@ export function AppSidebar({ role, links, userName, userSubtitle }: AppSidebarPr
           </div>
         )}
 
-        <form action="/api/auth/signout" method="POST">
-          <button
-            type="submit"
-            className="flex items-center gap-3 text-xs font-bold transition-all hover:text-white uppercase tracking-wider text-muted w-full"
-          >
-            <LogOut className="w-5 h-5 shrink-0" />
-            Sign Out
-          </button>
-        </form>
+        {/* signOut() posts the CSRF token itself, so there is no NextAuth confirmation page */}
+        <button
+          type="button"
+          data-testid="sidebar-sign-out"
+          onClick={() => void signOut({ callbackUrl: '/login' })}
+          className="flex items-center gap-3 text-xs font-bold transition-all hover:text-white uppercase tracking-wider text-muted w-full"
+        >
+          <LogOut className="w-5 h-5 shrink-0" aria-hidden="true" />
+          Sign Out
+        </button>
       </div>
     </aside>
   );

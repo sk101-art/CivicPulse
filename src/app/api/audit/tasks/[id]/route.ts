@@ -3,12 +3,14 @@ import { prisma } from "@/lib/db/prisma";
 import { withAuth } from "@/lib/api/auth";
 import { apiError } from "@/lib/api/errors";
 import { haversineDistanceM } from "@/lib/evidence/sign";
+import { auditIneligibilityForIssue } from "@/lib/audit/blindAudit";
+import { INELIGIBLE_MESSAGES } from "@/lib/audit/rules";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/audit/tasks/[id]
- * Returns details for a single blind audit task.
+ * Returns details for a single blind audit task, only to a user who may answer it.
  *
  * CRITICAL BLINDNESS GUARANTEE:
  * Returns NO issue status, NO contractor info, NO repairClaimedAt, NO votes.
@@ -33,9 +35,13 @@ export async function GET(
       include: {
         issue: {
           select: {
+            id: true,
             lat: true,
             lng: true,
             address: true,
+            repairClaimedAt: true,
+            createdAt: true,
+            reports: { select: { userId: true, role: true } },
           },
         },
       },
@@ -48,6 +54,12 @@ export async function GET(
     // Citizen must be assigned to this task or task must be in public queue (assigneeId: null)
     if (task.assigneeId && task.assigneeId !== auth.user.id) {
       return apiError(403, "FORBIDDEN", "You are not assigned to this audit task");
+    }
+
+    // No challenge nonce for anyone who may not answer it.
+    const ineligible = await auditIneligibilityForIssue(auth.user.id, task.issue, task.kind);
+    if (ineligible) {
+      return apiError(ineligible === "ALREADY_VOTED" ? 409 : 403, ineligible, INELIGIBLE_MESSAGES[ineligible]);
     }
 
     let distanceM: number | undefined;

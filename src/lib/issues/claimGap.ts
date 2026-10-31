@@ -2,7 +2,6 @@ export interface ClaimRecord {
   id: string;
   issueId: string;
   actorId: string;
-  actorEmail?: string;
   actorName?: string;
   wardId?: string | null;
   wardCode?: string | null;

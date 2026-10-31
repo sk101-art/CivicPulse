@@ -15,6 +15,7 @@ import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
 import { NextResponse } from "next/server";
 import { Role, EvidenceRole } from "@prisma/client";
 import { assignBlindAuditTasks } from "@/lib/audit/blindAudit";
+import { TEXT_LIMITS } from "@/lib/validation/limits";
 import { z } from "zod";
 import crypto from "crypto";
 
@@ -30,11 +31,11 @@ const actionSchema = z.object({
     "REOPEN",
     "REOPEN_IN_WARRANTY",
   ]),
-  note: z.string().optional(),
+  note: z.string().max(TEXT_LIMITS.actionNote, `Notes must be ${TEXT_LIMITS.actionNote} characters or fewer`).optional(),
   agencyId: z.string().optional(),
   overrideBand: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
-  contractorName: z.string().optional(),
-  tenderId: z.string().optional(),
+  contractorName: z.string().max(TEXT_LIMITS.title).optional(),
+  tenderId: z.string().max(TEXT_LIMITS.title).optional(),
   warrantyUntil: z.string().optional(),
   liabilityClauseRef: z.string().optional(),
   evidence: z

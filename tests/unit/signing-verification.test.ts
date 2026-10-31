@@ -82,8 +82,8 @@ describe("T22 Acceptance: Camera capture, GPS gate and signing", () => {
     const payload: EvidencePayload = {
       accuracy: 15,
       capturedAt: new Date().toISOString(),
-      lat: 12.9716,
-      lng: 77.5946,
+      lat: 12.9352,
+      lng: 77.6245,
       nonce,
       photoHash,
       role: "REPORT",
@@ -111,8 +111,8 @@ describe("T22 Acceptance: Camera capture, GPS gate and signing", () => {
     const payload: EvidencePayload = {
       accuracy: 12,
       capturedAt: new Date().toISOString(),
-      lat: 12.9716,
-      lng: 77.5946,
+      lat: 12.9352,
+      lng: 77.6245,
       nonce,
       photoHash,
       role: "REPORT",
@@ -143,8 +143,8 @@ describe("T22 Acceptance: Camera capture, GPS gate and signing", () => {
     const payload: EvidencePayload = {
       accuracy: 10,
       capturedAt: new Date().toISOString(),
-      lat: 12.9716,
-      lng: 77.5946,
+      lat: 12.9352,
+      lng: 77.6245,
       nonce,
       photoHash,
       role: "REPORT",
@@ -180,8 +180,8 @@ describe("T22 Acceptance: Camera capture, GPS gate and signing", () => {
     const payload: EvidencePayload = {
       accuracy: 10,
       capturedAt: oldCapturedAt,
-      lat: 12.9716,
-      lng: 77.5946,
+      lat: 12.9352,
+      lng: 77.6245,
       nonce,
       photoHash,
       role: "REPORT",
@@ -208,8 +208,8 @@ describe("T22 Acceptance: Camera capture, GPS gate and signing", () => {
     const payload: EvidencePayload = {
       accuracy: 45, // exceeds 30m limit
       capturedAt: new Date().toISOString(),
-      lat: 12.9716,
-      lng: 77.5946,
+      lat: 12.9352,
+      lng: 77.6245,
       nonce,
       photoHash,
       role: "REPORT",

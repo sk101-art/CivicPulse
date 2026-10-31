@@ -4,11 +4,16 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { DeskAccessOnly } from "@/components/auth/DeskAccessOnly";
 
 export default async function DeskLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'AUTHORITY') {
+  if (!session) {
     redirect('/login');
+  }
+  // A signed-in citizen is told why, instead of being bounced to a login form they are already past.
+  if (session.user.role !== 'AUTHORITY') {
+    return <DeskAccessOnly />;
   }
 
   const userId = session.user.id;

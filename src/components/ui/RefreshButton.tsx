@@ -28,11 +28,14 @@ export function RefreshButton({ onRefresh, className = '' }: RefreshButtonProps)
 
   return (
     <button
+      type="button"
+      aria-label="Refresh"
+      title="Refresh"
       onClick={handleRefresh}
       disabled={loading}
-      className={`p-2 rounded-lg border border-white/10 bg-white/5 text-white/50 hover:text-white hover:border-white/30 transition-all ${className}`}
+      className={`p-2 rounded-lg border border-white/10 bg-white/5 text-white/80 hover:text-white hover:border-white/30 transition-all ${className}`}
     >
-      <RotateCcw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+      <RotateCcw aria-hidden="true" className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
     </button>
   );
 }

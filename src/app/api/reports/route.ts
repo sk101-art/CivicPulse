@@ -10,12 +10,17 @@ import { NextResponse } from "next/server";
 import { Category, Status } from "@prisma/client";
 import { z } from "zod";
 import crypto from "crypto";
+import { TEXT_LIMITS, SERVICE_AREA_MESSAGE } from "@/lib/validation/limits";
+import { isDefaultedCoordinate, isInServiceArea } from "@/lib/evidence/coords";
+import { displayLocation, issueTitle } from "@/lib/issues/display";
+import { latestReportPerIssue } from "@/lib/citizen/statsPure";
 
+// Bounds are checked after parsing so an out-of-area report gets a readable message.
 const evidencePayloadSchema = z.object({
   accuracy: z.number().min(0).max(30),
   capturedAt: z.string(),
-  lat: z.number().min(11.5).max(14.5),
-  lng: z.number().min(76.5).max(78.5),
+  lat: z.number(),
+  lng: z.number(),
   nonce: z.string().min(1),
   photoHash: z.string().min(1),
   role: z.enum(["REPORT", "CONFIRM", "CLAIM_FIX", "VERIFY", "AUDIT"]),
@@ -27,13 +32,43 @@ const signedReportSchema = z.object({
   signature: z.string().min(1),
   photoBase64: z.string().min(1),
   mimeType: z.string().default("image/jpeg"),
-  note: z.string().optional(),
-  title: z.string().optional(),
+  note: z.string().max(TEXT_LIMITS.description, `Description must be ${TEXT_LIMITS.description} characters or fewer`).optional(),
+  title: z.string().max(TEXT_LIMITS.title, `Title must be ${TEXT_LIMITS.title} characters or fewer`).optional(),
   sizeClass: z.enum(["small", "medium", "large"]).optional(),
   blockedShare: z.enum(["none", "part lane", "one lane", "full"]).optional(),
-  address: z.string().optional(),
+  address: z.string().max(TEXT_LIMITS.address).optional(),
   offline: z.boolean().optional(),
+  /** Client-generated uuid; a resubmission with the same id returns the stored report. */
+  clientReportId: z.string().uuid().optional(),
 });
+
+type StoredReportLookup = Awaited<ReturnType<typeof findStoredReport>>;
+
+async function findStoredReport(clientReportId: string) {
+  return prisma.report.findUnique({
+    where: { clientReportId },
+    include: { issue: true },
+  });
+}
+
+/** Response for a submission that was already stored (retry, double click, offline re-sync). */
+function storedReportResponse(stored: NonNullable<StoredReportLookup>, userId: string) {
+  if (stored.userId !== userId) {
+    return apiError(409, "CLIENT_REPORT_ID_CONFLICT", "This submission id belongs to another report");
+  }
+  const { issue, ...report } = stored;
+  return NextResponse.json(
+    {
+      issue,
+      report,
+      isDuplicate: stored.role === "CONFIRM",
+      merged: stored.role === "CONFIRM",
+      alreadyStored: true,
+      pointsEarned: 0,
+    },
+    { status: 200 }
+  );
+}
 
 const directReportSchema = z.object({
   title: z.string().optional(),
@@ -85,6 +120,24 @@ export async function POST(req: Request) {
     const signedParsed = signedReportSchema.safeParse(body);
     if (signedParsed.success) {
       const data = signedParsed.data;
+
+      if (!isInServiceArea(data.payload.lat, data.payload.lng)) {
+        return apiError(400, "OUT_OF_SERVICE_AREA", SERVICE_AREA_MESSAGE);
+      }
+      if (isDefaultedCoordinate(data.payload.lat, data.payload.lng)) {
+        return apiError(
+          400,
+          "EVIDENCE_VERIFICATION_FAILED",
+          "Evidence verification failed: DEFAULTED_COORDINATES (a live GPS fix is required)"
+        );
+      }
+
+      // Idempotency: a retried submission (double click, offline re-sync) returns what was stored.
+      if (data.clientReportId) {
+        const stored = await findStoredReport(data.clientReportId);
+        if (stored) return storedReportResponse(stored, auth.user.id);
+      }
+
       const photoBuffer = Buffer.from(data.photoBase64, "base64");
 
       if (photoBuffer.length === 0) {
@@ -166,6 +219,14 @@ export async function POST(req: Request) {
         if (!validOfflineSig) {
           return apiError(400, "INVALID_SIGNATURE", "Offline signature verification failed");
         }
+
+        // Offline evidence has no server nonce, so the same signed photo must never be stored twice
+        // (covers queues from older clients that did not send a clientReportId).
+        const prior = await prisma.report.findFirst({
+          where: { userId: auth.user.id, photoSha256: data.payload.photoHash },
+          include: { issue: true },
+        });
+        if (prior) return storedReportResponse(prior, auth.user.id);
       } else {
         // Online verification with live nonce
         const verifyResult = await verifyEvidence(
@@ -194,7 +255,10 @@ export async function POST(req: Request) {
       });
 
       // Ingest with spatial merge & transactional points
-      const result = await ingestReportWithSpatialMerge({
+      let result;
+      try {
+        result = await ingestReportWithSpatialMerge({
+          clientReportId: data.clientReportId,
         userId: auth.user.id,
         category: data.category,
         lat: data.payload.lat,
@@ -209,7 +273,13 @@ export async function POST(req: Request) {
         sizeClass: data.sizeClass,
         blockedShare: data.blockedShare,
         offline: data.offline === true,
-      });
+        });
+      } catch (err) {
+        // Two copies raced past the lookup above: the unique client id keeps one, return it.
+        const stored = data.clientReportId ? await findStoredReport(data.clientReportId) : null;
+        if (stored) return storedReportResponse(stored, auth.user.id);
+        throw err;
+      }
 
       // Enqueue async AI job (G1 vision triage) off the request path, on the exact evidence row
       await enqueueAiJob({
@@ -217,7 +287,14 @@ export async function POST(req: Request) {
         targetId: result.report.id,
       });
 
-      return NextResponse.json(result, { status: 201 });
+      return NextResponse.json(
+        {
+          ...result,
+          merged: result.isDuplicate,
+          message: result.isDuplicate ? "Added to an existing report nearby" : undefined,
+        },
+        { status: 201 }
+      );
     }
 
     // Branch 2: Direct/Test Report Schema.
@@ -256,11 +333,14 @@ export async function POST(req: Request) {
     }
 
     const firstIssue = signedParsed.success ? undefined : signedParsed.error?.issues?.[0];
+    const field = firstIssue?.path.join(".");
     return apiError(
       400,
       "VALIDATION_ERROR",
-      firstIssue
-        ? `Invalid report: ${firstIssue.path.join(".")} ${firstIssue.message}`
+      firstIssue && (field === "note" || field === "title")
+        ? firstIssue.message
+        : firstIssue
+        ? `Invalid report: ${field} ${firstIssue.message}`
         : "Invalid report payload format"
     );
   } catch (error: unknown) {
@@ -268,24 +348,6 @@ export async function POST(req: Request) {
     const { status, code, message } = formatSafeApiError(error, "Internal server error filing report");
     return apiError(status, code, message);
   }
-}
-
-function formatLocationTitle(category: string, address?: string | null, lat?: number | null, lng?: number | null): string {
-  const cat = category.replace(/_/g, " ");
-  if (
-    address &&
-    address.trim() &&
-    address.trim().toLowerCase() !== "bengaluru" &&
-    !address.toLowerCase().includes("pending") &&
-    !address.includes("Report Location") &&
-    !address.includes("Authority Pin")
-  ) {
-    return `${cat} at ${address}`;
-  }
-  if (typeof lat === "number" && typeof lng === "number") {
-    return `${cat} Near ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
-  }
-  return `${cat} (Coordinates attached)`;
 }
 
 export async function GET(req: Request) {
@@ -301,10 +363,10 @@ export async function GET(req: Request) {
     const mineParam = searchParams.get("mine") === "true";
 
     if (mineParam) {
-      const userReports = await prisma.report.findMany({
-        where: { userId: auth.user.id },
+      const allUserReports = await prisma.report.findMany({
+        where: { userId: auth.user.id, role: { in: ["REPORT", "CONFIRM"] } },
         orderBy: { createdAt: "desc" },
-        take: 50,
+        take: 100,
         include: {
           issue: {
             include: {
@@ -314,15 +376,16 @@ export async function GET(req: Request) {
         },
       });
 
+      // One entry per issue: a duplicate merged into an issue is not a second report card.
+      const userReports = latestReportPerIssue(allUserReports).slice(0, 50);
+
       const formatted = userReports.map((r) => {
-        const addr = (r.issue.address && r.issue.address.trim() && r.issue.address.toLowerCase() !== "bengaluru" && !r.issue.address.toLowerCase().includes("pending") && !r.issue.address.includes("Report Location"))
-          ? r.issue.address
-          : `Near ${r.lat.toFixed(4)}, ${r.lng.toFixed(4)}`;
+        const addr = displayLocation(r.issue.address, r.lat, r.lng);
 
         return {
           id: r.id,
           issueId: r.issueId,
-          title: formatLocationTitle(r.issue.category, r.issue.address, r.lat, r.lng),
+          title: issueTitle(r.issue.category, r.issue.address, r.lat, r.lng),
           category: r.issue.category,
           status: r.issue.status,
           createdAt: r.createdAt,
@@ -377,9 +440,7 @@ export async function GET(req: Request) {
     });
 
     const formatted = issues.map((i) => {
-      const addr = (i.address && i.address.trim() && i.address.toLowerCase() !== "bengaluru" && !i.address.toLowerCase().includes("pending") && !i.address.includes("Report Location"))
-        ? i.address
-        : `Near ${i.lat.toFixed(4)}, ${i.lng.toFixed(4)}`;
+      const addr = displayLocation(i.address, i.lat, i.lng);
 
       return {
         ...i,
@@ -387,7 +448,7 @@ export async function GET(req: Request) {
         latitude: i.lat,
         longitude: i.lng,
         priorityScore: i.priority,
-        title: formatLocationTitle(i.category, i.address, i.lat, i.lng),
+        title: issueTitle(i.category, i.address, i.lat, i.lng),
         voteCount: i._count?.reports || i.reports?.length || 0,
         commentCount: i._count?.comments || 0,
         isSeed: i.isSeed,

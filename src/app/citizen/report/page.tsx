@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { motion } from 'framer-motion';
@@ -9,14 +9,33 @@ import {
   ChevronLeft, Send, Loader2, 
   ArrowRight, Check, AlertCircle,
   Lightbulb, Droplets, Construction, Signpost,
-  Palette, Trash, HelpCircle, Upload, Zap, type LucideIcon
+  Palette, Trash, HelpCircle, type LucideIcon
 } from 'lucide-react';
 import { fadeUp, staggerContainer } from '@/lib/framer';
 import { AppHeader } from "@/components/layout/AppHeader";
 import { CaptureCamera, type CapturedEvidence } from "@/components/evidence/CaptureCamera";
-import { useOfflineSync } from "@/hooks/useOfflineSync";
-import { computePhotoHash, signEvidencePayload, type EvidencePayload } from "@/lib/evidence/sign";
+import { useOfflineSync, newClientReportId } from "@/hooks/useOfflineSync";
+import { signEvidencePayload, type EvidencePayload } from "@/lib/evidence/sign";
 import { getOrCreateDeviceKey } from "@/lib/evidence/deviceKey";
+import { TEXT_LIMITS } from "@/lib/validation/limits";
+
+const DRAFT_KEY = 'civicpulse:report-draft';
+
+interface ReportDraft {
+  category: Category;
+  note: string;
+  sizeClass: SizeClass;
+  blockedShare: BlockedShare;
+  clientReportId: string;
+}
+
+function readDraft(): Partial<ReportDraft> {
+  try {
+    return JSON.parse(sessionStorage.getItem(DRAFT_KEY) || '{}') as Partial<ReportDraft>;
+  } catch {
+    return {};
+  }
+}
 
 const categories: { id: Category; label: string; icon: LucideIcon; color: string }[] = [
   { id: 'POTHOLES',      label: 'Potholes',      icon: Construction, color: 'var(--cat-potholes)' },
@@ -37,8 +56,6 @@ function FileReportContent() {
   const router = useRouter();
   const { isOnline, queueReport } = useOfflineSync();
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const [step, setStep] = useState<Step>('CATEGORY');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -49,6 +66,40 @@ function FileReportContent() {
   const [note, setNote] = useState<string>('');
   const [sizeClass, setSizeClass] = useState<SizeClass>('medium');
   const [blockedShare, setBlockedShare] = useState<BlockedShare>('none');
+  // One id per draft: every retry of this report (double click, offline re-sync) reuses it.
+  const [clientReportId, setClientReportId] = useState<string>('');
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
+  // Restore the text parts of a draft after Back / reload (the photo must always be a fresh capture).
+  useEffect(() => {
+    const d = readDraft();
+    /* eslint-disable react-hooks/set-state-in-effect -- one-time hydration from sessionStorage */
+    if (d.category) setCategory(d.category);
+    if (typeof d.note === 'string') setNote(d.note.slice(0, TEXT_LIMITS.description));
+    if (d.sizeClass) setSizeClass(d.sizeClass);
+    if (d.blockedShare) setBlockedShare(d.blockedShare);
+    setClientReportId(d.clientReportId || newClientReportId());
+    setDraftLoaded(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, []);
+
+  useEffect(() => {
+    if (!draftLoaded) return;
+    try {
+      const draft: ReportDraft = { category, note, sizeClass, blockedShare, clientReportId };
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // storage unavailable (private mode): the draft just isn't kept
+    }
+  }, [draftLoaded, category, note, sizeClass, blockedShare, clientReportId]);
+
+  const clearDraft = () => {
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      // ignore
+    }
+  };
 
   const steps: Step[] = ['CATEGORY', 'CAPTURE', 'DETAILS', 'REVIEW'];
   const currentStepIndex = steps.indexOf(step);
@@ -70,116 +121,6 @@ function FileReportContent() {
   const handleCaptured = (evidence: CapturedEvidence) => {
     setCapturedEvidence(evidence);
     setStep('DETAILS');
-  };
-
-  const createEvidenceFromBlob = async (customBlob: Blob) => {
-    if (!customBlob || customBlob.size < 500) {
-      setErrorMessage('A valid photo must be captured or selected from your device.');
-      return;
-    }
-    setErrorMessage(null);
-    try {
-      const blob = customBlob;
-
-      // Determine coordinates: query device geolocation or fallback to Central Bengaluru
-      let coords = { lat: 12.9716, lng: 77.5946, accuracy: 10 };
-      if (typeof navigator !== 'undefined' && navigator.geolocation) {
-        try {
-          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 3000 });
-          });
-          if (
-            pos.coords.latitude >= 11.5 && pos.coords.latitude <= 14.5 &&
-            pos.coords.longitude >= 76.5 && pos.coords.longitude <= 78.5
-          ) {
-            coords = {
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              accuracy: Math.min(pos.coords.accuracy || 10, 25),
-            };
-          }
-        } catch {
-          // Fall back to Bengaluru central
-        }
-      }
-
-      // Fetch nonce
-      let nonce = 'offline';
-      try {
-        const nonceRes = await fetch('/api/evidence/nonce', { method: 'POST' });
-        if (nonceRes.ok) {
-          const nonceData = await nonceRes.json();
-          nonce = nonceData.nonce || 'offline';
-        }
-      } catch {
-        nonce = 'offline';
-      }
-
-      const arrayBuffer = await blob.arrayBuffer();
-      const photoHash = await computePhotoHash(arrayBuffer);
-
-      const payload: EvidencePayload = {
-        accuracy: Math.round(coords.accuracy * 10) / 10,
-        capturedAt: new Date().toISOString(),
-        lat: coords.lat,
-        lng: coords.lng,
-        nonce,
-        photoHash,
-        role: 'REPORT',
-      };
-
-      const { keyPair } = await getOrCreateDeviceKey();
-      const signature = await signEvidencePayload(payload, keyPair.privateKey);
-      const previewUrl = URL.createObjectURL(blob);
-
-      setCapturedEvidence({
-        blob,
-        previewUrl,
-        payload,
-        signature,
-      });
-      setStep('DETAILS');
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to process evidence');
-    }
-  };
-
-  const handleDeviceFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const img = new window.Image();
-    const url = URL.createObjectURL(file);
-    img.onload = async () => {
-      URL.revokeObjectURL(url);
-      const maxDim = 1600;
-      let width = img.width;
-      let height = img.height;
-      if (width > maxDim || height > maxDim) {
-        if (width > height) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(img, 0, 0, width, height);
-      }
-      const blob = await new Promise<Blob>((resolve) =>
-        canvas.toBlob((b) => resolve(b || file), 'image/jpeg', 0.85)
-      );
-      await createEvidenceFromBlob(blob);
-    };
-    img.onerror = () => {
-      setErrorMessage('Failed to load selected image file');
-    };
-    img.src = url;
   };
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -227,8 +168,10 @@ function FileReportContent() {
           sizeClass,
           blockedShare,
           offline: true,
+          clientReportId,
         });
 
+        clearDraft();
         router.refresh();
         router.push('/citizen/dashboard');
         return;
@@ -247,6 +190,7 @@ function FileReportContent() {
           note,
           sizeClass,
           blockedShare,
+          clientReportId,
         }),
       });
 
@@ -258,9 +202,10 @@ function FileReportContent() {
       const json = await res.json();
       const issueId = json.issue?.id;
 
+      clearDraft();
       router.refresh();
       if (issueId) {
-        router.push(`/citizen/report/${issueId}`);
+        router.push(`/citizen/report/${issueId}${json.merged ? '?merged=1' : ''}`);
       } else {
         router.push('/citizen/dashboard');
       }
@@ -284,8 +229,10 @@ function FileReportContent() {
             sizeClass,
             blockedShare,
             offline: true,
+            clientReportId,
           });
 
+          clearDraft();
           router.refresh();
           router.push('/citizen/dashboard');
           return;
@@ -405,7 +352,6 @@ function FileReportContent() {
                 role="REPORT"
                 onCapture={handleCaptured}
                 onCancel={prevStep}
-                onDeviceUpload={() => fileInputRef.current?.click()}
               />
             </div>
           )}
@@ -415,16 +361,22 @@ function FileReportContent() {
             <div className="space-y-8 max-w-2xl mx-auto w-full">
               {/* Optional Note */}
               <div className="space-y-3">
-                <label className="text-[11px] font-mono uppercase tracking-[0.2em] font-bold block text-zinc-400">
+                <label htmlFor="report-note" className="text-[11px] font-mono uppercase tracking-[0.2em] font-bold block text-zinc-400">
                   Optional Note & Landmarks
                 </label>
                 <textarea
+                  id="report-note"
                   rows={3}
+                  maxLength={TEXT_LIMITS.description}
+                  aria-describedby="note-counter"
                   placeholder="e.g. Near bus stop, left lane heading towards junction..."
                   className="w-full p-4 rounded-xl bg-zinc-900 border border-zinc-800 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-cyan transition"
                   value={note}
-                  onChange={(e) => setNote(e.target.value)}
+                  onChange={(e) => setNote(e.target.value.slice(0, TEXT_LIMITS.description))}
                 />
+                <p id="note-counter" className="text-[11px] font-mono text-zinc-500 text-right">
+                  {note.length} / {TEXT_LIMITS.description}
+                </p>
               </div>
 
               {/* Defect Size Class */}
@@ -582,13 +534,7 @@ function FileReportContent() {
           )}
         </div>
       </main>
-      <input
-        type="file"
-        ref={fileInputRef}
-        accept="image/*"
-        className="hidden"
-        onChange={handleDeviceFileSelect}
-      />
+
     </div>
   );
 }

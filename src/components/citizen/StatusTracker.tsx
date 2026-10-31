@@ -6,7 +6,8 @@ import {
   PlayCircle, CheckCircle, XCircle,
   TrendingUp, Calendar, User
 } from 'lucide-react';
-import { format, differenceInMinutes } from 'date-fns';
+import { differenceInMinutes } from 'date-fns';
+import { formatDateTimeIST } from '@/lib/time/ist';
 
 type Status = 'OPEN' | 'CONFIRMED' | 'ASSIGNED' | 'IN_PROGRESS' | 'RESOLVED' | 'CLAIMED_FIXED' | 'VERIFIED_FIXED' | 'DISPUTED' | 'REJECTED' | 'REOPENED_IN_WARRANTY';
 
@@ -163,7 +164,7 @@ export function StatusTracker({
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] font-mono text-white/20">{format(new Date(stage.time), 'MMM d, h:mm a')}</span>
+                  <span className="text-[10px] font-mono text-white/60">{formatDateTimeIST(stage.time)}</span>
                 </div>
                 
                 <div className="flex items-center gap-4 text-[11px] text-white/40 font-body">

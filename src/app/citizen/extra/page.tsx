@@ -5,6 +5,8 @@ import { redirect } from 'next/navigation';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { MapPin, Crosshair, Navigation, Copy } from 'lucide-react';
 import { formatDateIST } from '@/lib/time/ist';
+import { issueTitle } from '@/lib/issues/display';
+import { latestReportPerIssue } from '@/lib/citizen/statsPure';
 
 export const revalidate = 0;
 
@@ -14,10 +16,12 @@ export default async function ExtraFeaturePage() {
 
   const userId = session.user.id;
 
+  // One bounded query (this page used to load every report the user ever filed, evidence included).
   const rawReports = await prisma.report.findMany({
-    where: { userId },
+    where: { userId, role: { in: ['REPORT', 'CONFIRM'] } },
     select: {
       id: true,
+      issueId: true,
       lat: true,
       lng: true,
       createdAt: true,
@@ -30,11 +34,12 @@ export default async function ExtraFeaturePage() {
       }
     },
     orderBy: { createdAt: 'desc' },
+    take: 200,
   });
 
-  const reports = rawReports.map(r => ({
+  const reports = latestReportPerIssue(rawReports).slice(0, 100).map(r => ({
     id: r.id,
-    title: `${r.issue.category.replace(/_/g, ' ')} at ${r.issue.address || 'Bengaluru'}`,
+    title: issueTitle(r.issue.category, r.issue.address, r.lat, r.lng),
     category: r.issue.category,
     status: r.issue.status,
     latitude: r.lat,

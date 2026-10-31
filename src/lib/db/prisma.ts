@@ -49,6 +49,21 @@ const rawTargetUrl = isTestEnv
 
 const connectionString = resolveConnectionString(rawTargetUrl);
 
+/**
+ * Pool sizing. Serverless instances each hold their own pool, so production keeps exactly one
+ * connection per instance (overridable with DB_POOL_MAX) and releases it quickly when idle; the
+ * Supabase pooler multiplexes instances. Tests run many queries in one process and get more.
+ */
+export function buildPoolConfig(opts: { isTest: boolean; poolMax?: string }) {
+  const parsedMax = Number(opts.poolMax);
+  const max = opts.isTest ? 10 : Number.isInteger(parsedMax) && parsedMax > 0 ? parsedMax : 1;
+  return {
+    max,
+    idleTimeoutMillis: opts.isTest ? 10000 : 5000,
+    connectionTimeoutMillis: 10000,
+  };
+}
+
 function getOrCreatePool(): Pool {
   if (globalForPrisma.newPool) {
     return globalForPrisma.newPool;
@@ -57,9 +72,7 @@ function getOrCreatePool(): Pool {
   const pool = new Pool({
     connectionString,
     ...(isTestEnv ? { options: '-c search_path=test,public' } : {}),
-    max: isTestEnv ? 10 : 3,
-    idleTimeoutMillis: 10000,
-    connectionTimeoutMillis: 10000,
+    ...buildPoolConfig({ isTest: isTestEnv, poolMax: process.env.DB_POOL_MAX }),
   });
 
   pool.on('error', (err) => {
@@ -81,7 +94,11 @@ const adapter = new PrismaPg(
 
 export const prisma =
   globalForPrisma.newPrisma ??
-  new PrismaClient({ adapter });
+  new PrismaClient({
+    adapter,
+    // With one connection per instance, interactive transactions may queue behind another request.
+    transactionOptions: { maxWait: 10000, timeout: 15000 },
+  });
 
 // Cache on globalThis in production too so warm serverless instances reuse it
 globalForPrisma.newPrisma = prisma;

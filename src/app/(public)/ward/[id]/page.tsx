@@ -19,26 +19,30 @@ export default async function WardPublicPage({
 }) {
   const { id } = await params;
 
-  // Search by id or code
-  const ward = await prisma.ward.findFirst({
-    where: {
-      OR: [{ id }, { code: id }],
-    },
-  });
+  // Ward and its issues in parallel (links use the ward id; a ward code needs one extra query).
+  const issueQuery = (wardId: string) =>
+    prisma.issue.findMany({
+      where: { wardId },
+      include: {
+        _count: { select: { reports: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+  const [ward, issuesById] = await Promise.all([
+    prisma.ward.findFirst({
+      where: {
+        OR: [{ id }, { code: id }],
+      },
+    }),
+    issueQuery(id),
+  ]);
 
   if (!ward) {
     notFound();
   }
 
-  // Fetch all issues in this ward
-  const issues = await prisma.issue.findMany({
-    where: { wardId: ward.id },
-    include: {
-      _count: { select: { reports: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const issues = ward.id === id ? issuesById : await issueQuery(ward.id);
 
   // Calculate lifespan metrics
   const lifespans = issues

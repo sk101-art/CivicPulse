@@ -28,6 +28,8 @@ export interface QueuedOfflineReport {
   blockedShare?: string;
   address?: string;
   offline?: boolean;
+  /** Stable uuid sent with every attempt so the server stores the report once. */
+  clientReportId?: string;
   createdAt: number;
   synced: boolean;
 }
@@ -48,6 +50,69 @@ export type QueuedReportInput =
 
 const DB_NAME = 'CivicPulseDB';
 const STORE_NAME = 'reports_queue';
+
+/** Minimal store surface the sync loop needs (an idb database satisfies it). */
+export interface QueueStore {
+  getAll(store: string): Promise<unknown[]>;
+  put(store: string, value: unknown): Promise<unknown>;
+  delete(store: string, key: string): Promise<void>;
+}
+
+export function newClientReportId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  // RFC 4122 v4 fallback for very old browsers
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
+// One sync at a time per page, even when several components use the hook.
+let syncInFlight: Promise<number> | null = null;
+
+/**
+ * Sends every queued report once. Each IndexedDB call runs in its own short transaction and no
+ * network request ever happens inside a transaction (that is what made deletes fail with
+ * TransactionInactiveError and caused re-submissions). A report is removed from the queue when the
+ * server has stored it, including the "already stored" answer for a resubmitted clientReportId.
+ */
+export async function flushQueue(
+  db: QueueStore,
+  send: (body: Record<string, unknown>) => Promise<{ ok: boolean; status: number }>
+): Promise<number> {
+  const queued = (await db.getAll(STORE_NAME)) as QueuedOfflineReport[];
+  let synced = 0;
+  for (const report of queued) {
+    let item = report;
+    if (!item.clientReportId) {
+      item = { ...item, clientReportId: newClientReportId() };
+      await db.put(STORE_NAME, item); // persist before sending so a retry reuses the same id
+    }
+    const { id: _id, createdAt: _createdAt, synced: _synced, ...body } = item;
+    void _id; void _createdAt; void _synced;
+    let res: { ok: boolean; status: number };
+    try {
+      res = await send({
+        ...body,
+        lat: item.payload?.lat ?? item.lat ?? item.latitude,
+        lng: item.payload?.lng ?? item.lng ?? item.longitude,
+      });
+    } catch (err) {
+      console.warn('Offline report not sent yet (network):', item.id, err);
+      continue;
+    }
+    // 2xx = stored now or earlier; 4xx (except 408/429) = the server will never accept it.
+    const permanent = res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429;
+    if (res.ok || permanent) {
+      await db.delete(STORE_NAME, item.id);
+      if (res.ok) synced += 1;
+      else console.warn('Offline report rejected by server, removed from queue:', item.id, res.status);
+    }
+  }
+  return synced;
+}
 
 export function useOfflineSync() {
   const [isOnline, setIsOnline] = useState(() =>
@@ -125,8 +190,12 @@ export function useOfflineSync() {
 
   const syncReports = useCallback(async () => {
     if (!db || !isOnline) return;
+    if (syncInFlight) {
+      await syncInFlight.catch(() => 0);
+      return;
+    }
 
-    try {
+    syncInFlight = (async () => {
       // Ensure device key is registered so offline signatures are accepted
       try {
         const { initDeviceKey } = await import('@/lib/evidence/deviceKey');
@@ -134,47 +203,27 @@ export function useOfflineSync() {
       } catch {
         // proceed
       }
+      return flushQueue(db, (body) =>
+        fetch('/api/reports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+      );
+    })();
 
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const allReports = (await store.getAll()) as QueuedOfflineReport[];
-
-      let syncedAny = false;
-      for (const report of allReports) {
-        if (!report.synced) {
-          try {
-            const bodyPayload = {
-              ...report,
-              lat: report.payload?.lat ?? report.lat ?? report.latitude,
-              lng: report.payload?.lng ?? report.lng ?? report.longitude,
-            };
-
-            const response = await fetch('/api/reports', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(bodyPayload),
-            });
-
-            if (response.ok) {
-              await store.delete(report.id);
-              syncedAny = true;
-            } else {
-              console.warn('Failed to sync offline report:', report.id, response.status);
-            }
-          } catch (err) {
-            console.error('Failed to sync offline report:', report.id, err);
-          }
-        }
-      }
-
+    try {
+      const syncedCount = await syncInFlight;
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('civicpulse:queue-changed'));
-        if (syncedAny) {
+        if (syncedCount > 0) {
           window.dispatchEvent(new CustomEvent('civicpulse:synced'));
         }
       }
     } catch (err) {
       console.error('Offline sync error:', err);
+    } finally {
+      syncInFlight = null;
     }
   }, [db, isOnline]);
 
@@ -185,6 +234,7 @@ export function useOfflineSync() {
       const fullReport: QueuedOfflineReport = {
         ...reportData,
         id: reportData.id || `offline-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        clientReportId: ('clientReportId' in reportData && reportData.clientReportId) || newClientReportId(),
         createdAt: Date.now(),
         synced: false,
         offline: true,

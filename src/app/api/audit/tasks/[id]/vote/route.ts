@@ -4,6 +4,7 @@ import { withAuth } from "@/lib/api/auth";
 import { apiError } from "@/lib/api/errors";
 import { AuditObserved } from "@prisma/client";
 import { submitAuditVote } from "@/lib/audit/blindAudit";
+import { AuditError } from "@/lib/audit/rules";
 
 export const dynamic = "force-dynamic";
 
@@ -74,22 +75,10 @@ export async function POST(
       { status: 201 }
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to record audit vote";
-    if (
-      message.includes("not found") ||
-      message.includes("outside tolerance") ||
-      message.includes("within 30m") ||
-      message.includes("expired") ||
-      message.includes("nonce") ||
-      message.includes("role must be AUDIT") ||
-      message.includes("Cryptographic evidence")
-    ) {
-      return apiError(400, "AUDIT_VOTE_REJECTED", message);
-    }
-    if (message.includes("not authorized")) {
-      return apiError(403, "FORBIDDEN", message);
+    if (error instanceof AuditError) {
+      return apiError(error.status, error.code, error.message);
     }
     console.error("Failed to submit audit vote:", error);
-    return apiError(500, "INTERNAL_ERROR", message);
+    return apiError(500, "INTERNAL_ERROR", "Failed to record audit vote");
   }
 }

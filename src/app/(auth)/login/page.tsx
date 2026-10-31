@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { use, useState } from 'react';
+import { isSignUpRequested, type LoginSearchParams } from '@/lib/auth/loginMode';
 import { motion } from 'framer-motion';
 import { signIn } from 'next-auth/react';
 import { Eye, EyeOff, User, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
@@ -38,9 +39,9 @@ function FloatingField({
     <div className="space-y-2 relative z-10 w-full group">
       <div className="flex items-center justify-between">
         <label
-          className="block text-[9px] font-mono uppercase tracking-[0.4em] font-black text-white/40"
+          className="block text-[9px] font-mono uppercase tracking-[0.4em] font-black text-white/75"
           style={{ 
-            color: focused || value.length > 0 ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.4)', 
+            color: focused || value.length > 0 ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.75)', 
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         >
@@ -77,15 +78,10 @@ function FloatingField({
   );
 }
 
-export default function LoginPage() {
+export default function LoginPage({ searchParams }: { searchParams: Promise<LoginSearchParams> }) {
+  const initialSignUp = isSignUpRequested(use(searchParams));
   const [role, setRole] = useState<'citizen' | 'authority'>('citizen');
-  const [isSignUp, setIsSignUp] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      return params.get('signup') === 'true' || params.get('mode') === 'signup' || params.get('tab') === 'signup';
-    }
-    return false;
-  });
+  const [isSignUp, setIsSignUp] = useState(initialSignUp);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -215,7 +211,7 @@ export default function LoginPage() {
               <h1 className="text-2xl font-bold tracking-tighter text-white text-center">
                 CIVIC PULSE
               </h1>
-              <div className="flex items-center justify-center gap-2 text-[10px] text-white/40 tracking-[0.4em] font-black">
+              <div className="flex items-center justify-center gap-2 text-[10px] text-white/70 tracking-[0.4em] font-black">
                 <span>MUNICIPAL ROAD TRUTH LEDGER</span>
                 <span className="text-white/20">|</span>
                 <span>SYSTEM ACCESS</span>
@@ -237,7 +233,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => { setRole('citizen'); setIsSignUp(false); setError(''); }}
                 className={`relative z-10 flex-1 py-3 text-[11px] font-black uppercase tracking-[0.2em] rounded transition-all duration-300 ${
-                  role === 'citizen' ? 'bg-[#2A2A2D] text-white' : 'text-white/30 hover:text-white/50'
+                  role === 'citizen' ? 'bg-[#2A2A2D] text-white' : 'text-white/60 hover:text-white/80'
                 }`}
               >
                 CITIZEN
@@ -246,7 +242,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => { setRole('authority'); setIsSignUp(false); setError(''); }}
                 className={`relative z-10 flex-1 py-3 text-[11px] font-black uppercase tracking-[0.2em] rounded transition-all duration-300 ${
-                  role === 'authority' ? 'bg-[#2A2A2D] text-white' : 'text-white/30 hover:text-white/50'
+                  role === 'authority' ? 'bg-[#2A2A2D] text-white' : 'text-white/60 hover:text-white/80'
                 }`}
               >
                 AUTHORITY
@@ -258,7 +254,7 @@ export default function LoginPage() {
               <button 
                 type="button"
                 onClick={() => { setIsSignUp(false); setError(''); }}
-                className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${!isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/30 hover:text-white/50'}`}
+                className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${!isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/60 hover:text-white/80'}`}
               >
                 LOGIN
               </button>
@@ -266,12 +262,12 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => { setIsSignUp(true); setError(''); }}
-                  className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/30 hover:text-white/50'}`}
+                  className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/60 hover:text-white/80'}`}
                 >
                   CREATE ACCOUNT
                 </button>
               ) : (
-                <span className="text-[10px] uppercase tracking-[0.15em] text-white/30">
+                <span className="text-[10px] uppercase tracking-[0.15em] text-white/60">
                   Desk accounts are issued by the administrator
                 </span>
               )}
@@ -336,9 +332,11 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPw(!showPw)}
+                    aria-label={showPw ? 'Hide password' : 'Show password'}
+                    aria-pressed={showPw}
                     className="absolute right-5 top-1/2 -translate-y-1/2 text-white/20 hover:text-cyan transition-colors"
                   >
-                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showPw ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
                   </button>
                 }
               />
@@ -404,12 +402,12 @@ export default function LoginPage() {
           {/* Metadata Footer (Within Card flow) */}
           <div className="space-y-8 pt-4">
              <div className="text-center">
-                <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">
+                <p className="text-[10px] font-black text-white/60 uppercase tracking-[0.3em]">
                    SECURE TUNNEL V7.4.2 ENABLED
                 </p>
              </div>
              
-             <div className="flex justify-center gap-6 opacity-30 text-[9px] font-black uppercase tracking-[0.2em] text-white">
+             <div className="flex justify-center gap-6 opacity-60 text-[9px] font-black uppercase tracking-[0.2em] text-white">
                 <span>SSL_ENCRYPTED</span>
                 <span>|</span>
                 <span>GRID_MONITORED</span>
@@ -417,7 +415,7 @@ export default function LoginPage() {
                 <span>AI_VERIFIED</span>
              </div>
 
-             <p className="text-center text-[9px] font-black tracking-[0.3em] uppercase text-white/20">
+             <p className="text-center text-[9px] font-black tracking-[0.3em] uppercase text-white/60">
                © 2026 CIVICPULSE METROPOLITAN GRID
              </p>
           </div>

@@ -17,6 +17,75 @@ import {
 } from "@prisma/client";
 import * as storage from "@/lib/external/storage";
 import * as verifyModule from "@/lib/evidence/verify";
+import { AuditError } from "@/lib/audit/rules";
+
+/** Voter is an eligible citizen (account older than 24 h) who has not voted on this issue yet. */
+function mockEligibleVoter() {
+  vi.spyOn(prisma.user, "findUnique").mockResolvedValue({
+    role: Role.CITIZEN,
+    createdAt: new Date(Date.now() - 72 * 3600 * 1000),
+  } as never);
+  vi.spyOn(prisma.auditVote, "findFirst").mockResolvedValue(null);
+}
+
+function mockEvidenceAndStorage() {
+  vi.spyOn(verifyModule, "verifyEvidence").mockResolvedValue({
+    valid: true,
+    deviceKeyId: "key-x",
+    photoHash: "hash-x",
+    nonceId: "audit-challenge",
+  });
+  vi.spyOn(storage, "uploadEvidencePhoto").mockResolvedValue({
+    url: "https://storage.civicpulse.org/photo-x.jpg",
+    photoSha256: "hash-x",
+    path: "audit/photo-x.jpg",
+    sizeBytes: 1024,
+    mimeType: "image/jpeg",
+  });
+  vi.spyOn(prisma.auditorScore, "findUnique").mockResolvedValue({ reliability: 1.0 } as never);
+}
+
+/** Transaction mock: returns the given round votes and records issue updates / task closures. */
+function mockVoteTransaction(
+  cycleVotes: Array<{ userId: string; observed: AuditObserved; weight: number }>,
+  issue: object
+) {
+  const calls = { issueUpdates: [] as unknown[], taskUpdates: 0, closedRounds: 0 };
+  vi.spyOn(prisma, "$transaction").mockImplementation(async (callback) => {
+    const txMock = {
+      report: { create: vi.fn().mockResolvedValue({ id: "rep-audit" }) },
+      auditVote: {
+        create: vi.fn().mockResolvedValue({ id: "vote" }),
+        findMany: vi.fn().mockResolvedValue(cycleVotes),
+      },
+      auditTask: {
+        update: vi.fn().mockImplementation((args) => {
+          calls.taskUpdates += 1;
+          return Promise.resolve({ id: "task", ...args.data });
+        }),
+        updateMany: vi.fn().mockImplementation(() => {
+          calls.closedRounds += 1;
+          return Promise.resolve({ count: 1 });
+        }),
+      },
+      issue: {
+        update: vi.fn().mockImplementation((args) => {
+          calls.issueUpdates.push(args.data);
+          return Promise.resolve({ ...issue, status: args.data.status });
+        }),
+      },
+      actionLog: { create: vi.fn().mockResolvedValue({ id: "log" }) },
+      citizenProfile: {
+        findUnique: vi.fn().mockResolvedValue({ id: "profile", reputation: 100 }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      pointLog: { create: vi.fn().mockResolvedValue({}) },
+      auditorScore: { upsert: vi.fn().mockResolvedValue({}) },
+    };
+    return callback(txMock as never);
+  });
+  return calls;
+}
 
 describe("Blind Repair Audit — Unit Tests", () => {
   beforeEach(() => {
@@ -83,11 +152,9 @@ describe("Blind Repair Audit — Unit Tests", () => {
       };
 
       vi.spyOn(prisma.issue, "findUnique").mockResolvedValue(mockIssue as never);
+      vi.spyOn(prisma.auditTask, "findMany").mockResolvedValue([]); // no open tasks for this issue yet
 
-      // Only candidate-2 should qualify:
-      // candidate-1 is the reporter (excluded by prisma query `id: { notIn: ['reporter-citizen-1'] }`)
-      // desk accounts are filtered by `role: Role.CITIZEN`
-      // accounts < 24h are filtered by `createdAt: { lte: accountAgeCutoff }`
+      // reporter excluded by `id: { notIn }`, desk accounts by `role: CITIZEN`, < 24h by `createdAt: { lte }`
       const mockCandidates = [
         {
           id: "citizen-eligible-1",
@@ -119,15 +186,39 @@ describe("Blind Repair Audit — Unit Tests", () => {
 
       const tasks = await assignBlindAuditTasks("issue-123", 3);
 
-      // Expect exactly 3 tasks created
+      // Two tasks assigned to the 2 qualified citizens, the 3rd slot becomes ONE open public task
       expect(tasks).toHaveLength(3);
-      expect(createdTasks).toHaveLength(3);
-
-      // Two tasks assigned to the 2 qualified citizens, 3rd slot falls back to open public queue (null)
       const assignees = createdTasks.map((t) => t.assigneeId);
       expect(assignees).toContain("citizen-eligible-1");
       expect(assignees).toContain("citizen-eligible-2");
-      expect(assignees).toContain(null); // Fallback to open public queue
+      expect(assignees.filter((a) => a === null)).toHaveLength(1);
+    });
+
+    it("never creates a duplicate open task: an open public task or an existing assignee is reused", async () => {
+      const now = Date.now();
+      vi.spyOn(prisma.issue, "findUnique").mockResolvedValue({
+        id: "issue-dup",
+        lat: 12.935,
+        lng: 77.689,
+        reports: [],
+      } as never);
+      // One assignee already holds an open task and a public task is already open.
+      vi.spyOn(prisma.auditTask, "findMany").mockResolvedValue([
+        { assigneeId: "citizen-eligible-1" },
+        { assigneeId: null },
+      ] as never);
+      vi.spyOn(prisma.user, "findMany").mockResolvedValue([
+        { id: "citizen-eligible-1", role: Role.CITIZEN, createdAt: new Date(now - 72 * 3600 * 1000), auditTasks: [] },
+      ] as never);
+      vi.spyOn(prisma.report, "findMany").mockResolvedValue([
+        { userId: "citizen-eligible-1", lat: 12.936, lng: 77.69, createdAt: new Date(now - 3600 * 1000) },
+      ] as never);
+      const create = vi.spyOn(prisma.auditTask, "create").mockResolvedValue({} as never);
+
+      const tasks = await assignBlindAuditTasks("issue-dup", 3);
+
+      expect(tasks).toHaveLength(0);
+      expect(create).not.toHaveBeenCalled();
     });
   });
 
@@ -155,9 +246,6 @@ describe("Blind Repair Audit — Unit Tests", () => {
         },
       };
 
-      vi.spyOn(prisma.auditTask, "findMany").mockResolvedValue([mockTask] as never);
-
-      // Call GET /api/audit/tasks logic
       const blindProjection = {
         id: mockTask.id,
         lat: mockTask.issue.lat,
@@ -169,11 +257,8 @@ describe("Blind Repair Audit — Unit Tests", () => {
         status: mockTask.status,
       };
 
-      // Assert blind projection contains the required challenge fields
       expect(blindProjection.challengeBearingDeg).toBe(135);
       expect(blindProjection.challengeNonce).toBe("test-nonce-123");
-      expect(blindProjection.lat).toBe(12.955);
-      expect(blindProjection.lng).toBe(77.701);
 
       // Assert it STRICTLY DOES NOT LEAK status, contractor, or claim details
       const raw = blindProjection as Record<string, unknown>;
@@ -186,91 +271,41 @@ describe("Blind Repair Audit — Unit Tests", () => {
     });
   });
 
-  describe("5. Decision Thresholds", () => {
-    it("transitions issue to VERIFIED_FIXED when weighted INTACT >= 1.5 and exceeds DAMAGED", async () => {
-      const mockIssue = {
-        id: "issue-decide-1",
-        status: Status.CLAIMED_FIXED,
-        lat: 12.935,
-        lng: 77.689,
-        repairClaimedAt: new Date(Date.now() - 3600 * 1000),
-        auditTasks: [],
-      };
-
-      const mockTask = {
-        id: "task-vote-1",
-        issueId: mockIssue.id,
-        assigneeId: "citizen-voter-1",
-        kind: AuditKind.CLAIM_CHECK,
-        status: AuditTaskStatus.OPEN,
-        dueAt: new Date(Date.now() + 3600 * 1000),
-        challengeBearingDeg: 90,
-        challengeNonce: "valid-nonce-abc",
-        issue: mockIssue,
-      };
-
-      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(mockTask as never);
-      vi.spyOn(verifyModule, "verifyEvidence").mockResolvedValue({
-        valid: true,
-        deviceKeyId: "key-1",
-        photoHash: "abc123hash",
-        nonceId: "nonce-1",
-      });
-      vi.spyOn(storage, "uploadEvidencePhoto").mockResolvedValue({
-        url: "https://storage.civicpulse.org/photo-1.jpg",
-        photoSha256: "abc123hash",
-        path: "audit/photo-1.jpg",
-        sizeBytes: 1024,
-        mimeType: "image/jpeg",
-      });
-      vi.spyOn(prisma.auditorScore, "findUnique").mockResolvedValue({
-        reliability: 0.8,
-      } as never);
-
-      // Mock transaction execution
-      const mockCycleVotes = [
-        { observed: AuditObserved.INTACT, weight: 0.8 },
-        { observed: AuditObserved.INTACT, weight: 0.8 }, // total intact = 1.6 >= 1.5
-      ];
-
-      let updatedIssueStatus: Status = Status.CLAIMED_FIXED;
-      vi.spyOn(prisma, "$transaction").mockImplementation(async (callback) => {
-        const txMock = {
-          report: { create: vi.fn().mockResolvedValue({ id: "rep-audit-1" }) },
-          auditVote: {
-            create: vi.fn().mockResolvedValue({ id: "vote-1" }),
-            findMany: vi.fn().mockResolvedValue(mockCycleVotes),
-          },
-          auditTask: { update: vi.fn().mockResolvedValue(mockTask) },
-          issue: {
-            update: vi.fn().mockImplementation((args) => {
-              updatedIssueStatus = args.data.status;
-              return Promise.resolve({ ...mockIssue, status: updatedIssueStatus });
-            }),
-          },
-          actionLog: { create: vi.fn().mockResolvedValue({ id: "log-1" }) },
-          citizenProfile: {
-            findUnique: vi.fn().mockResolvedValue({ reputation: 100 }),
-            update: vi.fn().mockResolvedValue({}),
-          },
-          pointLog: { create: vi.fn().mockResolvedValue({}) },
-        };
-        return callback(txMock as never);
-      });
-
-      const result = await submitAuditVote({
-        userId: "citizen-voter-1",
-        taskId: "task-vote-1",
-        observed: AuditObserved.INTACT,
-        deviceHeadingDeg: 95,
+  describe("5. Decision Thresholds & Quorum", () => {
+    const claimedIssue = (id: string) => ({
+      id,
+      status: Status.CLAIMED_FIXED,
+      lat: 12.935,
+      lng: 77.689,
+      repairClaimedAt: new Date(Date.now() - 3600 * 1000),
+      createdAt: new Date(Date.now() - 48 * 3600 * 1000),
+      reports: [{ userId: "reporter-1", role: EvidenceRole.REPORT }],
+    });
+    const openTask = (issue: object, assigneeId: string | null, nonce: string) => ({
+      id: "t",
+      issueId: (issue as { id: string }).id,
+      assigneeId,
+      kind: AuditKind.CLAIM_CHECK,
+      status: AuditTaskStatus.OPEN,
+      dueAt: new Date(Date.now() + 3600 * 1000),
+      challengeBearingDeg: 90,
+      challengeNonce: nonce,
+      issue,
+    });
+    const vote = (userId: string, nonce: string, observed: AuditObserved) =>
+      submitAuditVote({
+        userId,
+        taskId: "t",
+        observed,
+        deviceHeadingDeg: 90,
         evidence: {
           payload: {
             accuracy: 5,
             capturedAt: new Date().toISOString(),
             lat: 12.935,
             lng: 77.689,
-            nonce: "valid-nonce-abc",
-            photoHash: "abc123hash",
+            nonce,
+            photoHash: "hash-x",
             role: "AUDIT" as EvidenceRole,
           },
           signature: "test-ecdsa-sig",
@@ -278,143 +313,143 @@ describe("Blind Repair Audit — Unit Tests", () => {
         },
       });
 
+    it("verifies the fix when two independent voters report INTACT with weight >= 1.5", async () => {
+      const issue = claimedIssue("issue-decide-1");
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(openTask(issue, "voter-1", "n-1") as never);
+      mockEligibleVoter();
+      mockEvidenceAndStorage();
+      const calls = mockVoteTransaction(
+        [
+          { userId: "voter-0", observed: AuditObserved.INTACT, weight: 0.8 },
+          { userId: "voter-1", observed: AuditObserved.INTACT, weight: 0.8 },
+        ],
+        issue
+      );
+
+      const result = await vote("voter-1", "n-1", AuditObserved.INTACT);
+
       expect(result.issue.status).toBe(Status.VERIFIED_FIXED);
+      expect(calls.closedRounds).toBe(1); // remaining open tasks of the decided round are closed
+    });
+
+    it("a single vote never changes the status, whatever its weight", async () => {
+      const issue = claimedIssue("issue-single");
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(openTask(issue, "voter-1", "n-2") as never);
+      mockEligibleVoter();
+      mockEvidenceAndStorage();
+      const calls = mockVoteTransaction([{ userId: "voter-1", observed: AuditObserved.DAMAGED, weight: 1.0 }], issue);
+
+      const result = await vote("voter-1", "n-2", AuditObserved.DAMAGED);
+
+      expect(result.issue.status).toBe(Status.CLAIMED_FIXED);
+      expect(calls.issueUpdates).toHaveLength(0);
+    });
+
+    it("repeat votes by the same person count once (two INTACT votes from one user do not verify)", async () => {
+      const issue = claimedIssue("issue-repeat");
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(openTask(issue, "voter-1", "n-3") as never);
+      mockEligibleVoter();
+      mockEvidenceAndStorage();
+      mockVoteTransaction(
+        [
+          { userId: "voter-1", observed: AuditObserved.INTACT, weight: 1.0 },
+          { userId: "voter-1", observed: AuditObserved.INTACT, weight: 1.0 },
+        ],
+        issue
+      );
+
+      const result = await vote("voter-1", "n-3", AuditObserved.INTACT);
+      expect(result.issue.status).toBe(Status.CLAIMED_FIXED);
+    });
+
+    it("disputes the fix when two independent voters report DAMAGED with weight >= 1.0", async () => {
+      const issue = claimedIssue("issue-dispute-2");
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(openTask(issue, "voter-2", "n-4") as never);
+      mockEligibleVoter();
+      mockEvidenceAndStorage();
+      mockVoteTransaction(
+        [
+          { userId: "voter-1", observed: AuditObserved.DAMAGED, weight: 0.6 },
+          { userId: "voter-2", observed: AuditObserved.DAMAGED, weight: 0.6 },
+        ],
+        issue
+      );
+
+      const result = await vote("voter-2", "n-4", AuditObserved.DAMAGED);
+      expect(result.issue.status).toBe(Status.DISPUTED);
+    });
+
+    it("a public task stays open after a vote so other eligible citizens can answer it", async () => {
+      const issue = claimedIssue("issue-public");
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(openTask(issue, null, "n-5") as never);
+      mockEligibleVoter();
+      mockEvidenceAndStorage();
+      const calls = mockVoteTransaction([{ userId: "voter-9", observed: AuditObserved.INTACT, weight: 0.6 }], issue);
+
+      const result = await vote("voter-9", "n-5", AuditObserved.INTACT);
+
+      expect(calls.taskUpdates).toBe(0);
+      expect(result.task.status).toBe(AuditTaskStatus.OPEN);
     });
 
     it("rejects audit vote when challengeNonce does not match the task (e.g. from another task or report nonce)", async () => {
-      const mockIssue = {
-        id: "issue-nonce-check",
-        status: Status.CLAIMED_FIXED,
-        lat: 12.935,
-        lng: 77.689,
-        auditTasks: [],
-      };
+      const issue = claimedIssue("issue-nonce-check");
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(
+        openTask(issue, "voter-3", "issued-task-challenge-nonce-123") as never
+      );
+      mockEligibleVoter();
 
-      const mockTask = {
-        id: "task-nonce-mismatch",
-        issueId: mockIssue.id,
-        assigneeId: "citizen-voter-3",
-        kind: AuditKind.CLAIM_CHECK,
-        status: AuditTaskStatus.OPEN,
-        dueAt: new Date(Date.now() + 3600 * 1000),
-        challengeBearingDeg: 90,
-        challengeNonce: "issued-task-challenge-nonce-123",
-        issue: mockIssue,
-      };
-
-      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(mockTask as never);
-
-      await expect(
-        submitAuditVote({
-          userId: "citizen-voter-3",
-          taskId: "task-nonce-mismatch",
-          observed: AuditObserved.INTACT,
-          deviceHeadingDeg: 90,
-          evidence: {
-            payload: {
-              accuracy: 5,
-              capturedAt: new Date().toISOString(),
-              lat: 12.935,
-              lng: 77.689,
-              nonce: "foreign-or-report-nonce-456",
-              photoHash: "abc123hash",
-              role: "AUDIT" as EvidenceRole,
-            },
-            signature: "test-ecdsa-sig",
-            photoBase64: Buffer.from("fake-jpeg").toString("base64"),
-          },
-        })
-      ).rejects.toThrow("Invalid challenge nonce for audit task");
+      await expect(vote("voter-3", "foreign-or-report-nonce-456", AuditObserved.INTACT)).rejects.toThrow(
+        "Invalid challenge nonce for audit task"
+      );
     });
 
-    it("transitions issue to DISPUTED when weighted DAMAGED >= 1.0", async () => {
-      const mockIssue = {
-        id: "issue-dispute-1",
-        status: Status.CLAIMED_FIXED,
-        lat: 12.935,
-        lng: 77.689,
-        repairClaimedAt: new Date(Date.now() - 3600 * 1000),
-        auditTasks: [],
-      };
-
-      const mockTask = {
-        id: "task-vote-2",
-        issueId: mockIssue.id,
-        assigneeId: "citizen-voter-2",
-        kind: AuditKind.CLAIM_CHECK,
-        status: AuditTaskStatus.OPEN,
-        dueAt: new Date(Date.now() + 3600 * 1000),
-        challengeBearingDeg: 180,
-        challengeNonce: "valid-nonce-def",
-        issue: mockIssue,
-      };
-
-      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(mockTask as never);
-      vi.spyOn(verifyModule, "verifyEvidence").mockResolvedValue({
-        valid: true,
-        deviceKeyId: "key-2",
-        photoHash: "def456hash",
-        nonceId: "nonce-2",
-      });
-      vi.spyOn(storage, "uploadEvidencePhoto").mockResolvedValue({
-        url: "https://storage.civicpulse.org/photo-2.jpg",
-        photoSha256: "def456hash",
-        path: "audit/photo-2.jpg",
-        sizeBytes: 1024,
-        mimeType: "image/jpeg",
-      });
-      vi.spyOn(prisma.auditorScore, "findUnique").mockResolvedValue({
-        reliability: 1.0,
+    it("a repeated vote on a closed task is a 409, not a server error", async () => {
+      const issue = claimedIssue("issue-closed");
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue({
+        ...openTask(issue, "voter-1", "n-6"),
+        status: AuditTaskStatus.DONE,
       } as never);
 
-      const mockCycleVotes = [{ observed: AuditObserved.DAMAGED, weight: 1.0 }];
+      const err = await vote("voter-1", "n-6", AuditObserved.INTACT).catch((e) => e);
+      expect(err).toBeInstanceOf(AuditError);
+      expect(err.status).toBe(409);
+    });
 
-      let updatedIssueStatus: Status = Status.CLAIMED_FIXED;
-      vi.spyOn(prisma, "$transaction").mockImplementation(async (callback) => {
-        const txMock = {
-          report: { create: vi.fn().mockResolvedValue({ id: "rep-audit-2" }) },
-          auditVote: {
-            create: vi.fn().mockResolvedValue({ id: "vote-2" }),
-            findMany: vi.fn().mockResolvedValue(mockCycleVotes),
-          },
-          auditTask: { update: vi.fn().mockResolvedValue(mockTask) },
-          issue: {
-            update: vi.fn().mockImplementation((args) => {
-              updatedIssueStatus = args.data.status;
-              return Promise.resolve({ ...mockIssue, status: updatedIssueStatus });
-            }),
-          },
-          actionLog: { create: vi.fn().mockResolvedValue({ id: "log-2" }) },
-          citizenProfile: {
-            findUnique: vi.fn().mockResolvedValue({ reputation: 100 }),
-            update: vi.fn().mockResolvedValue({}),
-          },
-          pointLog: { create: vi.fn().mockResolvedValue({}) },
-        };
-        return callback(txMock as never);
-      });
+    it("a second vote on the same issue by the same person is a 409", async () => {
+      const issue = claimedIssue("issue-voted");
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(openTask(issue, null, "n-7") as never);
+      vi.spyOn(prisma.user, "findUnique").mockResolvedValue({
+        role: Role.CITIZEN,
+        createdAt: new Date(Date.now() - 72 * 3600 * 1000),
+      } as never);
+      vi.spyOn(prisma.auditVote, "findFirst").mockResolvedValue({ id: "earlier-vote" } as never);
 
-      const result = await submitAuditVote({
-        userId: "citizen-voter-2",
-        taskId: "task-vote-2",
-        observed: AuditObserved.DAMAGED,
-        deviceHeadingDeg: 185,
-        evidence: {
-          payload: {
-            accuracy: 5,
-            capturedAt: new Date().toISOString(),
-            lat: 12.935,
-            lng: 77.689,
-            nonce: "valid-nonce-def",
-            photoHash: "def456hash",
-            role: "AUDIT" as EvidenceRole,
-          },
-          signature: "test-ecdsa-sig-2",
-          photoBase64: Buffer.from("fake-jpeg").toString("base64"),
-        },
-      });
+      const err = await vote("voter-1", "n-7", AuditObserved.INTACT).catch((e) => e);
+      expect(err).toBeInstanceOf(AuditError);
+      expect(err.status).toBe(409);
+      expect(err.code).toBe("ALREADY_VOTED");
+    });
 
-      expect(result.issue.status).toBe(Status.DISPUTED);
+    it("public tasks follow the same eligibility: new accounts, the reporter and desks are refused (403)", async () => {
+      const issue = claimedIssue("issue-elig");
+      vi.spyOn(prisma.auditTask, "findUnique").mockResolvedValue(openTask(issue, null, "n-8") as never);
+      vi.spyOn(prisma.auditVote, "findFirst").mockResolvedValue(null);
+
+      const userSpy = vi.spyOn(prisma.user, "findUnique");
+      userSpy.mockResolvedValueOnce({ role: Role.CITIZEN, createdAt: new Date(Date.now() - 3600 * 1000) } as never);
+      const tooNew = await vote("new-user", "n-8", AuditObserved.INTACT).catch((e) => e);
+      expect(tooNew.status).toBe(403);
+      expect(tooNew.code).toBe("ACCOUNT_TOO_NEW");
+
+      userSpy.mockResolvedValueOnce({ role: Role.CITIZEN, createdAt: new Date(Date.now() - 72 * 3600 * 1000) } as never);
+      const reporter = await vote("reporter-1", "n-8", AuditObserved.INTACT).catch((e) => e);
+      expect(reporter.status).toBe(403);
+      expect(reporter.code).toBe("IS_REPORTER");
+
+      userSpy.mockResolvedValueOnce({ role: Role.AUTHORITY, createdAt: new Date(Date.now() - 72 * 3600 * 1000) } as never);
+      const desk = await vote("desk-1", "n-8", AuditObserved.INTACT).catch((e) => e);
+      expect(desk.code).toBe("NOT_CITIZEN");
     });
   });
 
@@ -439,19 +474,21 @@ describe("Blind Repair Audit — Unit Tests", () => {
       vi.spyOn(prisma.weatherForecast, "findMany").mockResolvedValue([]); // No heavy rain
       vi.spyOn(prisma.user, "findMany").mockResolvedValue([]); // fallback to public queue
       vi.spyOn(prisma.report, "findMany").mockResolvedValue([]);
+      vi.spyOn(prisma.auditTask, "findMany").mockResolvedValue([]);
 
-      const createdTasks: unknown[] = [];
+      const createdTasks: Array<{ kind: AuditKind; assigneeId: string | null }> = [];
       vi.spyOn(prisma.auditTask, "create").mockImplementation((args) => {
-        createdTasks.push(args.data);
+        createdTasks.push(args.data as never);
         return Promise.resolve({ id: `dur-task-${createdTasks.length}`, ...args.data }) as never;
       });
-      vi.spyOn(prisma.auditTask, "update").mockResolvedValue({} as never);
       vi.spyOn(prisma.issue, "findUnique").mockResolvedValue(mockVerifiedIssues[0] as never);
 
       const result = await runDurabilityJob(now);
 
       expect(result.processed).toBe(1);
-      expect(result.createdTasksCount).toBe(3);
+      // Nobody qualified nearby: exactly ONE public durability task (never three duplicates), created as DURABILITY.
+      expect(result.createdTasksCount).toBe(1);
+      expect(createdTasks[0]).toMatchObject({ kind: AuditKind.DURABILITY, assigneeId: null });
     });
   });
 });

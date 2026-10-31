@@ -1,7 +1,9 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { loadCitizenOverview } from "@/lib/citizen/stats";
+import { listAuditTasksForUser } from "@/lib/audit/blindAudit";
+import { displayLocation, issueTitle } from "@/lib/issues/display";
 import { ReputationCard } from "@/components/citizen/ReputationCard";
 import { ActiveReports } from "@/components/citizen/ActiveReports";
 import Link from "next/link";
@@ -19,42 +21,22 @@ export default async function CitizenDashboard() {
   const userId = session.user.id;
   if (!userId) { redirect('/login'); return null; }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      citizenProfile: true,
-    }
-  });
+  // One parallel batch: profile, recent reports (one per issue), counts, and audits this user may answer.
+  const [overview, auditListing] = await Promise.all([
+    loadCitizenOverview(userId, { reportLimit: 10 }),
+    listAuditTasksForUser(userId).catch(() => ({ eligible: false, tasks: [] })),
+  ]);
 
-  const profile = user?.citizenProfile;
+  const { user, profile, reports: userReports } = overview;
   if (!profile) { redirect('/login'); return null; }
 
-  const userReports = await prisma.report.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    take: 10,
-    include: {
-      issue: {
-        include: { _count: { select: { reports: true, comments: true } } }
-      }
-    }
-  });
-
-  const totalReportsCount = await prisma.report.count({ where: { userId, role: 'REPORT' } });
-  const confirmationsCount = await prisma.report.count({ where: { userId, role: 'CONFIRM' } });
   const resolvedCount = userReports.filter(r => ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(r.issue.status)).length;
-  const openAuditTasksCount = await prisma.auditTask.count({
-    where: {
-      status: 'OPEN',
-      dueAt: { gt: new Date() },
-      OR: [{ assigneeId: userId }, { assigneeId: null }],
-    },
-  });
+  const openAuditTasksCount = auditListing.tasks.length;
 
   const stats = {
-    reported: totalReportsCount,
+    reported: overview.reportsFiled,
     resolved: resolvedCount,
-    votes: confirmationsCount,
+    votes: overview.votesCast,
     tier: profile.tier,
     xp: profile.reputation,
   };
@@ -160,14 +142,11 @@ export default async function CitizenDashboard() {
         <ActiveReports
           key={userReports.length > 0 ? userReports[0].id : 'empty'}
           initialReports={userReports.map(r => {
-            const displayAddress = (r.issue.address && r.issue.address.trim() && r.issue.address.toLowerCase() !== 'bengaluru' && !r.issue.address.toLowerCase().includes('pending') && !r.issue.address.includes('Report Location'))
-              ? r.issue.address
-              : `Near ${r.lat.toFixed(4)}, ${r.lng.toFixed(4)}`;
-
+            const displayAddress = displayLocation(r.issue.address, r.issue.lat, r.issue.lng);
             return {
               id: r.id,
               issueId: r.issueId,
-              title: `${r.issue.category.replace(/_/g, ' ')} (${displayAddress})`,
+              title: issueTitle(r.issue.category, r.issue.address, r.issue.lat, r.issue.lng),
               category: r.issue.category,
               status: r.issue.status,
               createdAt: r.createdAt,
@@ -175,7 +154,7 @@ export default async function CitizenDashboard() {
               latitude: r.lat,
               longitude: r.lng,
               priorityScore: r.issue.priority,
-              voteCount: r.issue._count?.reports || 0,
+              voteCount: 0,
               commentCount: r.issue._count?.comments || 0,
               isSeed: r.issue.isSeed || r.isSeed,
             };

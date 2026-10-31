@@ -238,6 +238,8 @@ model Report {
   signature    String
   deviceKeyId  String?
   nonce        String?      @unique
+  /// Client-generated id (uuid) so a retried or re-synced submission is stored once.
+  clientReportId String?    @unique
   offline      Boolean      @default(false)
   legacy       Boolean      @default(false)
   lat          Float
