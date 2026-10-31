@@ -194,13 +194,16 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     // 2. Submit second report 10m away
     const lat2 = lat1 + 0.00008; // ~9 meters away
     const lng2 = lng1 + 0.00008;
+    // Different photo to avoid offline dedup (same userId+photoHash → 200 stored, not 201)
+    const sampleImageBase64_2 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk+A8AAQUBAScAAAAAElFTkSuQmCC';
+    const photoHash2 = await computePhotoHash(Buffer.from(sampleImageBase64_2, 'base64'));
     const payload2: EvidencePayload = {
       accuracy: 5,
       capturedAt: new Date().toISOString(),
       lat: lat2,
       lng: lng2,
       nonce: 'offline',
-      photoHash,
+      photoHash: photoHash2,
       role: 'REPORT',
     };
     const signature2 = await signEvidencePayload(payload2, keyPair.privateKey);
@@ -214,7 +217,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
       return { status: res.status, json: await res.json() };
     }, {
       category: 'POTHOLES',
-      photoBase64: sampleImageBase64,
+      photoBase64: sampleImageBase64_2,
       mimeType: 'image/jpeg',
       payload: payload2,
       signature: signature2,
@@ -440,12 +443,13 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
           },
         }),
       });
-      return { status: res.status, json: await res.json() };
+      let json: unknown = null;
+      try { json = await res.json(); } catch {}
+      return { status: res.status, json };
     }, { issueId: issue.id, payload: citizenPayload, signature: citizenSignature, photoBase64: sampleImageBase64 });
 
-    // Direct verify route is blocked for CLAIMED_FIXED issues
-    expect(disputeRes.status).toBe(409);
-    expect(disputeRes.json.error.code).toBe('AUDIT_IN_PROGRESS');
+    // /verify route was removed; disputes now go through the blind audit flow only
+    expect(disputeRes.status).toBe(404);
 
     // Complete dispute via blind audit task
     let auditTask = await prisma.auditTask.findFirst({
@@ -481,13 +485,13 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     };
     const auditSig = await signEvidencePayload(auditPayload, citizenKeyPair.privateKey);
 
-    const voteRes = await citizenPage.evaluate(async ({ taskId, payload, signature, photoBase64 }) => {
+    const voteRes = await citizenPage.evaluate(async ({ taskId, payload, signature, photoBase64, challengeBearingDeg }) => {
       const res = await fetch(`/api/audit/tasks/${taskId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           observed: 'DAMAGED',
-          deviceHeadingDeg: 90,
+          deviceHeadingDeg: challengeBearingDeg,
           evidence: {
             payload,
             signature,
@@ -502,10 +506,79 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
       payload: auditPayload,
       signature: auditSig,
       photoBase64: sampleImageBase64,
+      challengeBearingDeg: auditTask.challengeBearingDeg,
     });
 
+    // First vote recorded; quorum (MIN_INDEPENDENT_VOTERS=2) not yet reached
     expect(voteRes.status).toBe(201);
-    expect(voteRes.json.issueStatus).toBe('DISPUTED');
+
+    // Second voter: citizen-b to reach quorum
+    const citizen2 = await prisma.user.findFirstOrThrow({ where: { email: 'citizen-b@civicpulse.local' } });
+    await prisma.user.update({ where: { id: citizen2.id }, data: { createdAt: new Date(Date.now() - 48 * 3600 * 1000) } });
+
+    const citizen2KeyPair = await globalThis.crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+    const citizen2PublicJwk = await globalThis.crypto.subtle.exportKey('jwk', citizen2KeyPair.publicKey);
+    await prisma.deviceKey.create({ data: { userId: citizen2.id, publicJwk: citizen2PublicJwk as object } });
+
+    // Find or create a second OPEN audit task for citizen2
+    const allTasks = await prisma.auditTask.findMany({ where: { issueId: issue.id, status: 'OPEN' } });
+    let auditTask2 = allTasks.find(t => t.id !== auditTask.id) ?? null;
+    if (!auditTask2) {
+      auditTask2 = await prisma.auditTask.create({
+        data: {
+          issueId: issue.id,
+          assigneeId: citizen2.id,
+          kind: 'CLAIM_CHECK',
+          dueAt: new Date(Date.now() + 3600 * 1000),
+          challengeBearingDeg: auditTask.challengeBearingDeg,
+          challengeNonce: crypto.randomUUID(),
+          status: 'OPEN',
+        },
+      });
+    } else {
+      await prisma.auditTask.update({ where: { id: auditTask2.id }, data: { assigneeId: citizen2.id } });
+    }
+
+    const auditPayload2: EvidencePayload = {
+      accuracy: 6.0,
+      capturedAt: new Date().toISOString(),
+      lat: issue.lat,
+      lng: issue.lng,
+      nonce: auditTask2.challengeNonce,
+      photoHash,
+      role: 'AUDIT',
+    };
+    const auditSig2 = await signEvidencePayload(auditPayload2, citizen2KeyPair.privateKey);
+
+    const citizen2Context = await browser.newContext();
+    const citizen2Page = await citizen2Context.newPage();
+    await citizen2Page.goto('/login');
+    await citizen2Page.fill('input[type="email"]', 'citizen-b@civicpulse.local');
+    await citizen2Page.fill('input[type="password"]', seedPassword);
+    await citizen2Page.click('button[type="submit"]');
+    await citizen2Page.waitForURL((url) => url.pathname.includes('/citizen/dashboard'), { timeout: 15000 });
+
+    const voteRes2 = await citizen2Page.evaluate(async ({ taskId, payload, signature, photoBase64, challengeBearingDeg }) => {
+      const res = await fetch(`/api/audit/tasks/${taskId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          observed: 'DAMAGED',
+          deviceHeadingDeg: challengeBearingDeg,
+          evidence: { payload, signature, photoBase64, mimeType: 'image/jpeg' },
+        }),
+      });
+      return { status: res.status, json: await res.json() };
+    }, {
+      taskId: auditTask2.id,
+      payload: auditPayload2,
+      signature: auditSig2,
+      photoBase64: sampleImageBase64,
+      challengeBearingDeg: auditTask2.challengeBearingDeg,
+    });
+
+    expect(voteRes2.status).toBe(201);
+    expect(voteRes2.json.issueStatus).toBe('DISPUTED');
 
     const updated = await prisma.issue.findUnique({
       where: { id: issue.id },
@@ -514,6 +587,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
 
     await deskContext.close();
     await citizenContext.close();
+    await citizen2Context.close();
   });
 
   // T28 Acceptance: Public issue page renders for logged-out visitor without desk controls

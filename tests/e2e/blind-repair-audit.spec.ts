@@ -63,6 +63,12 @@ test.describe('Track B Novelty: Blind Repair Audit & Contractor Liability End-to
     const citizen2 = await prisma.user.findFirstOrThrow({ where: { email: 'citizen-b@civicpulse.local' } });
     const citizen3 = await prisma.user.findFirstOrThrow({ where: { email: 'citizen-c@civicpulse.local' } });
 
+    // Ensure citizen accounts are older than 24h to satisfy audit eligibility
+    await prisma.user.updateMany({
+      where: { id: { in: [citizen2.id, citizen3.id] } },
+      data: { createdAt: new Date(Date.now() - 48 * 3600 * 1000) },
+    });
+
     // Setup device keys for signing
     const keyPairDesk = await globalThis.crypto.subtle.generateKey(
       { name: 'ECDSA', namedCurve: 'P-256' },
@@ -192,6 +198,10 @@ test.describe('Track B Novelty: Blind Repair Audit & Contractor Liability End-to
       expect(t.challengeNonce).toBeTruthy();
     }
 
+    // Reassign the first two tasks to our test auditors so they can vote
+    await prisma.auditTask.update({ where: { id: tasks[0].id }, data: { assigneeId: citizen2.id } });
+    await prisma.auditTask.update({ where: { id: tasks[1].id }, data: { assigneeId: citizen3.id } });
+
     // 5. Citizen 2 logs in and views blind audit tasks
     const citizenContext = await browser.newContext();
     const citizenPage = await citizenContext.newPage();
@@ -205,13 +215,15 @@ test.describe('Track B Novelty: Blind Repair Audit & Contractor Liability End-to
     const blindTasksRes = await citizenPage.request.get(`/api/audit/tasks?lat=${lat}&lng=${lng}`);
     expect(blindTasksRes.status()).toBe(200);
     const blindTasksData = await blindTasksRes.json();
-    const targetBlindTask = blindTasksData.tasks.find((t: { id: string }) => t.id === tasks[0].id);
+    const taskIds = new Set(tasks.map((t) => t.id));
+    const targetBlindTask = blindTasksData.tasks.find((t: { id: string }) => taskIds.has(t.id));
     expect(targetBlindTask).toBeDefined();
+    const matchedDbTask = tasks.find((t) => t.id === targetBlindTask?.id)!;
 
     // Verify BLINDNESS: no status, no contractor, no claim dates
     expect(targetBlindTask.status).toBe('OPEN'); // task status only
-    expect(targetBlindTask.challengeBearingDeg).toBe(tasks[0].challengeBearingDeg);
-    expect(targetBlindTask.challengeNonce).toBe(tasks[0].challengeNonce);
+    expect(targetBlindTask.challengeBearingDeg).toBe(matchedDbTask.challengeBearingDeg);
+    expect(targetBlindTask.challengeNonce).toBe(matchedDbTask.challengeNonce);
     expect((targetBlindTask as Record<string, unknown>).issueStatus).toBeUndefined();
     expect((targetBlindTask as Record<string, unknown>).contractorName).toBeUndefined();
 
@@ -364,7 +376,62 @@ test.describe('Track B Novelty: Blind Repair Audit & Contractor Liability End-to
         },
       },
     });
+    // First durability vote; quorum not yet reached
     expect([200, 201]).toContain(durRes.status);
+
+    // Second durability vote from citizen3 to satisfy MIN_INDEPENDENT_VOTERS=2
+    await prisma.auditorScore.upsert({
+      where: { userId: citizen3.id },
+      create: { userId: citizen3.id, controlsPassed: 3, controlsTotal: 3, reliability: 1.0 },
+      update: { reliability: 1.0 },
+    });
+
+    const durabilityTask2 = await prisma.auditTask.create({
+      data: {
+        issueId: testIssue.id,
+        assigneeId: citizen3.id,
+        kind: AuditKind.DURABILITY,
+        dueAt: new Date(now + 48 * 3600 * 1000),
+        challengeBearingDeg: 180,
+        challengeNonce: 'durability-challenge-nonce-citizen3',
+        status: 'OPEN',
+      },
+    });
+
+    const durabilityPhoto2 = Buffer.from('durability_pothole_reopened_citizen3');
+    const durPhotoHash2 = crypto.createHash('sha256').update(durabilityPhoto2).digest('hex');
+    const durPayload2: EvidencePayload = {
+      accuracy: 5.0,
+      capturedAt: new Date().toISOString(),
+      lat,
+      lng,
+      nonce: durabilityTask2.challengeNonce,
+      photoHash: durPhotoHash2,
+      role: 'AUDIT',
+    };
+    const durSig2 = await signEvidencePayload(durPayload2, keyPairCitizen3.privateKey);
+
+    const durRes2 = await citizen3Page.evaluate(async ({ taskId, body }) => {
+      const res = await fetch(`/api/audit/tasks/${taskId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return { status: res.status, json: await res.json() };
+    }, {
+      taskId: durabilityTask2.id,
+      body: {
+        observed: 'DAMAGED',
+        deviceHeadingDeg: 180,
+        evidence: {
+          payload: durPayload2,
+          signature: durSig2,
+          photoBase64: durabilityPhoto2.toString('base64'),
+          mimeType: 'image/jpeg',
+        },
+      },
+    });
+    expect([200, 201]).toContain(durRes2.status);
 
     // Verify issue transitioned to REOPENED_IN_WARRANTY and lifespanDays calculated
     const reopenedIssue = await prisma.issue.findUniqueOrThrow({ where: { id: testIssue.id } });

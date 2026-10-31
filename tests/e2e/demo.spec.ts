@@ -55,11 +55,12 @@ test.describe('T73: End-to-End CivicPulse Demo Story', () => {
     // 1. Setup Keys and Users
     const citizenUser1 = await prisma.user.findFirstOrThrow({ where: { email: 'citizen@example.com' } });
     const citizenUser2 = await prisma.user.findFirstOrThrow({ where: { email: 'citizen-b@civicpulse.local' } });
+    const citizenUser3 = await prisma.user.findFirstOrThrow({ where: { email: 'citizen-c@civicpulse.local' } });
     const deskOfficer = await prisma.user.findFirstOrThrow({ where: { email: 'desk-a@civicpulse.local' } });
 
     // Ensure citizen accounts are older than 24h to satisfy verification eligibility rules
-    await prisma.user.update({
-      where: { id: citizenUser2.id },
+    await prisma.user.updateMany({
+      where: { id: { in: [citizenUser1.id, citizenUser2.id, citizenUser3.id] } },
       data: { createdAt: new Date(Date.now() - 48 * 3600 * 1000) },
     });
 
@@ -92,6 +93,16 @@ test.describe('T73: End-to-End CivicPulse Demo Story', () => {
     const jwk2 = await globalThis.crypto.subtle.exportKey('jwk', keyPair2.publicKey);
     await prisma.deviceKey.create({
       data: { userId: citizenUser2.id, publicJwk: jwk2 as object },
+    });
+
+    const keyPair3 = await globalThis.crypto.subtle.generateKey(
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      true,
+      ['sign', 'verify']
+    );
+    const jwk3 = await globalThis.crypto.subtle.exportKey('jwk', keyPair3.publicKey);
+    await prisma.deviceKey.create({
+      data: { userId: citizenUser3.id, publicJwk: jwk3 as object },
     });
 
     const sampleBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -283,7 +294,9 @@ test.describe('T73: End-to-End CivicPulse Demo Story', () => {
           },
         }),
       });
-      return { status: res.status, json: await res.json() };
+      let json: unknown = null;
+      try { json = await res.json(); } catch {}
+      return { status: res.status, json };
     }, {
       issueId: demoIssueId,
       payload: citizen2Payload,
@@ -291,9 +304,8 @@ test.describe('T73: End-to-End CivicPulse Demo Story', () => {
       photoBase64: sampleBase64,
     });
 
-    // Direct verify route is blocked for CLAIMED_FIXED issues
-    expect(disputeRes.status).toBe(409);
-    expect(disputeRes.json.error.code).toBe('AUDIT_IN_PROGRESS');
+    // /verify route was removed; disputes now go through the blind audit flow only
+    expect(disputeRes.status).toBe(404);
 
     // Complete dispute via blind audit task
     let auditTask = await prisma.auditTask.findFirst({
@@ -321,21 +333,21 @@ test.describe('T73: End-to-End CivicPulse Demo Story', () => {
     const auditPayload: EvidencePayload = {
       accuracy: 6.0,
       capturedAt: new Date().toISOString(),
-      lat: 12.9352,
-      lng: 77.6245,
+      lat: pilotLat,
+      lng: pilotLng,
       nonce: auditTask.challengeNonce,
       photoHash,
       role: 'AUDIT',
     };
     const auditSig = await signEvidencePayload(auditPayload, keyPair2.privateKey);
 
-    const voteRes = await citizen2Page.evaluate(async ({ taskId, payload, signature, photoBase64 }) => {
+    const voteRes = await citizen2Page.evaluate(async ({ taskId, payload, signature, photoBase64, challengeBearingDeg }) => {
       const res = await fetch(`/api/audit/tasks/${taskId}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           observed: 'DAMAGED',
-          deviceHeadingDeg: 90,
+          deviceHeadingDeg: challengeBearingDeg,
           evidence: {
             payload,
             signature,
@@ -350,10 +362,71 @@ test.describe('T73: End-to-End CivicPulse Demo Story', () => {
       payload: auditPayload,
       signature: auditSig,
       photoBase64: sampleBase64,
+      challengeBearingDeg: auditTask.challengeBearingDeg,
     });
 
+    // First vote recorded; quorum (MIN_INDEPENDENT_VOTERS=2) not yet reached
     expect(voteRes.status).toBe(201);
-    expect(voteRes.json.issueStatus).toBe('DISPUTED');
+
+    // Second voter: citizen3 (not the reporter) to reach quorum for DISPUTE_FIX
+    const allDemoTasks = await prisma.auditTask.findMany({ where: { issueId: demoIssueId, status: 'OPEN' } });
+    let auditTask2 = allDemoTasks.find(t => t.id !== auditTask.id) ?? null;
+    if (!auditTask2) {
+      auditTask2 = await prisma.auditTask.create({
+        data: {
+          issueId: demoIssueId,
+          assigneeId: citizenUser3.id,
+          kind: 'CLAIM_CHECK',
+          dueAt: new Date(Date.now() + 3600 * 1000),
+          challengeBearingDeg: auditTask.challengeBearingDeg,
+          challengeNonce: crypto.randomUUID(),
+          status: 'OPEN',
+        },
+      });
+    } else {
+      await prisma.auditTask.update({ where: { id: auditTask2.id }, data: { assigneeId: citizenUser3.id } });
+    }
+
+    const auditPayload2: EvidencePayload = {
+      accuracy: 6.0,
+      capturedAt: new Date().toISOString(),
+      lat: pilotLat,
+      lng: pilotLng,
+      nonce: auditTask2.challengeNonce,
+      photoHash,
+      role: 'AUDIT',
+    };
+    const auditSig2 = await signEvidencePayload(auditPayload2, keyPair3.privateKey);
+
+    const citizen3Context = await browser.newContext();
+    const citizen3Page = await citizen3Context.newPage();
+    await citizen3Page.goto('/login');
+    await citizen3Page.fill('input[type="email"]', citizenUser3.email);
+    await citizen3Page.fill('input[type="password"]', seedPassword);
+    await citizen3Page.click('button[type="submit"]');
+    await citizen3Page.waitForURL((url) => url.pathname.includes('/citizen/dashboard'), { timeout: 15000 });
+
+    const voteRes2 = await citizen3Page.evaluate(async ({ taskId, payload, signature, photoBase64, challengeBearingDeg }) => {
+      const res = await fetch(`/api/audit/tasks/${taskId}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          observed: 'DAMAGED',
+          deviceHeadingDeg: challengeBearingDeg,
+          evidence: { payload, signature, photoBase64, mimeType: 'image/jpeg' },
+        }),
+      });
+      return { status: res.status, json: await res.json() };
+    }, {
+      taskId: auditTask2.id,
+      payload: auditPayload2,
+      signature: auditSig2,
+      photoBase64: sampleBase64,
+      challengeBearingDeg: auditTask2.challengeBearingDeg,
+    });
+
+    expect(voteRes2.status).toBe(201);
+    expect(voteRes2.json.issueStatus).toBe('DISPUTED');
 
     // Verify status in DB is DISPUTED
     const disputedIssue = await prisma.issue.findUnique({
@@ -389,5 +462,6 @@ test.describe('T73: End-to-End CivicPulse Demo Story', () => {
     await citizen1Context.close();
     await deskContext.close();
     await citizen2Context.close();
+    await citizen3Context.close();
   });
 });
