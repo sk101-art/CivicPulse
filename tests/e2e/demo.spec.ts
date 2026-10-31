@@ -1,19 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { PrismaClient, Status } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
-import path from 'path';
-import dotenv from 'dotenv';
+import { createSeedDb } from '../../scripts/lib/db-target';
+import { Status } from '@prisma/client';
 import { computePhotoHash, signEvidencePayload, type EvidencePayload } from '../../src/lib/evidence/sign';
 import { seedDemoData } from '../../scripts/seed-demo';
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
-
-const connectionString = process.env.APP_DATABASE_URL || process.env.DIRECT_DATABASE_URL;
-const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+// Always the isolated test schema; fails fast instead of falling back to production.
+const { pool, prisma, verify: verifyTestDb } = createSeedDb();
+test.beforeAll(async () => {
+  await verifyTestDb();
+});
 
 const seedPassword = process.env.SEED_DESK_PASSWORD || 'password123';
 

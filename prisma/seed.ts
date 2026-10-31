@@ -1,28 +1,12 @@
-import { PrismaClient, Role, Tier, Category, Status, Band, EvidenceRole, SegmentEventType } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
+import { Role, Tier, Category, Status, Band, EvidenceRole, SegmentEventType } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import dotenv from 'dotenv';
-import path from 'path';
-import fs from 'fs';
 import { upsertSeedReport } from './seed-evidence';
+import { resolveDbTarget, createPool, createPrisma, assertDbTarget, describeTarget } from '../scripts/lib/db-target';
 
-const rootDir = process.cwd();
-if (fs.existsSync(path.join(rootDir, '.env'))) {
-  dotenv.config({ path: path.join(rootDir, '.env') });
-}
-if (fs.existsSync(path.join(rootDir, '.env.local'))) {
-  dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
-}
-
-const connectionString = process.env.DIRECT_DATABASE_URL || process.env.APP_DATABASE_URL;
-if (!connectionString) {
-  throw new Error('Database connection URL (DIRECT_DATABASE_URL or APP_DATABASE_URL) is required.');
-}
-
-const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+// Test/e2e runs resolve to DATABASE_URL_TEST (schema=test) and never let .env.local override it.
+const dbTarget = resolveDbTarget(['DIRECT_DATABASE_URL', 'APP_DATABASE_URL']);
+const pool = createPool(dbTarget);
+const prisma = createPrisma(pool, dbTarget);
 
 const AGENCIES = [
   { code: 'GBA', name: 'Greater Bengaluru Authority', slaHours: 72 },
@@ -35,7 +19,8 @@ const AGENCIES = [
 ];
 
 async function main() {
-  console.log('[Seed] Starting CivicPulse v2 database seed...');
+  await assertDbTarget(pool, dbTarget);
+  console.log(`[Seed] Starting CivicPulse v2 database seed (${describeTarget(dbTarget)})...`);
 
   const seedPassword = process.env.SEED_DESK_PASSWORD;
   if (!seedPassword) {

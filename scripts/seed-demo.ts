@@ -1,28 +1,12 @@
-import { PrismaClient, Role, Tier, Category, Status, Band, SegmentEventType, AuditKind, AuditTaskStatus, AuditObserved, DeteriorationRisk, DayType, ProfileSource, EvidenceRole } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
+import { Role, Tier, Category, Status, Band, SegmentEventType, AuditKind, AuditTaskStatus, AuditObserved, DeteriorationRisk, DayType, ProfileSource, EvidenceRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import dotenv from 'dotenv';
-import path from 'path';
-import fs from 'fs';
 import { upsertSeedReport } from '../prisma/seed-evidence';
+import { resolveDbTarget, createPool, createPrisma, assertDbTarget, describeTarget } from './lib/db-target';
 
-const rootDir = process.cwd();
-if (fs.existsSync(path.join(rootDir, '.env'))) {
-  dotenv.config({ path: path.join(rootDir, '.env') });
-}
-if (fs.existsSync(path.join(rootDir, '.env.local'))) {
-  dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
-}
-
-const connectionString = process.env.APP_DATABASE_URL || process.env.DIRECT_DATABASE_URL || process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error('Database connection URL (DATABASE_URL, DIRECT_DATABASE_URL, or APP_DATABASE_URL) is required.');
-}
-
-const pool = new Pool({ connectionString });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+// Test/e2e runs resolve to DATABASE_URL_TEST (schema=test) and never let .env.local override it.
+const dbTarget = resolveDbTarget(['APP_DATABASE_URL', 'DIRECT_DATABASE_URL', 'DATABASE_URL']);
+const pool = createPool(dbTarget);
+const prisma = createPrisma(pool, dbTarget);
 
 const AGENCIES = [
   { code: 'GBA', name: 'Greater Bengaluru Authority', slaHours: 72 },
@@ -34,8 +18,118 @@ const AGENCIES = [
   { code: 'OTHER', name: 'Other Public Agencies', slaHours: 72 },
 ];
 
+interface SeedClaimDef {
+  id: string;
+  wardId: string;
+  contractorName: string;
+  category: Category;
+  address: string;
+  lat: number;
+  lng: number;
+  daysAgoClaimed: number;
+  lifespanDays?: number;
+  status: Status;
+  hoursToVerify?: number;
+  verifier: { id: string };
+}
+
+// Claim-gap & lifespan scorecard issues (19). Shared by the full seed and --only=citizen-reports.
+function buildDemoClaims(verifiers: { b: { id: string }; c: { id: string } }): SeedClaimDef[] {
+  return [
+    // Bellandur (Demo) — Cauvery Infrastructure Ltd. (Demo)
+    { id: 'seed-claim-blr-1', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.POTHOLES, address: 'Sarjapur-ORR Junction', lat: 12.9260, lng: 77.6770, daysAgoClaimed: 18, hoursToVerify: 34, lifespanDays: 140, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-blr-2', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.DRAINAGE, address: 'Bellandur Central Flyover', lat: 12.9295, lng: 77.6810, daysAgoClaimed: 14, hoursToVerify: 28, lifespanDays: 160, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-blr-3', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.POTHOLES, address: 'Green Glen Layout Access', lat: 12.9310, lng: 77.6740, daysAgoClaimed: 10, hoursToVerify: 42, lifespanDays: 120, status: Status.VERIFIED_FIXED, verifier: verifiers.c },
+    { id: 'seed-claim-blr-4', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.ROAD_CUT, address: 'Outer Ring Road Sector 2', lat: 12.9340, lng: 77.6850, daysAgoClaimed: 7, hoursToVerify: 30, lifespanDays: 180, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-blr-5', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.POTHOLES, address: 'Kaverappa Layout Service Road', lat: 12.9348, lng: 77.6925, daysAgoClaimed: 12, hoursToVerify: 22, status: Status.DISPUTED, verifier: verifiers.c },
+    { id: 'seed-claim-blr-6', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.ROAD_CUT, address: 'Bellandur South Underpass Service Road', lat: 12.9282, lng: 77.6784, daysAgoClaimed: 22, hoursToVerify: 26, lifespanDays: 42, status: Status.REOPENED_IN_WARRANTY, verifier: verifiers.c },
+
+    // Mahadevapura (Demo) — Southern Asphalt Works (Demo)
+    { id: 'seed-claim-mdp-1', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Whitefield Main Road near Metro', lat: 12.9860, lng: 77.7120, daysAgoClaimed: 20, hoursToVerify: 22, lifespanDays: 95, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-mdp-2', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.DRAINAGE, address: 'ITPL Main Road Junction', lat: 12.9890, lng: 77.7200, daysAgoClaimed: 15, hoursToVerify: 24, lifespanDays: 110, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-mdp-3', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Hoodi Circle North', lat: 12.9920, lng: 77.7150, daysAgoClaimed: 11, hoursToVerify: 26, lifespanDays: 105, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-mdp-4', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.ROAD_CUT, address: 'Garudacharpalya Service Lane', lat: 12.9830, lng: 77.7050, daysAgoClaimed: 8, hoursToVerify: 28, lifespanDays: 125, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-mdp-5', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Seetharampalya Underpass', lat: 12.9810, lng: 77.7020, daysAgoClaimed: 16, hoursToVerify: 18, status: Status.DISPUTED, verifier: verifiers.c },
+    { id: 'seed-claim-mdp-6', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Mahadevapura Ring Road Crossing', lat: 12.9870, lng: 77.7080, daysAgoClaimed: 9, hoursToVerify: 20, status: Status.DISPUTED, verifier: verifiers.c },
+    { id: 'seed-claim-mdp-7', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.DRAINAGE, address: 'Channasandra Main Road', lat: 12.9950, lng: 77.7250, daysAgoClaimed: 2, status: Status.CLAIMED_FIXED, verifier: verifiers.b },
+
+    // Marathahalli (Demo) — Apex Urban Build (Demo)
+    { id: 'seed-claim-mrh-1', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.POTHOLES, address: 'Marathahalli Bridge Eastbound', lat: 12.9560, lng: 77.6980, daysAgoClaimed: 21, hoursToVerify: 16, lifespanDays: 240, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-mrh-2', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.DRAINAGE, address: 'Varthur Road Cross', lat: 12.9540, lng: 77.7020, daysAgoClaimed: 17, hoursToVerify: 18, lifespanDays: 260, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-mrh-3', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.POTHOLES, address: 'HAL Airport Road Junction', lat: 12.9580, lng: 77.6950, daysAgoClaimed: 13, hoursToVerify: 15, lifespanDays: 280, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-mrh-4', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.ROAD_CUT, address: 'Kalamandir Service Road', lat: 12.9520, lng: 77.6990, daysAgoClaimed: 9, hoursToVerify: 20, lifespanDays: 250, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-mrh-5', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.POTHOLES, address: 'Munnekollal Main Road', lat: 12.9500, lng: 77.7050, daysAgoClaimed: 5, hoursToVerify: 19, lifespanDays: 300, status: Status.VERIFIED_FIXED, verifier: verifiers.b },
+    { id: 'seed-claim-mrh-6', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.DRAINAGE, address: 'Spice Garden Junction', lat: 12.9480, lng: 77.7080, daysAgoClaimed: 1, status: Status.CLAIMED_FIXED, verifier: verifiers.b },
+  ];
+}
+
+const ORR_CITIZEN_REPORTS = [
+  {
+    id: 'seed-report-orr-fixed',
+    issueId: 'seed-issue-orr-fixed',
+    lat: 12.9360,
+    lng: 77.6955,
+    daysAgo: 60,
+    note: 'Crater pothole in outer bus lane at Kadubeesanahalli Junction',
+  },
+  {
+    id: 'seed-report-orr-recurrence',
+    issueId: 'seed-issue-orr-recurrence',
+    lat: 12.9361,
+    lng: 77.6956,
+    daysAgo: 7,
+    note: 'Recurrent pothole at prior utility trench location',
+  },
+];
+
+/**
+ * Original citizen REPORT evidence for the 21 seed issues that previously had none
+ * (2 ORR issues + 19 claim-gap issues). Idempotent; the issues must already exist.
+ */
+export async function seedCitizenEvidence(citizenAId: string, now: Date = new Date()): Promise<string[]> {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const ids: string[] = [];
+  for (const r of ORR_CITIZEN_REPORTS) {
+    await upsertSeedReport(prisma, {
+      id: r.id,
+      issueId: r.issueId,
+      userId: citizenAId,
+      category: Category.POTHOLES,
+      lat: r.lat,
+      lng: r.lng,
+      capturedAt: new Date(now.getTime() - r.daysAgo * dayMs),
+      note: r.note,
+    });
+    ids.push(r.id);
+  }
+  for (const c of buildDemoClaims({ b: { id: '' }, c: { id: '' } })) {
+    const claimedDate = new Date(now.getTime() - c.daysAgoClaimed * dayMs);
+    await upsertSeedReport(prisma, {
+      id: `seed-report-${c.id}`,
+      issueId: c.id,
+      userId: citizenAId,
+      category: c.category,
+      lat: c.lat,
+      lng: c.lng,
+      capturedAt: new Date(claimedDate.getTime() - 7 * dayMs),
+      note: `Citizen report: ${c.category.toLowerCase().replace('_', ' ')} at ${c.address} (demo)`,
+    });
+    ids.push(`seed-report-${c.id}`);
+  }
+  return ids;
+}
+
+/** Issue ids targeted by seedCitizenEvidence, for pre-flight checks. */
+export function citizenEvidenceIssueIds(): string[] {
+  return [
+    ...ORR_CITIZEN_REPORTS.map((r) => r.issueId),
+    ...buildDemoClaims({ b: { id: '' }, c: { id: '' } }).map((c) => c.id),
+  ];
+}
+
 export async function seedDemoData() {
-  console.log('[Seed Demo] Initializing CivicPulse Demo Environment...');
+  await assertDbTarget(pool, dbTarget);
+  console.log(`[Seed Demo] Initializing CivicPulse Demo Environment (${describeTarget(dbTarget)})...`);
   const now = new Date();
   const dayMs = 24 * 60 * 60 * 1000;
   const seedPassword = process.env.SEED_DESK_PASSWORD || 'password123';
@@ -377,28 +471,6 @@ export async function seedDemoData() {
       slaDueAt: new Date(now.getTime() + 48 * 3600 * 1000),
       isSeed: true,
     },
-  });
-
-  // Original citizen evidence for the linked ORR issues (previously seeded with zero reports)
-  await upsertSeedReport(prisma, {
-    id: 'seed-report-orr-fixed',
-    issueId: fixedIssueId,
-    userId: citizenA.id,
-    category: Category.POTHOLES,
-    lat: 12.9360,
-    lng: 77.6955,
-    capturedAt: new Date(now.getTime() - 60 * dayMs),
-    note: 'Crater pothole in outer bus lane at Kadubeesanahalli Junction',
-  });
-  await upsertSeedReport(prisma, {
-    id: 'seed-report-orr-recurrence',
-    issueId: recurrenceIssueId,
-    userId: citizenA.id,
-    category: Category.POTHOLES,
-    lat: 12.9361,
-    lng: 77.6956,
-    capturedAt: new Date(now.getTime() - 7 * dayMs),
-    note: 'Recurrent pothole at prior utility trench location',
   });
 
   // CRITICAL band: severe waterlogging on Bellandur corridor
@@ -841,47 +913,7 @@ export async function seedDemoData() {
   // 10. Seed Completed Claims for Claim-Gap & Lifespan Scorecards
   console.log('[Seed Demo] Seeding completed claim-gap audits across demo wards...');
 
-  interface SeedClaimDef {
-    id: string;
-    wardId: string;
-    contractorName: string;
-    category: Category;
-    address: string;
-    lat: number;
-    lng: number;
-    daysAgoClaimed: number;
-    lifespanDays?: number;
-    status: Status;
-    hoursToVerify?: number;
-    verifier: typeof citizenB;
-  }
-
-  const demoClaims: SeedClaimDef[] = [
-    // Bellandur (Demo) — Cauvery Infrastructure Ltd. (Demo)
-    { id: 'seed-claim-blr-1', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.POTHOLES, address: 'Sarjapur-ORR Junction', lat: 12.9260, lng: 77.6770, daysAgoClaimed: 18, hoursToVerify: 34, lifespanDays: 140, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-blr-2', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.DRAINAGE, address: 'Bellandur Central Flyover', lat: 12.9295, lng: 77.6810, daysAgoClaimed: 14, hoursToVerify: 28, lifespanDays: 160, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-blr-3', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.POTHOLES, address: 'Green Glen Layout Access', lat: 12.9310, lng: 77.6740, daysAgoClaimed: 10, hoursToVerify: 42, lifespanDays: 120, status: Status.VERIFIED_FIXED, verifier: citizenC },
-    { id: 'seed-claim-blr-4', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.ROAD_CUT, address: 'Outer Ring Road Sector 2', lat: 12.9340, lng: 77.6850, daysAgoClaimed: 7, hoursToVerify: 30, lifespanDays: 180, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-blr-5', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.POTHOLES, address: 'Kaverappa Layout Service Road', lat: 12.9348, lng: 77.6925, daysAgoClaimed: 12, hoursToVerify: 22, status: Status.DISPUTED, verifier: citizenC },
-    { id: 'seed-claim-blr-6', wardId: 'seed-ward-bellandur', contractorName: 'Cauvery Infrastructure Ltd. (Demo)', category: Category.ROAD_CUT, address: 'Bellandur South Underpass Service Road', lat: 12.9282, lng: 77.6784, daysAgoClaimed: 22, hoursToVerify: 26, lifespanDays: 42, status: Status.REOPENED_IN_WARRANTY, verifier: citizenC },
-
-    // Mahadevapura (Demo) — Southern Asphalt Works (Demo)
-    { id: 'seed-claim-mdp-1', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Whitefield Main Road near Metro', lat: 12.9860, lng: 77.7120, daysAgoClaimed: 20, hoursToVerify: 22, lifespanDays: 95, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-mdp-2', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.DRAINAGE, address: 'ITPL Main Road Junction', lat: 12.9890, lng: 77.7200, daysAgoClaimed: 15, hoursToVerify: 24, lifespanDays: 110, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-mdp-3', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Hoodi Circle North', lat: 12.9920, lng: 77.7150, daysAgoClaimed: 11, hoursToVerify: 26, lifespanDays: 105, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-mdp-4', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.ROAD_CUT, address: 'Garudacharpalya Service Lane', lat: 12.9830, lng: 77.7050, daysAgoClaimed: 8, hoursToVerify: 28, lifespanDays: 125, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-mdp-5', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Seetharampalya Underpass', lat: 12.9810, lng: 77.7020, daysAgoClaimed: 16, hoursToVerify: 18, status: Status.DISPUTED, verifier: citizenC },
-    { id: 'seed-claim-mdp-6', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.POTHOLES, address: 'Mahadevapura Ring Road Crossing', lat: 12.9870, lng: 77.7080, daysAgoClaimed: 9, hoursToVerify: 20, status: Status.DISPUTED, verifier: citizenC },
-    { id: 'seed-claim-mdp-7', wardId: 'seed-ward-mahadevapura', contractorName: 'Southern Asphalt Works (Demo)', category: Category.DRAINAGE, address: 'Channasandra Main Road', lat: 12.9950, lng: 77.7250, daysAgoClaimed: 2, status: Status.CLAIMED_FIXED, verifier: citizenB },
-
-    // Marathahalli (Demo) — Apex Urban Build (Demo)
-    { id: 'seed-claim-mrh-1', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.POTHOLES, address: 'Marathahalli Bridge Eastbound', lat: 12.9560, lng: 77.6980, daysAgoClaimed: 21, hoursToVerify: 16, lifespanDays: 240, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-mrh-2', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.DRAINAGE, address: 'Varthur Road Cross', lat: 12.9540, lng: 77.7020, daysAgoClaimed: 17, hoursToVerify: 18, lifespanDays: 260, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-mrh-3', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.POTHOLES, address: 'HAL Airport Road Junction', lat: 12.9580, lng: 77.6950, daysAgoClaimed: 13, hoursToVerify: 15, lifespanDays: 280, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-mrh-4', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.ROAD_CUT, address: 'Kalamandir Service Road', lat: 12.9520, lng: 77.6990, daysAgoClaimed: 9, hoursToVerify: 20, lifespanDays: 250, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-mrh-5', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.POTHOLES, address: 'Munnekollal Main Road', lat: 12.9500, lng: 77.7050, daysAgoClaimed: 5, hoursToVerify: 19, lifespanDays: 300, status: Status.VERIFIED_FIXED, verifier: citizenB },
-    { id: 'seed-claim-mrh-6', wardId: 'seed-ward-marathahalli', contractorName: 'Apex Urban Build (Demo)', category: Category.DRAINAGE, address: 'Spice Garden Junction', lat: 12.9480, lng: 77.7080, daysAgoClaimed: 1, status: Status.CLAIMED_FIXED, verifier: citizenB },
-  ];
+  const demoClaims = buildDemoClaims({ b: citizenB, c: citizenC });
 
   for (const c of demoClaims) {
     const claimedDate = new Date(now.getTime() - c.daysAgoClaimed * dayMs);
@@ -929,18 +961,6 @@ export async function seedDemoData() {
       },
     });
 
-    // 1b. Original citizen evidence report (claim-gap issues previously had none)
-    await upsertSeedReport(prisma, {
-      id: `seed-report-${c.id}`,
-      issueId: c.id,
-      userId: citizenA.id,
-      category: c.category,
-      lat: c.lat,
-      lng: c.lng,
-      capturedAt: new Date(claimedDate.getTime() - 7 * dayMs),
-      note: `Citizen report: ${c.category.toLowerCase().replace('_', ' ')} at ${c.address} (demo)`,
-    });
-
     // 2. ActionLog: CLAIM_FIX (created if not exists)
     const claimLogId = `seed-act-claim-${c.id}`;
     const existingClaimLog = await prisma.actionLog.findUnique({ where: { id: claimLogId } });
@@ -964,6 +984,19 @@ export async function seedDemoData() {
       const isFixed = c.status === Status.VERIFIED_FIXED;
       const verdict = isFixed ? 'FIXED' : 'NOT_FIXED';
       const auditAction = isFixed ? 'VERIFY_FIX' : 'DISPUTE_FIX';
+
+      // Verifier's evidence report referenced by the Verification below
+      await upsertSeedReport(prisma, {
+        id: `seed-rep-${c.id}`,
+        issueId: c.id,
+        userId: c.verifier.id,
+        role: EvidenceRole.VERIFY,
+        category: c.category,
+        lat: c.lat,
+        lng: c.lng,
+        capturedAt: verifyDate,
+        note: isFixed ? 'Verifier photo: repair intact (demo)' : 'Verifier photo: defect still present (demo)',
+      });
 
       // Verification
       const verifId = `seed-verif-${c.id}`;
@@ -1047,6 +1080,9 @@ export async function seedDemoData() {
     }
   }
 
+  // 10b. Original citizen evidence for ORR + claim-gap issues
+  await seedCitizenEvidence(citizenA.id, now);
+
   // 11. Ensure all issues in the DB are assigned to a pilot ward
   const unassignedIssues = await prisma.issue.findMany({
     where: { wardId: null },
@@ -1079,8 +1115,31 @@ export async function seedDemoData() {
   console.log('[Seed Demo] Demo environment seeded successfully!');
 }
 
+/**
+ * Targeted mode: only upserts the 21 original citizen reports, leaving every other seed row untouched
+ * (a full seed would reset seed issue statuses/dates via its upsert update clauses).
+ */
+export async function seedCitizenReportsOnly(): Promise<void> {
+  await assertDbTarget(pool, dbTarget);
+  console.log(`[Seed Demo] citizen-reports only (${describeTarget(dbTarget)})`);
+
+  const citizenA = await prisma.user.findUnique({ where: { email: 'citizen@example.com' } });
+  if (!citizenA) throw new Error('Demo citizen citizen@example.com not found; run the full seed first.');
+
+  const issueIds = citizenEvidenceIssueIds();
+  const existing = await prisma.issue.findMany({ where: { id: { in: issueIds } }, select: { id: true } });
+  const missing = issueIds.filter((id) => !existing.some((e) => e.id === id));
+  if (missing.length > 0) throw new Error(`Seed issues missing, refusing partial write: ${missing.join(', ')}`);
+
+  const ids = await seedCitizenEvidence(citizenA.id);
+  const stored = await prisma.report.count({ where: { id: { in: ids } } });
+  const stillEmpty = await prisma.issue.count({ where: { id: { in: issueIds }, reports: { none: {} } } });
+  console.log(`[Seed Demo] citizen reports present: ${stored}/${ids.length}; target issues still without evidence: ${stillEmpty}`);
+}
+
 if (require.main === module) {
-  seedDemoData()
+  const onlyCitizenReports = process.argv.includes('--only=citizen-reports');
+  (onlyCitizenReports ? seedCitizenReportsOnly() : seedDemoData())
     .catch((err) => {
       console.error('[Seed Demo] Error seeding demo data:', err);
       process.exit(1);

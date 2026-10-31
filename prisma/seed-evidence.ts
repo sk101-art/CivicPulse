@@ -20,6 +20,7 @@ export interface SeedReportInput {
   id: string;
   issueId: string;
   userId: string;
+  role?: EvidenceRole;
   category: Category;
   lat: number;
   lng: number;
@@ -27,17 +28,18 @@ export interface SeedReportInput {
   note: string;
 }
 
-/** Idempotently seeds the original citizen REPORT evidence for a seed issue. */
+/** Idempotently seeds an evidence report (default: the original citizen REPORT) for a seed issue. */
 export async function upsertSeedReport(prisma: PrismaClient, r: SeedReportInput): Promise<void> {
   const photoUrl = demoPhotoForCategory(r.category);
+  const role = r.role ?? EvidenceRole.REPORT;
   await prisma.report.upsert({
     where: { id: r.id },
-    update: { issueId: r.issueId, photoUrl, note: r.note, role: EvidenceRole.REPORT, isSeed: true },
+    update: { issueId: r.issueId, photoUrl, note: r.note, role, isSeed: true },
     create: {
       id: r.id,
       issueId: r.issueId,
       userId: r.userId,
-      role: EvidenceRole.REPORT,
+      role,
       photoUrl,
       photoSha256: 'seed_sample_sha256_fixture',
       signature: 'seed',
