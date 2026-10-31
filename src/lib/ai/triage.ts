@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { runAi } from "./run";
+import { formatAiEngineName } from "./engineName";
 import { LlmAdapter } from "@/lib/external/llm/types";
 import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 
@@ -144,7 +145,8 @@ export async function processG1Triage(
   await prisma.report.update({
     where: { id: report.id },
     data: {
-      aiTriage: triageData as unknown as Prisma.InputJsonValue,
+      // Record which engine produced this result so the desk never has to guess.
+      aiTriage: { ...triageData, _engine: formatAiEngineName(runResult.provider, runResult.model) } as unknown as Prisma.InputJsonValue,
     },
   });
 

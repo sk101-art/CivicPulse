@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { apiError } from "@/lib/api/errors";
 import { NextResponse } from "next/server";
+import { RULES_ENGINE, UNKNOWN_ENGINE } from "@/lib/ai/engineName";
 
 export async function GET(
   _req: Request,
@@ -36,13 +37,19 @@ export async function GET(
       reportIds.length > 0
         ? prisma.report.findMany({
             where: { id: { in: reportIds } },
-            select: { id: true, photoUrl: true },
+            select: { id: true, photoUrl: true, aiTriage: true },
           })
         : [],
     ]);
 
     const userMap = new Map(users.map((u) => [u.id, u]));
     const reportMap = new Map(reports.map((r) => [r.id, r.photoUrl]));
+    const reportEngineMap = new Map(
+      reports.map((r) => {
+        const tagged = r.aiTriage && typeof r.aiTriage === "object" ? (r.aiTriage as Record<string, unknown>)._engine : undefined;
+        return [r.id, typeof tagged === "string" ? tagged : undefined];
+      })
+    );
 
     const enrichedLogs = actionLogs.map((log) => {
       let actorName = "Citizen";
@@ -79,7 +86,8 @@ export async function GET(
       }
 
       const engine = isAiAction
-        ? (log.note?.includes("Rules") ? "Rules estimate" : "Gemini 2.5 Flash")
+        ? (log.reportId && reportEngineMap.get(log.reportId)) ||
+          (log.note?.includes("Rules") ? RULES_ENGINE : UNKNOWN_ENGINE)
         : undefined;
 
       return {

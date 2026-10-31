@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { getElapsedTime } from "@/lib/format/elapsed";
+import { formatEvidenceCount } from "@/lib/format/evidence";
 import { prisma } from "@/lib/db/prisma";
 import { Category, Role, Status, Band, EvidenceRole } from "@prisma/client";
 import { formatPriority } from "@/lib/priority";
@@ -170,38 +172,9 @@ describe("T28 System-wide Metric Consistency & State Fidelity", () => {
     }
   });
 
-  it("verifies empty/misleading states: elapsed time never returns '—' and evidence reports never display 0", () => {
-    // Simulate StatusTimeline elapsed time helper
-    function getElapsedTime(start: string | null, end: string | null): string {
-      if (!start) return "0h";
-      const s = new Date(start).getTime();
-      const e = end ? new Date(end).getTime() : Date.now();
-      const diff = Math.max(0, e - s);
-      const mins = Math.floor(diff / 60000);
-      if (mins < 60) return `${mins}m`;
-      const hrs = Math.floor(mins / 60);
-      const remMins = mins % 60;
-      if (hrs < 24) return `${hrs}h ${remMins}m`;
-      const days = Math.floor(hrs / 24);
-      return `${days}d ${hrs % 24}h`;
-    }
-
-    expect(getElapsedTime(null, null)).toBe("0h");
-    expect(getElapsedTime(null, null)).not.toBe("—");
+  it("verifies empty states are truthful: unknown elapsed time is '—' and zero evidence is not shown as 1", () => {
+    expect(getElapsedTime(null, null)).toBe("—");
     expect(getElapsedTime(new Date(Date.now() - 10000).toISOString(), null)).toBe("0m");
-
-    // Drawer report count guard
-    const mockIssueEmptyReports = {
-      _count: { reports: 0 },
-      reports: [],
-    };
-    const renderedReports = Math.max(
-      1,
-      mockIssueEmptyReports._count?.reports && mockIssueEmptyReports._count.reports > 0
-        ? mockIssueEmptyReports._count.reports
-        : mockIssueEmptyReports.reports.length || 1
-    );
-    expect(renderedReports).toBe(1);
-    expect(renderedReports).not.toBe(0);
+    expect(formatEvidenceCount({ _count: { reports: 0 }, reports: [] })).toBe("No evidence yet");
   });
 });

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Bot, Sparkles, Send, ChevronDown, ChevronUp, Loader2, FileText, CheckCircle2 } from 'lucide-react';
+import { UNKNOWN_ENGINE } from '@/lib/ai/engineName';
 
 interface WardBriefData {
   wardCode: string;
@@ -179,7 +180,7 @@ export function DeskAnalystPanel() {
                     data-testid="brief-engine-badge"
                     className="px-1.5 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-200 text-[9px] font-mono font-normal"
                   >
-                    {brief.engine || "Gemini 2.5 Flash"}
+                    {brief.engine || UNKNOWN_ENGINE}
                   </span>
                 </div>
               </div>
@@ -226,7 +227,7 @@ export function DeskAnalystPanel() {
                         data-testid="chat-engine-badge"
                         className="px-1.5 py-0.2 rounded bg-purple-500/20 border border-purple-500/30 text-purple-200 text-[9px] font-mono normal-case font-normal"
                       >
-                        {m.engine || "Gemini 2.5 Flash"}
+                        {m.engine || UNKNOWN_ENGINE}
                       </span>
                     )}
                   </div>

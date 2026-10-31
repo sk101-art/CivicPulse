@@ -7,28 +7,15 @@ import { getFlowSegment } from "@/lib/external/tomtom";
 import { Status } from "@prisma/client";
 import { computeInputHash } from "@/lib/ai/run";
 import { formatDateTimeIST } from "@/lib/time/ist";
+import { formatAiEngineName, engineFromAiRunModel, RULES_ENGINE, UNKNOWN_ENGINE } from "@/lib/ai/engineName";
+
+export { formatAiEngineName };
 
 // Quota constants (Free tier budget protection)
 export const MAX_ANALYST_DAILY_CALLS = 250;
 export const MAX_ANALYST_MONTHLY_CALLS = 7500;
 const ANALYST_PROVIDER = "ai_analyst";
 const ANALYST_DAILY_PROVIDER = "ai_analyst_daily";
-
-export function formatAiEngineName(provider: string, model: string): string {
-  if (provider === "gemini" || model.toLowerCase().includes("gemini")) {
-    const raw = model.replace(/^gemini:/i, "");
-    if (raw === "gemini-2.5-flash") return "Gemini 2.5 Flash";
-    if (raw === "gemini-3.1-flash-lite") return "Gemini 3.1 Flash Lite";
-    if (raw === "gemini-3-flash-preview") return "Gemini 3 Flash Preview";
-    if (raw.includes("flash")) return "Gemini 2.5 Flash";
-    return `Gemini (${raw})`;
-  }
-  if (provider === "groq" || model.toLowerCase().includes("groq") || model.includes("qwen") || model.includes("gpt-oss")) {
-    const clean = model.replace(/^groq:/i, "");
-    return `Groq ${clean}`;
-  }
-  return "Rules estimate";
-}
 
 export async function tryIncrementAnalystQuota(): Promise<boolean> {
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -146,11 +133,83 @@ export interface AssessIssueResult {
   cached: boolean;
 }
 
+interface StageEngines {
+  triage: string;
+  fixCheck: string;
+}
+
+/**
+ * Engine that produced a stored G1/G2 aiTriage payload: the `_engine` tag written alongside it,
+ * else the AiRun recorded for the same input hash, else "Unknown engine". Never assumed.
+ */
+async function resolveStageEngine(
+  aiTriage: unknown,
+  feature: "G1" | "G2",
+  promptVer: string,
+  inputPayload: Record<string, unknown>
+): Promise<string> {
+  if (!aiTriage || typeof aiTriage !== "object") return UNKNOWN_ENGINE;
+  const tagged = (aiTriage as Record<string, unknown>)._engine;
+  if (typeof tagged === "string" && tagged.trim()) return tagged;
+
+  try {
+    const run = await prisma.aiRun.findFirst({
+      where: { feature, inputHash: computeInputHash(feature, promptVer, inputPayload) },
+      orderBy: { createdAt: "desc" },
+      select: { model: true },
+    });
+    return engineFromAiRunModel(run?.model);
+  } catch {
+    return UNKNOWN_ENGINE;
+  }
+}
+
+interface StageEngineReport {
+  id: string;
+  role: string;
+  photoSha256: string;
+  aiTriage: unknown;
+}
+
+async function resolveStageEngines(issue: {
+  id: string;
+  category: unknown;
+  reports?: StageEngineReport[];
+}): Promise<StageEngines> {
+  const reports = issue.reports ?? [];
+  const category = String(issue.category);
+  const originalReport = reports.find((r) => r.role === "REPORT") || reports[0];
+  const claimReport = reports.find((r) => r.role === "CLAIM_FIX");
+
+  // Payload shapes must match processG1Triage / processG2FixCheck exactly for the hash lookup.
+  const [triage, fixCheck] = await Promise.all([
+    originalReport
+      ? resolveStageEngine(originalReport.aiTriage, "G1", "g1-v1", {
+          reportId: originalReport.id,
+          category,
+          photoSha256: originalReport.photoSha256,
+        })
+      : Promise.resolve(UNKNOWN_ENGINE),
+    claimReport
+      ? resolveStageEngine(claimReport.aiTriage, "G2", "g2-v1", {
+          claimReportId: claimReport.id,
+          originalReportId: originalReport?.id,
+          issueId: issue.id,
+          category,
+          claimPhotoSha256: claimReport.photoSha256,
+          originalPhotoSha256: originalReport?.photoSha256,
+        })
+      : Promise.resolve(UNKNOWN_ENGINE),
+  ]);
+  return { triage, fixCheck };
+}
+
 function enrichAssessOutput(
   issue: any,
   rawOutput: AssessOutput,
   engine: string,
-  assessedAt: Date
+  assessedAt: Date,
+  stageEngines: StageEngines
 ): AssessOutput {
   // 1. G1 Photo Triage
   const reportReport = issue.reports?.find((r: any) => r.role === "REPORT") || issue.reports?.[0];
@@ -177,10 +236,10 @@ function enrichAssessOutput(
 
     triageMeta = {
       result: `Category: ${t.category || issue.category}, Size: ${t.size_class || "medium"}, Lane: ${t.lane_position || "curb"}`,
-      engine: (t._engine as string) || (engine.includes("Rules") ? "Rules estimate" : "Gemini 2.5 Flash"),
+      engine: stageEngines.triage,
       time: formatDateTimeIST(reportReport.createdAt),
       flags,
-      status: engine.includes("Rules") ? "unavailable" : "completed",
+      status: stageEngines.triage === RULES_ENGINE ? "unavailable" : "completed",
     };
   } else {
     triageMeta = {
@@ -217,10 +276,10 @@ function enrichAssessOutput(
       }
       fixCheckMeta = {
         result: `Same location: ${fc.same_location}, Defect visible: ${fc.defect_still_visible}`,
-        engine: (fc._engine as string) || (engine.includes("Rules") ? "Rules estimate" : "Gemini 2.5 Flash"),
+        engine: stageEngines.fixCheck,
         time: formatDateTimeIST(claimReport.createdAt),
         flags,
-        status: engine.includes("Rules") ? "unavailable" : "completed",
+        status: stageEngines.fixCheck === RULES_ENGINE ? "unavailable" : "completed",
       };
     } else {
       fixCheckMeta = {
@@ -253,7 +312,7 @@ function enrichAssessOutput(
     }
     auditAssistMeta = {
       result: `Audit votes: ${intact} intact, ${damaged} damaged (${auditTask.status})`,
-      engine: engine.includes("Rules") ? "Rules estimate" : "Gemini 2.5 Flash",
+      engine,
       time: formatDateTimeIST(auditTask.createdAt),
       flags,
       status: "completed",
@@ -272,7 +331,7 @@ function enrichAssessOutput(
     engine,
     time: formatDateTimeIST(assessedAt),
     flags: assessFlags,
-    status: engine.includes("Rules") ? "unavailable" : "completed",
+    status: engine === RULES_ENGINE ? "unavailable" : "completed",
     triage: triageMeta,
     fixCheck: fixCheckMeta,
     auditAssist: auditAssistMeta,
@@ -317,7 +376,7 @@ export async function assessIssueWithMeta(
         select: { delayRatio: true, hour: true, dayType: true },
       },
       reports: {
-        select: { id: true, photoUrl: true, note: true, role: true, aiTriage: true, createdAt: true },
+        select: { id: true, photoUrl: true, photoSha256: true, note: true, role: true, aiTriage: true, createdAt: true },
         orderBy: { createdAt: "asc" },
       },
       auditTasks: {
@@ -400,10 +459,7 @@ export async function assessIssueWithMeta(
     if (cachedRun && cachedRun.output) {
       const parsed = AssessOutputSchema.safeParse(cachedRun.output);
       if (parsed.success) {
-        const engine = formatAiEngineName(
-          (cachedRun.model.split(":")[0] as any) || "gemini",
-          cachedRun.model
-        );
+        const engine = engineFromAiRunModel(cachedRun.model);
 
         // Update aiAssessedAt and aiInputHash on Issue for fast, persistent selection
         await prisma.issue
@@ -417,7 +473,7 @@ export async function assessIssueWithMeta(
           .catch(() => {});
 
         return {
-          output: enrichAssessOutput(issue, parsed.data, engine, cachedRun.createdAt),
+          output: enrichAssessOutput(issue, parsed.data, engine, cachedRun.createdAt, await resolveStageEngines(issue)),
           cached: true,
         };
       }
@@ -428,7 +484,7 @@ export async function assessIssueWithMeta(
   if (!quotaOk) {
     const fallback = getRulesFallback("G-ASSESS", inputPayload) as AssessOutput;
     return {
-      output: enrichAssessOutput(issue, fallback, "Rules estimate", new Date()),
+      output: enrichAssessOutput(issue, fallback, RULES_ENGINE, new Date(), await resolveStageEngines(issue)),
       cached: false,
     };
   }
@@ -466,7 +522,7 @@ Recommend a priority adjustment (-10 to +10), summarize risks, and suggest actio
 
   const engine = formatAiEngineName(aiResult.provider, aiResult.model);
   return {
-    output: enrichAssessOutput(issue, aiResult.data, engine, new Date()),
+    output: enrichAssessOutput(issue, aiResult.data, engine, new Date(), await resolveStageEngines(issue)),
     cached: aiResult.cached,
   };
 }
@@ -547,7 +603,7 @@ export async function generateWardBrief(wardCode: string = "ALL"): Promise<WardB
   const quotaOk = await tryIncrementAnalystQuota();
   if (!quotaOk) {
     const fallback = getRulesFallback("G-BRIEF", inputPayload) as WardBriefOutput;
-    return { ...fallback, engine: "Rules estimate" };
+    return { ...fallback, engine: RULES_ENGINE };
   }
 
   const prompt = `Synthesize desk morning briefing across active BBMP wards:
@@ -642,7 +698,7 @@ export async function assistAudit(taskId: string): Promise<AuditAssistOutput> {
   const quotaOk = await tryIncrementAnalystQuota();
   if (!quotaOk) {
     const fallback = getRulesFallback("G-AUDIT-ASSIST", inputPayload) as AuditAssistOutput;
-    return { ...fallback, engine: "Rules estimate" };
+    return { ...fallback, engine: RULES_ENGINE };
   }
 
   const prompt = `Evaluate citizen blind repair audit for task ${taskId}:
@@ -744,7 +800,7 @@ export async function askDeskAnalyst(
   const quotaOk = await tryIncrementAnalystQuota();
   if (!quotaOk) {
     const fallback = getRulesFallback("G-CHAT", inputPayload) as ChatOutput;
-    return { ...fallback, engine: "Rules estimate" };
+    return { ...fallback, engine: RULES_ENGINE };
   }
 
   const prompt = `Desk Officer Query: "${query}"

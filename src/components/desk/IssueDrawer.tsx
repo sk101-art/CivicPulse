@@ -15,6 +15,8 @@ import { formatPriority } from '@/lib/priority';
 import { RepairWindowBadge } from './RepairWindowBadge';
 import { LiveTrafficCard } from '@/components/traffic/LiveTrafficCard';
 import { formatDateTimeIST, formatTimeIST, formatDateIST } from '@/lib/time/ist';
+import { formatEvidenceCount } from '@/lib/format/evidence';
+import { UNKNOWN_ENGINE } from '@/lib/ai/engineName';
 
 interface ActionLogEntry {
   id: string;
@@ -419,7 +421,7 @@ export function IssueDrawer({
               <span className="text-white/40 uppercase tracking-wider block">Reports & Evidence</span>
               <div className="flex items-center gap-2 text-white">
                 <UserCheck className="w-4 h-4 text-lime-400" />
-                {Math.max(1, (issue._count?.reports && issue._count.reports > 0) ? issue._count.reports : (issue.reports?.length || 1))} evidence report(s)
+                {formatEvidenceCount(issue)}
               </div>
             </div>
           </div>
@@ -522,7 +524,7 @@ export function IssueDrawer({
                   >
                     {analystSummary.engine === "Rules estimate"
                       ? "AI unavailable — rules estimate"
-                      : (analystSummary.engine || "Gemini 2.5 Flash")}
+                      : (analystSummary.engine || UNKNOWN_ENGINE)}
                   </span>
                   {analystSummary.time && (
                     <span className="text-[10px] font-mono text-white/40">{analystSummary.time}</span>

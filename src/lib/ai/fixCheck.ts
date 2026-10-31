@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Prisma, EvidenceRole } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { runAi } from "./run";
+import { formatAiEngineName } from "./engineName";
 import { LlmAdapter, LlmImageInput } from "@/lib/external/llm/types";
 
 export const g2FixCheckSchema = z.object({
@@ -111,7 +112,8 @@ export async function processG2FixCheck(
   await prisma.report.update({
     where: { id: claimReport.id },
     data: {
-      aiTriage: fixCheckData as unknown as Prisma.InputJsonValue,
+      // Record which engine produced this result so the desk never has to guess.
+      aiTriage: { ...fixCheckData, _engine: formatAiEngineName(runResult.provider, runResult.model) } as unknown as Prisma.InputJsonValue,
     },
   });
 

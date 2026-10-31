@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import { upsertSeedReport } from '../prisma/seed-evidence';
 
 const rootDir = process.cwd();
 if (fs.existsSync(path.join(rootDir, '.env'))) {
@@ -376,6 +377,28 @@ export async function seedDemoData() {
       slaDueAt: new Date(now.getTime() + 48 * 3600 * 1000),
       isSeed: true,
     },
+  });
+
+  // Original citizen evidence for the linked ORR issues (previously seeded with zero reports)
+  await upsertSeedReport(prisma, {
+    id: 'seed-report-orr-fixed',
+    issueId: fixedIssueId,
+    userId: citizenA.id,
+    category: Category.POTHOLES,
+    lat: 12.9360,
+    lng: 77.6955,
+    capturedAt: new Date(now.getTime() - 60 * dayMs),
+    note: 'Crater pothole in outer bus lane at Kadubeesanahalli Junction',
+  });
+  await upsertSeedReport(prisma, {
+    id: 'seed-report-orr-recurrence',
+    issueId: recurrenceIssueId,
+    userId: citizenA.id,
+    category: Category.POTHOLES,
+    lat: 12.9361,
+    lng: 77.6956,
+    capturedAt: new Date(now.getTime() - 7 * dayMs),
+    note: 'Recurrent pothole at prior utility trench location',
   });
 
   // CRITICAL band: severe waterlogging on Bellandur corridor
@@ -904,6 +927,18 @@ export async function seedDemoData() {
         isSeed: true,
         slaDueAt: new Date(claimedDate.getTime() + 48 * 3600 * 1000),
       },
+    });
+
+    // 1b. Original citizen evidence report (claim-gap issues previously had none)
+    await upsertSeedReport(prisma, {
+      id: `seed-report-${c.id}`,
+      issueId: c.id,
+      userId: citizenA.id,
+      category: c.category,
+      lat: c.lat,
+      lng: c.lng,
+      capturedAt: new Date(claimedDate.getTime() - 7 * dayMs),
+      note: `Citizen report: ${c.category.toLowerCase().replace('_', ' ')} at ${c.address} (demo)`,
     });
 
     // 2. ActionLog: CLAIM_FIX (created if not exists)
