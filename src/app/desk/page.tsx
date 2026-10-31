@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
+import { deskStatusFilter } from "@/lib/desk/queueFilter";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { AppHeader } from "@/components/layout/AppHeader";
@@ -33,6 +34,7 @@ export default async function DeskPage() {
   const loadDeskData = async () => {
     return Promise.all([
       prisma.issue.findMany({
+        where: { status: deskStatusFilter(null, false) },
         include: {
           agency: { select: { id: true, code: true, name: true, slaHours: true } },
           _count: { select: { reports: true, comments: true } },

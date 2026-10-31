@@ -1137,9 +1137,56 @@ export async function seedCitizenReportsOnly(): Promise<void> {
   console.log(`[Seed Demo] citizen reports present: ${stored}/${ids.length}; target issues still without evidence: ${stillEmpty}`);
 }
 
+/**
+ * Targeted mode: creates the VERIFY-role seed-rep-* reports that existing claim-gap Verifications point to.
+ * Verifier and timestamp come from each stored Verification, so nothing else is rewritten.
+ */
+export async function seedVerifierReportsOnly(): Promise<void> {
+  await assertDbTarget(pool, dbTarget);
+  console.log(`[Seed Demo] verifier-reports only (${describeTarget(dbTarget)})`);
+
+  const claims = buildDemoClaims({ b: { id: '' }, c: { id: '' } });
+  const verifications = await prisma.verification.findMany({
+    where: { id: { in: claims.map((c) => `seed-verif-${c.id}`) } },
+    select: { id: true, issueId: true, verifierId: true, reportId: true, verdict: true, createdAt: true },
+  });
+
+  const reportIds: string[] = [];
+  for (const v of verifications) {
+    const c = claims.find((x) => `seed-verif-${x.id}` === v.id);
+    if (!c || v.issueId !== c.id || v.reportId !== `seed-rep-${c.id}`) {
+      throw new Error(`Verification ${v.id} does not match its claim-gap seed; refusing to write.`);
+    }
+    await upsertSeedReport(prisma, {
+      id: v.reportId,
+      issueId: c.id,
+      userId: v.verifierId,
+      role: EvidenceRole.VERIFY,
+      category: c.category,
+      lat: c.lat,
+      lng: c.lng,
+      capturedAt: v.createdAt,
+      note: v.verdict === 'FIXED' ? 'Verifier photo: repair intact (demo)' : 'Verifier photo: defect still present (demo)',
+    });
+    reportIds.push(v.reportId);
+  }
+
+  const stored = await prisma.report.count({ where: { id: { in: reportIds } } });
+  const { rows } = await pool.query<{ n: number }>(
+    'SELECT count(*)::int AS n FROM "Verification" v WHERE NOT EXISTS (SELECT 1 FROM "Report" r WHERE r.id = v."reportId")'
+  );
+  const dangling = rows[0]?.n ?? 0;
+  console.log(`[Seed Demo] verifier reports present: ${stored}/${verifications.length}; Verifications pointing to a missing report: ${dangling}`);
+}
+
 if (require.main === module) {
-  const onlyCitizenReports = process.argv.includes('--only=citizen-reports');
-  (onlyCitizenReports ? seedCitizenReportsOnly() : seedDemoData())
+  const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length);
+  const run =
+    only === 'citizen-reports' ? seedCitizenReportsOnly :
+    only === 'verifier-reports' ? seedVerifierReportsOnly :
+    only === undefined ? seedDemoData :
+    () => Promise.reject(new Error(`Unknown --only mode: ${only}`));
+  run()
     .catch((err) => {
       console.error('[Seed Demo] Error seeding demo data:', err);
       process.exit(1);

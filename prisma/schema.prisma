@@ -525,3 +525,13 @@ model AuditorScore {
 
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
+/// Append-only record of operator actions that are not tied to an issue (e.g. purging test data).
+model AdminAudit {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  note      String
+  details   Json?
+  createdAt DateTime @default(now())
+}

@@ -1,24 +1,15 @@
 import { defineConfig, devices } from '@playwright/test';
 import dotenv from 'dotenv';
 import path from 'path';
+import { assertTestDatabaseUrl } from './scripts/lib/db-target';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local'), override: true });
 
 // Fail-fast test database isolation check
 const rawProdUrl = process.env.PROD_DATABASE_URL || process.env.APP_DATABASE_URL;
-const testDbUrl = process.env.DATABASE_URL_TEST;
-
-if (!testDbUrl) {
-  throw new Error(
-    'DATABASE_URL_TEST must be configured in .env.local for running Playwright tests. Tests must never write to the production database.'
-  );
-}
-if (rawProdUrl && testDbUrl === rawProdUrl) {
-  throw new Error(
-    'DATABASE_URL_TEST cannot equal production APP_DATABASE_URL! Tests must never write to the production database.'
-  );
-}
+// Requires schema=test and refuses any production URL.
+const testDbUrl = assertTestDatabaseUrl(process.env.DATABASE_URL_TEST, [rawProdUrl, process.env.DIRECT_DATABASE_URL]);
 
 process.env.PROD_DATABASE_URL = rawProdUrl;
 process.env.APP_DATABASE_URL = testDbUrl;
@@ -28,7 +19,10 @@ if (process.env.DIRECT_DATABASE_URL_TEST) {
 (process.env as Record<string, string | undefined>).NODE_ENV = 'test';
 process.env.PLAYWRIGHT_TEST = 'true';
 
-const baseURL = process.env.APP_URL || process.env.NEXTAUTH_URL || 'http://localhost:3000';
+// E2E always talks to its own server on a dedicated port, never APP_URL (the deployed production app)
+// or a dev server on :3000 that may be running against the production database.
+const E2E_PORT = Number(process.env.E2E_PORT || 3100);
+const baseURL = `http://localhost:${E2E_PORT}`;
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -48,9 +42,10 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run build && npm start',
-    port: 3000,
-    reuseExistingServer: !process.env.CI,
+    // Plain next build: `npm run build` would run `prisma migrate deploy`, whose config reads .env.local (production).
+    command: `npx next build --webpack && npx next start -p ${E2E_PORT}`,
+    port: E2E_PORT,
+    reuseExistingServer: false,
     timeout: 180000,
     env: {
       APP_DATABASE_URL: testDbUrl,
@@ -59,6 +54,8 @@ export default defineConfig({
       PROD_DATABASE_URL: rawProdUrl || '',
       NODE_ENV: 'test',
       PLAYWRIGHT_TEST: 'true',
+      NEXTAUTH_URL: baseURL,
+      APP_URL: baseURL,
     },
   },
 });

@@ -113,4 +113,19 @@ describe("seed DB targeting", () => {
     expect(src).toContain("reportId: `seed-rep-${c.id}`");
     expect(src).toMatch(/upsertSeedReport\(prisma, \{\s*id: `seed-rep-\$\{c\.id\}`[\s\S]*?role: EvidenceRole\.VERIFY/);
   });
+
+  it("the app Prisma client used by contract tests (merge.test.ts) is bound to the test schema", async () => {
+    const { prisma } = await import("@/lib/db/prisma");
+    const rows = await prisma.$queryRaw<{ schema: string }[]>`SELECT current_schema() AS schema`;
+    expect(rows[0].schema).toBe("test");
+  });
+
+  it("Playwright never targets APP_URL, a reused :3000 server, or migrate deploy", () => {
+    const src = fs.readFileSync(path.join(process.cwd(), "playwright.config.ts"), "utf-8");
+    expect(src).toMatch(/const testDbUrl = assertTestDatabaseUrl\(process\.env\.DATABASE_URL_TEST/);
+    expect(src).toMatch(/const baseURL = `http:\/\/localhost:\$\{E2E_PORT\}`/);
+    expect(src).toMatch(/reuseExistingServer: false/);
+    expect(src).not.toMatch(/command:[^\n]*(npm run build|migrate)/);
+    expect(src).toMatch(/PLAYWRIGHT_TEST: 'true'/);
+  });
 });

@@ -35,6 +35,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
   const [agencyFilter, setAgencyFilter] = useState<string>('ALL');
   const [wardFilter, setWardFilter] = useState<string>('ALL');
   const [slaBreachedOnly, setSlaBreachedOnly] = useState<boolean>(false);
+  const [showClosed, setShowClosed] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isRefreshing, startTransition] = useTransition();
 
@@ -45,6 +46,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
     if (agencyFilter !== 'ALL') params.set('agencyId', agencyFilter);
     if (wardFilter !== 'ALL') params.set('wardId', wardFilter);
     if (slaBreachedOnly) params.set('slaBreached', 'true');
+    if (showClosed) params.set('includeClosed', 'true');
     if (searchQuery.trim()) params.set('search', searchQuery.trim());
 
     try {
@@ -249,6 +251,16 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
               className="rounded bg-white/5 border-white/20 text-rose-500 focus:ring-0"
             />
             Show SLA Breached Only
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer text-xs font-mono text-white/70">
+            <input
+              type="checkbox"
+              checked={showClosed}
+              onChange={(e) => setShowClosed(e.target.checked)}
+              className="rounded bg-white/5 border-white/20 text-cyan-500 focus:ring-0"
+            />
+            Show Verified &amp; Rejected
           </label>
 
           <button

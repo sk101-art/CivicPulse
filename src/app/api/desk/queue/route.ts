@@ -1,8 +1,9 @@
 import { withAuth } from "@/lib/api/auth";
+import { deskStatusFilter } from "@/lib/desk/queueFilter";
 import { apiError } from "@/lib/api/errors";
 import { prisma } from "@/lib/db/prisma";
 import { NextResponse } from "next/server";
-import { Role, Band, Category, Status, Prisma } from "@prisma/client";
+import { Role, Band, Category, Prisma } from "@prisma/client";
 
 const BAND_PRIORITY: Record<Band, number> = {
   CRITICAL: 4,
@@ -28,9 +29,9 @@ export async function GET(req: Request) {
 
     const where: Prisma.IssueWhereInput = {};
 
-    if (statusParam && statusParam !== "ALL") {
-      const statuses = statusParam.split(",").map((s) => s.trim()) as Status[];
-      where.status = { in: statuses };
+    const statusFilter = deskStatusFilter(statusParam, searchParams.get("includeClosed") === "true");
+    if (statusFilter) {
+      where.status = statusFilter;
     }
 
     if (categoryParam && categoryParam !== "ALL") {

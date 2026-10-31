@@ -103,6 +103,11 @@ export async function setupTestDatabase() {
       CREATE TRIGGER trg_action_log_prevent_modify
       BEFORE UPDATE OR DELETE ON test."ActionLog"
       FOR EACH ROW EXECUTE FUNCTION public.action_log_prevent_modify();
+
+      DROP TRIGGER IF EXISTS trg_admin_audit_prevent_modify ON test."AdminAudit";
+      CREATE TRIGGER trg_admin_audit_prevent_modify
+      BEFORE UPDATE OR DELETE ON test."AdminAudit"
+      FOR EACH ROW EXECUTE FUNCTION public.admin_audit_prevent_modify();
     `);
 
     console.log("Test database schema ready!");
