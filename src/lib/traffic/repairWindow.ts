@@ -417,13 +417,25 @@ export function computeMultiFactorRepairWindows(options: {
 
     // Realistic night-work penalties:
     if (isNight) {
-      rawCompositeScore -= 15; // Night crew cost premium (-15)
-      if (isHighSpeed) {
-        rawCompositeScore -= 10; // Worker-safety penalty on high-speed roads at night (-10)
-      }
       if (isResidential) {
         rawCompositeScore -= 35; // Residential noise penalty 22:00-06:00 (-35)
+      } else if (capacityDropPercent > 0 && isHighSpeed) {
+        // On major non-residential arterial corridors with travel lane closures,
+        // night work (22:00-05:00) is the preferred city engineering standard to avoid daytime paralysis.
+        // Crew premium is offset by zero daytime commuter queue disruption.
+        rawCompositeScore -= 5;
+      } else {
+        rawCompositeScore -= 15; // Night crew cost premium (-15)
+        if (isHighSpeed) {
+          rawCompositeScore -= 10; // Worker-safety penalty on high-speed roads at night (-10)
+        }
       }
+    }
+
+    // Streetlight maintenance safety: Lineman bucket truck overhead repairs in pitch darkness carry electrical hazard
+    const isStreetlight = category?.toUpperCase() === "STREETLIGHTS";
+    if (isStreetlight && isNight && !isUrgent) {
+      rawCompositeScore -= 12; // Prefer daytime/dawn visibility for overhead luminaire servicing
     }
 
     // Peak commute period penalties: Work spilling into or during morning (08:00-11:00) or evening (17:00-21:00) peak
@@ -447,6 +459,12 @@ export function computeMultiFactorRepairWindows(options: {
       }
     }
 
+    // Shoulder / median work does NOT block travel lanes (capacity drop = 0%, queue delay < 1 min).
+    // Prompt off-peak daytime slots are rewarded so routine roadside tasks don't needlessly wait 5 days for a weekend.
+    if (capacityDropPercent === 0 && !overlapsPeak && !isNight) {
+      rawCompositeScore += 6;
+    }
+
     // Never recommend a slot whose hours are red (delay >= 0.6) in that day's profile unless urgency requires it, and say so in the reason
     const hasRedHours = delay1 >= 0.6 || delay2 >= 0.6 || (fStart.minute > 0 && delay3 >= 0.6) || avgDelayRatio >= 0.6;
     let redAcceptedUrgency = false;
@@ -458,12 +476,24 @@ export function computeMultiFactorRepairWindows(options: {
       }
     }
 
-    // Urgency override: if priority index >= 80 or high deterioration, boost next 24h slots
+    // Urgency override: if priority index >= 80 or high deterioration, strongly boost next 24-48h slots
     const isWithinNext24h = slotIdx < 12; // first 12 two-hour slots = 24h
+    const isWithinNext48h = slotIdx < 24; // 24-48h
     let urgencyBoosted = false;
-    if (isUrgent && isWithinNext24h && weatherScore > 0) {
-      rawCompositeScore += 18;
-      urgencyBoosted = true;
+    if (isUrgent) {
+      if (isWithinNext24h && weatherScore > 0) {
+        rawCompositeScore += 22; // Immediate dispatch priority
+        urgencyBoosted = true;
+      } else if (isWithinNext48h && weatherScore > 0) {
+        rawCompositeScore += 10;
+        urgencyBoosted = true;
+      }
+
+      // Urgent defects worsen rapidly with traffic and weather: penalize deferring critical defects beyond 48 hours
+      const daysFromNow = Math.floor(slotIdx / 12);
+      if (daysFromNow >= 2) {
+        rawCompositeScore -= Math.min(30, (daysFromNow - 1) * 8); // -8 per day deferred past 48h
+      }
     }
 
     // Continuous score: differentiate by exact delay ratio so identical scores do not saturate
@@ -605,6 +635,26 @@ export function computeMultiFactorRepairWindows(options: {
   }
 
   const bestWindow = selected[0] ?? null;
+  const runnerUp = selected[1] ?? null;
+
+  if (bestWindow && runnerUp) {
+    let contrastText = "";
+    if (runnerUp.laneClosure.capacityDropPercent > 0 && runnerUp.laneClosure.capacityDropPercent > bestWindow.laneClosure.capacityDropPercent) {
+      contrastText = ` Runner-up ${runnerUp.display} blocks active traffic lanes (${runnerUp.laneClosure.blockedLane}, queue ${runnerUp.laneClosure.estimatedQueueDelayMin}).`;
+    } else if (runnerUp.expectedCongestion > bestWindow.expectedCongestion + 0.03) {
+      const pctDiff = Math.round((runnerUp.expectedCongestion - bestWindow.expectedCongestion) * 100);
+      contrastText = ` Runner-up ${runnerUp.display} has ${pctDiff}% higher corridor traffic delay (${runnerUp.laneClosure.estimatedQueueDelayMin} queue).`;
+    } else if (bestWindow.urgencyBoosted && !runnerUp.urgencyBoosted) {
+      contrastText = ` Runner-up ${runnerUp.display} defers critical hazard mitigation past the 24h window.`;
+    } else if (runnerUp.windowType === "NIGHT" && bestWindow.windowType !== "NIGHT") {
+      contrastText = ` Runner-up ${runnerUp.display} requires night-crew overtime and reduced roadside visibility.`;
+    } else if (runnerUp.windowType !== "NIGHT" && bestWindow.windowType === "NIGHT") {
+      contrastText = ` Runner-up ${runnerUp.display} closes daytime traffic lanes during active commute hours.`;
+    } else {
+      contrastText = ` Runner-up ${runnerUp.display} has higher delay risk (${runnerUp.score}/100).`;
+    }
+    bestWindow.explanation += contrastText;
+  }
 
   let displayText: string;
   if (bestWindow) {
@@ -728,6 +778,7 @@ export async function getRepairWindowForIssue(
       lat: true,
       lng: true,
       priority: true,
+      deteriorationScore: true,
       wardId: true,
       segmentId: true,
       lanePosition: true,
@@ -800,6 +851,12 @@ export async function getRepairWindowForIssue(
     lanePosition: issue.lanePosition,
     bearingDeg: 0,
     priorityIndex: issue.priority ?? 50,
+    deteriorationRisk:
+      (issue.deteriorationScore ?? 0) >= 70
+        ? "HIGH"
+        : (issue.deteriorationScore ?? 0) >= 40
+          ? "MED"
+          : "LOW",
     roadClass: issue.segment?.roadClass,
     hourlyProfiles,
     hourlyWeather,
