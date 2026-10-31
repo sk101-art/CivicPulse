@@ -115,9 +115,9 @@ export function getRulesFallback(feature: string, input: unknown): Record<string
       return {
         summary: `${category} with priority ${Math.round(p)} and deterioration score ${detScore}/100. Pavement traffic delay is ${Math.round(delayRatio * 100)}% with ${Math.round(busPerHour)} buses/h.`,
         priorityAdjustmentRecommended: adjustment,
-        reasoning: adjustment > 0
-          ? `Elevated risk due to ${keyRisks.join(" and ")}.`
-          : "Standard defect maintenance priority holds.",
+        reasoning: adjustment !== 0
+          ? `Adjustment ${adjustment > 0 ? `+${adjustment}` : adjustment} points recommended: ${keyRisks.join(" and ")}.`
+          : "Defect priority matches observed conditions; no adjustment required.",
         keyRisks: keyRisks.length > 0 ? keyRisks : ["Standard wear and tear"],
         suggestedAction: detScore >= 70
           ? "Schedule immediate patch repair during night window."

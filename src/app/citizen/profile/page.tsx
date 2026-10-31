@@ -9,6 +9,7 @@ import {
 import Link from 'next/link';
 import { AppHeader } from "@/components/layout/AppHeader";
 import { LogoutButton } from "@/components/auth/LogoutButton";
+import { formatDateIST } from "@/lib/time/ist";
 
 export const revalidate = 0;
 
@@ -188,9 +189,9 @@ export default async function CitizenProfile() {
                           )}
                         </div>
                         {(() => {
-                          const displayLoc = (report.issue.address && report.issue.address.trim() && report.issue.address.toLowerCase() !== 'bengaluru' && !report.issue.address.toLowerCase().includes('pending'))
+                          const displayLoc = (report.issue.address && report.issue.address.trim() && report.issue.address.toLowerCase() !== 'bengaluru' && !report.issue.address.toLowerCase().includes('pending') && !report.issue.address.includes('Report Location'))
                             ? report.issue.address
-                            : `${report.issue.lat.toFixed(4)}° N, ${report.issue.lng.toFixed(4)}° E`;
+                            : `Near ${report.issue.lat.toFixed(4)}, ${report.issue.lng.toFixed(4)}`;
                           return (
                             <>
                               <h4 className="font-display font-bold text-base text-white group-hover:text-cyan transition-colors line-clamp-2 uppercase tracking-tight">
@@ -206,7 +207,7 @@ export default async function CitizenProfile() {
                       </div>
                       <div className="px-5 py-3 border-t border-white/5 flex items-center justify-between">
                         <span className="text-[9px] font-mono uppercase tracking-widest text-white/20">
-                          {new Date(report.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          {formatDateIST(report.createdAt)}
                         </span>
                         <div className="flex items-center gap-3">
                           <span className="text-[9px] font-mono text-white/30">+{report.issue._count.reports} votes</span>
@@ -250,7 +251,7 @@ export default async function CitizenProfile() {
                          <div className="space-y-1">
                             <h4 className="font-bold text-sm text-white/90 leading-tight">{log.reason}</h4>
                             <p className="text-[10px] font-mono uppercase tracking-widest text-secondary">
-                               {new Date(log.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} • REWARD
+                               {formatDateIST(log.createdAt)} • REWARD
                             </p>
                          </div>
 

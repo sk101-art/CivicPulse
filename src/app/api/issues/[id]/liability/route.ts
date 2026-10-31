@@ -2,6 +2,7 @@ import { Role } from "@prisma/client";
 import { withAuth } from "@/lib/api/auth";
 import { apiError } from "@/lib/api/errors";
 import { prisma } from "@/lib/db/prisma";
+import { formatDateIST, formatDateTimeIST } from "@/lib/time/ist";
 
 export const dynamic = "force-dynamic";
 
@@ -58,8 +59,8 @@ export async function GET(
     }
 
     const mapUrl = `https://www.google.com/maps?q=${issue.lat},${issue.lng}`;
-    const claimDate = issue.repairClaimedAt ? new Date(issue.repairClaimedAt).toLocaleDateString("en-IN") : "N/A";
-    const warrantyEnd = issue.warrantyUntil ? new Date(issue.warrantyUntil).toLocaleDateString("en-IN") : "N/A";
+    const claimDate = issue.repairClaimedAt ? formatDateIST(issue.repairClaimedAt) : "N/A";
+    const warrantyEnd = issue.warrantyUntil ? formatDateIST(issue.warrantyUntil) : "N/A";
     const contractor = issue.contractorName || " Cauvery Infrastructure Ltd. (Primary Contractor)";
     const tender = issue.tenderId || "BBMP/EE/RRD/2026-27/W-4192";
     const lifespan = issue.lifespanDays !== null && issue.lifespanDays !== undefined ? `${issue.lifespanDays} days` : "Under Evaluation";
@@ -182,7 +183,7 @@ export async function GET(
                   <td><span style="font-weight: 700; color: ${v.observed === "INTACT" ? "#059669" : "#dc2626"};">${v.observed}</span></td>
                   <td>${(v.auditorReliability * 100).toFixed(1)}%</td>
                   <td>${v.weight.toFixed(2)}</td>
-                  <td>${new Date(v.createdAt).toLocaleString("en-IN")}</td>
+                  <td>${formatDateTimeIST(v.createdAt)}</td>
                 </tr>`
               )
               .join("")
@@ -203,7 +204,7 @@ export async function GET(
                 <img src="${r.photoUrl}" alt="${r.role}" onerror="this.src='https://placehold.co/400x300?text=Audit+Photo'" />
                 <div class="photo-meta">
                   <strong>${r.role}</strong><br/>
-                  ${new Date(r.capturedAt).toLocaleString("en-IN")}<br/>
+                  ${formatDateTimeIST(r.capturedAt)}<br/>
                   GPS: ${r.lat.toFixed(5)}, ${r.lng.toFixed(5)} (±${r.gpsAccuracyM.toFixed(1)}m)${r.headingDeg !== null ? `<br/>Heading: ${r.headingDeg}°` : ""}<br/>
                   SHA-256: <span style="font-family: monospace;">${r.photoSha256.slice(0, 16)}...</span>
                 </div>

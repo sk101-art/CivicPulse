@@ -81,6 +81,13 @@ export function DeskMetricsBar({
                 <span className="font-bold text-cyan-300">{w.medianDays}d</span>
               </div>
             ))}
+            {wardLifespans.length >= 2 && (
+              <div className="text-[10px] font-mono text-white/40 pt-1 border-t border-white/5">
+                {wardLifespans[0].medianDays === wardLifespans[1].medianDays
+                  ? `equally good; tied at ${wardLifespans[0].medianDays}d`
+                  : `+${Math.abs(wardLifespans[1].medianDays - wardLifespans[0].medianDays)}d difference`}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -110,6 +117,13 @@ export function DeskMetricsBar({
                 <span className="font-bold text-amber-300">{c.medianDays}d</span>
               </div>
             ))}
+            {contractorLifespans.length >= 2 && (
+              <div className="text-[10px] font-mono text-white/40 pt-1 border-t border-white/5">
+                {contractorLifespans[0].medianDays === contractorLifespans[1].medianDays
+                  ? `equally good; tied at ${contractorLifespans[0].medianDays}d`
+                  : `+${Math.abs(contractorLifespans[1].medianDays - contractorLifespans[0].medianDays)}d difference`}
+              </div>
+            )}
           </div>
         )}
       </div>

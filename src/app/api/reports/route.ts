@@ -272,11 +272,18 @@ export async function POST(req: Request) {
 
 function formatLocationTitle(category: string, address?: string | null, lat?: number | null, lng?: number | null): string {
   const cat = category.replace(/_/g, " ");
-  if (address && address.trim() && address.trim().toLowerCase() !== "bengaluru" && !address.toLowerCase().includes("pending")) {
+  if (
+    address &&
+    address.trim() &&
+    address.trim().toLowerCase() !== "bengaluru" &&
+    !address.toLowerCase().includes("pending") &&
+    !address.includes("Report Location") &&
+    !address.includes("Authority Pin")
+  ) {
     return `${cat} at ${address}`;
   }
   if (typeof lat === "number" && typeof lng === "number") {
-    return `${cat} (${lat.toFixed(4)}° N, ${lng.toFixed(4)}° E)`;
+    return `${cat} Near ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
   }
   return `${cat} (Coordinates attached)`;
 }
@@ -308,9 +315,9 @@ export async function GET(req: Request) {
       });
 
       const formatted = userReports.map((r) => {
-        const addr = (r.issue.address && r.issue.address.trim() && r.issue.address.toLowerCase() !== "bengaluru" && !r.issue.address.toLowerCase().includes("pending"))
+        const addr = (r.issue.address && r.issue.address.trim() && r.issue.address.toLowerCase() !== "bengaluru" && !r.issue.address.toLowerCase().includes("pending") && !r.issue.address.includes("Report Location"))
           ? r.issue.address
-          : `${r.lat.toFixed(4)}° N, ${r.lng.toFixed(4)}° E`;
+          : `Near ${r.lat.toFixed(4)}, ${r.lng.toFixed(4)}`;
 
         return {
           id: r.id,
@@ -370,9 +377,9 @@ export async function GET(req: Request) {
     });
 
     const formatted = issues.map((i) => {
-      const addr = (i.address && i.address.trim() && i.address.toLowerCase() !== "bengaluru" && !i.address.toLowerCase().includes("pending"))
+      const addr = (i.address && i.address.trim() && i.address.toLowerCase() !== "bengaluru" && !i.address.toLowerCase().includes("pending") && !i.address.includes("Report Location"))
         ? i.address
-        : `${i.lat.toFixed(4)}° N, ${i.lng.toFixed(4)}° E`;
+        : `Near ${i.lat.toFixed(4)}, ${i.lng.toFixed(4)}`;
 
       return {
         ...i,

@@ -779,4 +779,111 @@ export async function getTomTomTrafficIncidents(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Reverse Geocoding Cache & Implementation
+// ---------------------------------------------------------------------------
+
+export interface ReverseGeocodeResult {
+  address: string;
+  locality?: string;
+  formatted: string;
+  cached: boolean;
+}
+
+const geocodeCache = new Map<string, { data: ReverseGeocodeResult; timestamp: number }>();
+const GEOCODE_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+export function clearTomTomGeocodeCache(): void {
+  geocodeCache.clear();
+}
+
+/**
+ * Reverse-geocodes latitude and longitude using TomTom Search API.
+ * - Restricts lookups to coordinates in India
+ * - Caches lookups by rounded coordinates (4 decimal places ~11m)
+ * - 6s timeout guard
+ * - Counts against TomTom ApiUsage quota
+ * - Falls back to "Near <lat.toFixed(4)>, <lng.toFixed(4)>" on failure or out of bounds
+ */
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+  options?: { timeoutMs?: number }
+): Promise<ReverseGeocodeResult> {
+  const roundedLat = lat.toFixed(4);
+  const roundedLng = lng.toFixed(4);
+  const cacheKey = `${roundedLat},${roundedLng}`;
+  const fallback = `Near ${roundedLat}, ${roundedLng}`;
+
+  if (!isLocationInIndia({ latitude: lat, longitude: lng })) {
+    return { address: fallback, formatted: fallback, cached: false };
+  }
+
+  const cached = geocodeCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < GEOCODE_CACHE_TTL_MS) {
+    return { ...cached.data, cached: true };
+  }
+
+  const apiKey = env.TOMTOM_API_KEY;
+  if (!apiKey) {
+    return { address: fallback, formatted: fallback, cached: false };
+  }
+
+  try {
+    const quotaOk = await tryIncrementMonthlyQuota().catch(() => false);
+    if (!quotaOk) {
+      return { address: fallback, formatted: fallback, cached: false };
+    }
+
+    const timeout = options?.timeoutMs ?? 6000;
+    const url = `https://api.tomtom.com/search/2/reverseGeocode/${lat},${lng}.json?key=${encodeURIComponent(
+      apiKey
+    )}&radius=150`;
+
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(timeout),
+    });
+
+    if (!res.ok) {
+      return { address: fallback, formatted: fallback, cached: false };
+    }
+
+    const json = await res.json();
+    const addr = json?.addresses?.[0]?.address;
+    if (!addr) {
+      return { address: fallback, formatted: fallback, cached: false };
+    }
+
+    const street = addr.streetName || addr.street;
+    const locality = addr.municipalitySubdivision || addr.localName || addr.neighbourhood;
+    const municipality = addr.municipality || "Bengaluru";
+    const freeform = addr.freeformAddress;
+
+    let formatted: string;
+    if (street && locality) {
+      formatted = `${street}, ${locality}`;
+    } else if (freeform) {
+      formatted = freeform;
+    } else if (locality) {
+      formatted = `${locality}, ${municipality}`;
+    } else if (street) {
+      formatted = `${street}, ${municipality}`;
+    } else {
+      formatted = fallback;
+    }
+
+    const result: ReverseGeocodeResult = {
+      address: formatted,
+      locality: locality || municipality,
+      formatted,
+      cached: false,
+    };
+
+    geocodeCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    return result;
+  } catch {
+    return { address: fallback, formatted: fallback, cached: false };
+  }
+}
+
 

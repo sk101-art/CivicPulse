@@ -9,6 +9,7 @@ import {
 } from "@/lib/external/tomtom";
 import { isConfigured } from "@/lib/env";
 import { DayType, ProfileSource } from "@prisma/client";
+import { getDayIST, getISTComponents } from "@/lib/time/ist";
 
 export interface PlaceProfilePoint {
   hour: number;
@@ -110,7 +111,7 @@ export function getEstimatedHourlyDelay(
  */
 export function getNextTargetDate(targetDayOfWeek: number, baseDate: Date = new Date()): Date {
   const result = new Date(baseDate);
-  const currentDay = result.getDay();
+  const currentDay = getDayIST(result);
   let daysToAdd = targetDayOfWeek - currentDay;
   if (daysToAdd <= 0) {
     daysToAdd += 7;
@@ -124,11 +125,9 @@ export function getNextTargetDate(targetDayOfWeek: number, baseDate: Date = new 
  * Formats a local date and hour into an ISO string with Indian Standard Time (+05:30).
  */
 export function formatTomTomDepartAt(date: Date, hour: number): string {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
+  const comp = getISTComponents(date);
   const hh = String(hour).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}T${hh}:00:00+05:30`;
+  return `${comp.dateStr}T${hh}:00:00+05:30`;
 }
 
 /**

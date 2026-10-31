@@ -62,7 +62,7 @@ function getStageIndex(status: string) {
 }
 
 function getElapsedTime(start: string | null, end: string | null): string {
-  if (!start) return '—';
+  if (!start) return '0h';
   const s = new Date(start).getTime();
   const e = end ? new Date(end).getTime() : Date.now();
   const diff = e - s;

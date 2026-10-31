@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db/prisma";
 import { DayType } from "@prisma/client";
 import { getHourOfWeekIST } from "./congestion";
+import { getISTComponents } from "@/lib/time/ist";
 import {
   getSurroundingsAndRoadInfo,
   SurroundingsResult,
@@ -135,22 +136,13 @@ export function formatIstTime(date: Date): {
   hour: number;
   minute: number;
 } {
-  const istOffsetMs = 5.5 * 3600 * 1000;
-  const ist = new Date(date.getTime() + istOffsetMs);
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const dayOfWeek = days[ist.getUTCDay()];
-  const hh = String(ist.getUTCHours()).padStart(2, "0");
-  const mm = String(ist.getUTCMinutes()).padStart(2, "0");
-  const yyyy = ist.getUTCFullYear();
-  const month = String(ist.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(ist.getUTCDate()).padStart(2, "0");
-
+  const comp = getISTComponents(date);
   return {
-    dayOfWeek,
-    time: `${hh}:${mm}`,
-    dateStr: `${yyyy}-${month}-${dd}`,
-    hour: ist.getUTCHours(),
-    minute: ist.getUTCMinutes(),
+    dayOfWeek: comp.dayName,
+    time: comp.timeStr,
+    dateStr: comp.dateStr,
+    hour: comp.hours,
+    minute: comp.minutes,
   };
 }
 
@@ -639,19 +631,26 @@ export function computeMultiFactorRepairWindows(options: {
 
   if (bestWindow && runnerUp) {
     let contrastText = "";
-    if (runnerUp.laneClosure.capacityDropPercent > 0 && runnerUp.laneClosure.capacityDropPercent > bestWindow.laneClosure.capacityDropPercent) {
+    const scoreDiff = Math.round(Math.abs(bestWindow.score - runnerUp.score) * 10) / 10;
+    const congestionDiff = Math.round((runnerUp.expectedCongestion - bestWindow.expectedCongestion) * 100);
+    const capacityDiff = runnerUp.laneClosure.capacityDropPercent - bestWindow.laneClosure.capacityDropPercent;
+
+    if (scoreDiff < 0.1 && Math.abs(congestionDiff) === 0 && capacityDiff === 0) {
+      contrastText = ` Runner-up ${runnerUp.display} is equally good; earliest chosen.`;
+    } else if (capacityDiff > 0) {
       contrastText = ` Runner-up ${runnerUp.display} blocks active traffic lanes (${runnerUp.laneClosure.blockedLane}, queue ${runnerUp.laneClosure.estimatedQueueDelayMin}).`;
-    } else if (runnerUp.expectedCongestion > bestWindow.expectedCongestion + 0.03) {
-      const pctDiff = Math.round((runnerUp.expectedCongestion - bestWindow.expectedCongestion) * 100);
-      contrastText = ` Runner-up ${runnerUp.display} has ${pctDiff}% higher corridor traffic delay (${runnerUp.laneClosure.estimatedQueueDelayMin} queue).`;
+    } else if (congestionDiff > 0) {
+      contrastText = ` Runner-up ${runnerUp.display} has +${congestionDiff}% delay (${runnerUp.laneClosure.estimatedQueueDelayMin} queue).`;
     } else if (bestWindow.urgencyBoosted && !runnerUp.urgencyBoosted) {
       contrastText = ` Runner-up ${runnerUp.display} defers critical hazard mitigation past the 24h window.`;
     } else if (runnerUp.windowType === "NIGHT" && bestWindow.windowType !== "NIGHT") {
       contrastText = ` Runner-up ${runnerUp.display} requires night-crew overtime and reduced roadside visibility.`;
     } else if (runnerUp.windowType !== "NIGHT" && bestWindow.windowType === "NIGHT") {
       contrastText = ` Runner-up ${runnerUp.display} closes daytime traffic lanes during active commute hours.`;
+    } else if (scoreDiff >= 0.1) {
+      contrastText = ` Runner-up ${runnerUp.display} scores ${scoreDiff} points lower (${runnerUp.score} vs ${bestWindow.score}/100).`;
     } else {
-      contrastText = ` Runner-up ${runnerUp.display} has higher delay risk (${runnerUp.score}/100).`;
+      contrastText = ` Runner-up ${runnerUp.display} is equally good; earliest chosen.`;
     }
     bestWindow.explanation += contrastText;
   }
@@ -903,12 +902,19 @@ export async function recomputeAndSaveBestRepairWindow(
     basis: bw.basis,
     sampleCount: bw.sampleCount,
     dayType: bw.dayType,
+    delayRatio: bw.delayRatio,
+    expectedCongestion: bw.expectedCongestion,
+    factors: bw.factors,
+    laneClosure: bw.laneClosure,
+    explanation: bw.explanation,
+    timeRange: bw.timeRange,
+    dayOfWeek: bw.dayOfWeek,
   };
 
   await prisma.issue.update({
     where: { id: issueId },
     data: {
-      bestRepairWindow: bestWindowData,
+      bestRepairWindow: bestWindowData as any,
       ...(options?.inputHash ? { repairWindowInputHash: options.inputHash } : {}),
     },
   }).catch((err) => {

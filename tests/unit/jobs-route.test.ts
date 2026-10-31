@@ -37,6 +37,7 @@ describe("Scheduled job endpoint (/api/jobs/[name])", () => {
       "insights",
       "ai-assess",
       "repair-windows",
+      "geocode-backfill",
     ]);
   });
 

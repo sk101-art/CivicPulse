@@ -14,6 +14,7 @@ import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/Capt
 import { formatPriority } from '@/lib/priority';
 import { RepairWindowBadge } from './RepairWindowBadge';
 import { LiveTrafficCard } from '@/components/traffic/LiveTrafficCard';
+import { formatDateTimeIST, formatTimeIST, formatDateIST } from '@/lib/time/ist';
 
 interface ActionLogEntry {
   id: string;
@@ -24,6 +25,9 @@ interface ActionLogEntry {
   toStatus?: string | null;
   createdAt: string;
   evidenceThumbnail?: string | null;
+  isAiAction?: boolean;
+  engine?: string;
+  flags?: string[];
 }
 
 export interface DeskIssueItem {
@@ -118,6 +122,26 @@ export function IssueDrawer({
     keyRisks: string[];
     suggestedAction: string;
     engine?: string;
+    time?: string;
+    flags?: string[];
+    triage?: {
+      category?: string;
+      confidence?: number;
+      flags?: string[];
+      engine?: string;
+      completedAt?: string;
+      time?: string;
+      result?: string;
+    } | null;
+    fixCheck?: {
+      verdict?: string;
+      confidence?: number;
+      flags?: string[];
+      engine?: string;
+      completedAt?: string;
+      time?: string;
+      result?: string;
+    } | null;
   } | null>(null);
   const [analystDismissed, setAnalystDismissed] = useState(false);
   const [priorityAccepted, setPriorityAccepted] = useState(false);
@@ -339,9 +363,9 @@ export function IssueDrawer({
             </h2>
             <p className="text-xs font-mono text-white/50 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-              {issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending')
+              {issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending') && !issue.address.includes('Report Location')
                 ? issue.address
-                : `${issue.lat.toFixed(4)}° N, ${issue.lng.toFixed(4)}° E`}
+                : `Near ${issue.lat.toFixed(4)}, ${issue.lng.toFixed(4)}`}
             </p>
           </div>
 
@@ -387,7 +411,7 @@ export function IssueDrawer({
               <span className="text-white/40 uppercase tracking-wider block">SLA Due At</span>
               <div className="flex items-center gap-2 text-white">
                 <Clock className="w-4 h-4 text-rose-400" />
-                {new Date(issue.slaDueAt).toLocaleString()}
+                {formatDateTimeIST(issue.slaDueAt)}
               </div>
             </div>
 
@@ -395,13 +419,45 @@ export function IssueDrawer({
               <span className="text-white/40 uppercase tracking-wider block">Reports & Evidence</span>
               <div className="flex items-center gap-2 text-white">
                 <UserCheck className="w-4 h-4 text-lime-400" />
-                {issue._count?.reports || (issue.reports?.length ?? 1)} evidence report(s)
+                {Math.max(1, (issue._count?.reports && issue._count.reports > 0) ? issue._count.reports : (issue.reports?.length || 1))} evidence report(s)
               </div>
             </div>
           </div>
 
           {/* Recommended Repair Windows */}
-          <RepairWindowBadge issueId={issue.id} variant="drawer" />
+          <RepairWindowBadge
+            issueId={issue.id}
+            variant="drawer"
+            initialResult={
+              issue.bestRepairWindow
+                ? ({
+                    issueId: issue.id,
+                    basis: (issue.bestRepairWindow.basis as any) || 'estimated',
+                    sampleCount: issue.bestRepairWindow.sampleCount || 0,
+                    bestWindow: {
+                      start: issue.bestRepairWindow.start,
+                      end: issue.bestRepairWindow.end,
+                      score: issue.bestRepairWindow.score,
+                      display: issue.bestRepairWindow.display || `${issue.bestRepairWindow.start} - ${issue.bestRepairWindow.end}`,
+                      dayOfWeek: (issue.bestRepairWindow as any).dayOfWeek || '',
+                      timeRange: (issue.bestRepairWindow as any).timeRange || '',
+                      expectedCongestion: (issue.bestRepairWindow as any).expectedCongestion ?? (issue.bestRepairWindow as any).delayRatio ?? 0.1,
+                      delayRatio: (issue.bestRepairWindow as any).delayRatio ?? (issue.bestRepairWindow as any).expectedCongestion ?? 0.1,
+                      condition: issue.bestRepairWindow.condition || issue.bestRepairWindow.reason,
+                      basis: (issue.bestRepairWindow.basis as any) || 'estimated',
+                      sampleCount: issue.bestRepairWindow.sampleCount || 0,
+                      factors: (issue.bestRepairWindow as any).factors || { trafficScore: 80, weatherScore: 100, surroundingsScore: 100, crewScore: 90 },
+                      explanation: (issue.bestRepairWindow as any).explanation || '',
+                      dayType: (issue.bestRepairWindow as any).dayType,
+                      laneClosure: (issue.bestRepairWindow as any).laneClosure,
+                    } as any,
+                    windows: [],
+                    allSlots: [],
+                    displayText: issue.bestRepairWindow.display || '',
+                  } as any)
+                : null
+            }
+          />
 
           {/* Live Traffic Intelligence & 24h Profile */}
           <LiveTrafficCard
@@ -439,7 +495,19 @@ export function IssueDrawer({
             )}
           </div>
 
-          {/* AI Analyst Desk Co-Pilot Card */}
+          {/* AI Analyst & Vision Intelligence Card */}
+          {!analystSummary && !analystDismissed && (
+            <div data-testid="ai-analyst-pending-card" className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-500/20 flex items-center justify-between text-xs font-mono text-purple-200">
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
+                AI check pending
+              </span>
+              <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[10px]">
+                Pending
+              </span>
+            </div>
+          )}
+
           {analystSummary && !analystDismissed && (
             <div data-testid="ai-analyst-card" className="p-4 rounded-xl bg-gradient-to-br from-purple-950/30 to-indigo-950/30 border border-purple-500/30 space-y-3">
               <div className="flex items-center justify-between">
@@ -447,13 +515,18 @@ export function IssueDrawer({
                   <Sparkles className="w-4 h-4 text-purple-400" />
                   AI Analyst Assessment
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap justify-end">
                   <span
                     data-testid="analyst-engine-badge"
                     className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-200 text-[10px] font-mono"
                   >
-                    {analystSummary.engine || "Gemini 2.5 Flash"}
+                    {analystSummary.engine === "Rules estimate"
+                      ? "AI unavailable — rules estimate"
+                      : (analystSummary.engine || "Gemini 2.5 Flash")}
                   </span>
+                  {analystSummary.time && (
+                    <span className="text-[10px] font-mono text-white/40">{analystSummary.time}</span>
+                  )}
                   {analystSummary.priorityAdjustmentRecommended !== 0 && !priorityAccepted && (
                     <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-mono font-bold">
                       Rec Adj: {analystSummary.priorityAdjustmentRecommended > 0 ? `+${analystSummary.priorityAdjustmentRecommended}` : analystSummary.priorityAdjustmentRecommended}
@@ -461,6 +534,21 @@ export function IssueDrawer({
                   )}
                 </div>
               </div>
+
+              {/* Assessment flags */}
+              {analystSummary.flags && analystSummary.flags.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {analystSummary.flags.map((flag) => (
+                    <span
+                      key={flag}
+                      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                    >
+                      {flag}
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <p className="text-xs font-mono text-purple-100/90 leading-relaxed bg-black/20 p-2.5 rounded-lg border border-purple-900/40">
                 {analystSummary.summary}
               </p>
@@ -468,6 +556,69 @@ export function IssueDrawer({
                 <div>Reasoning: {analystSummary.reasoning}</div>
                 <div>Action: {analystSummary.suggestedAction}</div>
               </div>
+
+              {/* Sub-card: G1 Photo Triage */}
+              {analystSummary.triage && (
+                <div data-testid="ai-triage-panel" className="p-3 rounded-lg bg-black/30 border border-purple-900/30 space-y-1.5 text-[11px] font-mono">
+                  <div className="flex items-center justify-between">
+                    <span className="text-purple-300 font-bold flex items-center gap-1.5">
+                      <Camera className="w-3.5 h-3.5 text-purple-400" />
+                      Photo Triage (G1)
+                    </span>
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-purple-200 font-bold">{analystSummary.triage.engine}</span>
+                      {analystSummary.triage.time && analystSummary.triage.time !== "Pending" && (
+                        <>
+                          <span className="text-white/30">•</span>
+                          <span className="text-white/40">{analystSummary.triage.time}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-white/80">{analystSummary.triage.result}</div>
+                  {analystSummary.triage.flags && analystSummary.triage.flags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {analystSummary.triage.flags.map((flag) => (
+                        <span key={flag} className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">
+                          {flag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Sub-card: G2 Fix Check (if repair claimed) */}
+              {analystSummary.fixCheck && (
+                <div data-testid="ai-fixcheck-panel" className="p-3 rounded-lg bg-black/30 border border-purple-900/30 space-y-1.5 text-[11px] font-mono">
+                  <div className="flex items-center justify-between">
+                    <span className="text-purple-300 font-bold flex items-center gap-1.5">
+                      <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      Fix-Check (G2)
+                    </span>
+                    <div className="flex items-center gap-1.5 text-[10px]">
+                      <span className="text-purple-200 font-bold">{analystSummary.fixCheck.engine}</span>
+                      {analystSummary.fixCheck.time && analystSummary.fixCheck.time !== "Pending" && (
+                        <>
+                          <span className="text-white/30">•</span>
+                          <span className="text-white/40">{analystSummary.fixCheck.time}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-white/80">{analystSummary.fixCheck.result}</div>
+                  {analystSummary.fixCheck.flags && analystSummary.fixCheck.flags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {analystSummary.fixCheck.flags.map((flag) => (
+                        <span key={flag} className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-bold">
+                          {flag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {!priorityAccepted ? (
                 <div className="flex items-center gap-2 pt-1">
                   <button
@@ -849,7 +1000,7 @@ export function IssueDrawer({
                     <div className="absolute left-1.5 top-1.5 w-3.5 h-3.5 rounded-full bg-cyan-500/30 border-2 border-cyan-400 -translate-x-1/2" />
                     <div className="flex items-center justify-between text-xs font-mono">
                       <span className="font-bold text-cyan-300">{log.actorName}</span>
-                      <span className="text-white/40">{new Date(log.createdAt).toLocaleTimeString()}</span>
+                      <span className="text-white/40">{formatTimeIST(log.createdAt)}</span>
                     </div>
                     <div className="text-xs font-mono text-white/80">
                       Action: <span className="font-bold text-white">{log.action}</span>
@@ -859,6 +1010,18 @@ export function IssueDrawer({
                         </span>
                       )}
                     </div>
+                    {log.flags && log.flags.length > 0 && (
+                      <div className="flex flex-wrap gap-1 pt-0.5">
+                        {log.flags.map((flag) => (
+                          <span
+                            key={flag}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                          >
+                            {flag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     {log.note && (
                       <p className="text-xs text-white/60 bg-white/5 p-2 rounded-lg font-sans border border-white/5">
                         &quot;{log.note}&quot;

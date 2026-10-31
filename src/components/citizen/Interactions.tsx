@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CheckCircle2, MessageSquare, Send, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { formatDateIST } from '@/lib/time/ist';
 
 interface ConfirmationProps {
   reportId?: string;
@@ -121,7 +122,7 @@ export function CommentSection({ reportId }: { reportId: string }) {
                 <div key={c.id} className="p-5 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-mono font-bold tracking-widest uppercase text-cyan">{c.user.name || c.user.email.split('@')[0]}</span>
-                    <span className="text-[9px] font-mono text-white/30">{new Date(c.createdAt).toLocaleDateString()}</span>
+                    <span className="text-[9px] font-mono text-white/30">{formatDateIST(c.createdAt)}</span>
                   </div>
                   <p className="text-sm font-body text-slate-300 leading-relaxed">{c.text}</p>
                 </div>

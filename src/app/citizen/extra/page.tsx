@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { redirect } from 'next/navigation';
 import { AppHeader } from '@/components/layout/AppHeader';
 import { MapPin, Crosshair, Navigation, Copy } from 'lucide-react';
+import { formatDateIST } from '@/lib/time/ist';
 
 export const revalidate = 0;
 
@@ -168,9 +169,7 @@ export default async function ExtraFeaturePage() {
                       {report.category}
                     </span>
                     <span className="text-[9px] font-mono text-white/20">
-                      {new Date(report.createdAt).toLocaleDateString('en-IN', {
-                        day: 'numeric', month: 'short', year: '2-digit',
-                      })}
+                      {formatDateIST(report.createdAt, { day: 'numeric', month: 'short', year: '2-digit' })}
                     </span>
                   </div>
                 </div>

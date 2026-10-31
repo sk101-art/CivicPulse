@@ -12,6 +12,7 @@ import { runTrafficProfileJob } from "@/lib/jobs/trafficProfile";
 import { runDailyInsightsJob } from "@/lib/insights/deterioration";
 import { runAiAssessJob } from "@/lib/ai/analyst";
 import { runRepairWindowsJob } from "@/lib/jobs/repairWindows";
+import { runGeocodeBackfillJob } from "@/lib/jobs/geocodeBackfill";
 import { sanitizeErrorMessage } from "@/lib/api/errors";
 
 /** Each run must finish well inside a serverless function's time limit. */
@@ -42,6 +43,7 @@ export const JOB_NAMES = [
   "insights",
   "ai-assess",
   "repair-windows",
+  "geocode-backfill",
 ] as const;
 export type JobName = (typeof JOB_NAMES)[number];
 
@@ -262,6 +264,16 @@ export async function runJob(
           failed: rwResult.failed,
           firstError: rwResult.firstError,
           skipped: rwResult.skipped,
+        };
+        break;
+      }
+      case "geocode-backfill": {
+        const geoResult = await runGeocodeBackfillJob(startedAt, TIME_BUDGET_MS, tracker);
+        result = {
+          processed: geoResult.processed,
+          remaining: geoResult.remaining,
+          partial: geoResult.partial,
+          failed: 0,
         };
         break;
       }

@@ -10,6 +10,7 @@ import { IssueDrawer, type DeskIssueItem } from './IssueDrawer';
 import { RepairWindowBadge } from './RepairWindowBadge';
 import { Status, Category, Band } from '@prisma/client';
 import { formatPriority } from '@/lib/priority';
+import { formatDateIST } from '@/lib/time/ist';
 
 interface DeskQueueProps {
   initialIssues: DeskIssueItem[];
@@ -321,9 +322,9 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                       )}
                     </div>
                     <p className="text-xs font-mono text-white/50">
-                      {issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending')
+                      {issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending') && !issue.address.includes('Report Location')
                         ? issue.address
-                        : `${issue.lat.toFixed(4)}° N, ${issue.lng.toFixed(4)}° E`}
+                        : `Near ${issue.lat.toFixed(4)}, ${issue.lng.toFixed(4)}`}
                     </p>
                     <div className="pt-1.5">
                       {issue.bestRepairWindow ? (
@@ -339,13 +340,17 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                               end: issue.bestRepairWindow.end,
                               score: issue.bestRepairWindow.score,
                               display: issue.bestRepairWindow.display || `${issue.bestRepairWindow.start} - ${issue.bestRepairWindow.end}`,
-                              dayOfWeek: '',
-                              timeRange: '',
-                              expectedCongestion: 0.1,
+                              dayOfWeek: (issue.bestRepairWindow as any).dayOfWeek || '',
+                              timeRange: (issue.bestRepairWindow as any).timeRange || '',
+                              expectedCongestion: (issue.bestRepairWindow as any).expectedCongestion ?? (issue.bestRepairWindow as any).delayRatio ?? 0.1,
+                              delayRatio: (issue.bestRepairWindow as any).delayRatio ?? (issue.bestRepairWindow as any).expectedCongestion ?? 0.1,
                               condition: issue.bestRepairWindow.condition || issue.bestRepairWindow.reason,
                               basis: (issue.bestRepairWindow.basis as any) || 'estimated',
                               sampleCount: issue.bestRepairWindow.sampleCount || 0,
-                              factors: { trafficScore: 80, weatherScore: 100, surroundingsScore: 100, crewScore: 90 },
+                              factors: (issue.bestRepairWindow as any).factors || { trafficScore: 80, weatherScore: 100, surroundingsScore: 100, crewScore: 90 },
+                              explanation: (issue.bestRepairWindow as any).explanation || '',
+                              laneClosure: (issue.bestRepairWindow as any).laneClosure,
+                              dayType: (issue.bestRepairWindow as any).dayType,
                             } as any,
                             windows: [],
                             allSlots: [],
@@ -373,7 +378,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                     </div>
                     <div className="flex items-center gap-1.5 justify-end text-white/40 text-[11px]">
                       <Clock className="w-3 h-3" />
-                      <span>Due: {new Date(issue.slaDueAt).toLocaleDateString()}</span>
+                      <span>Due: {formatDateIST(issue.slaDueAt)}</span>
                     </div>
                   </div>
 

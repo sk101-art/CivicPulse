@@ -91,14 +91,6 @@ export function mapFrcToRoadClass(
   }
 }
 
-/**
- * Computes hour of week (0 to 167) in Indian Standard Time (IST, UTC+5:30).
- * Sunday 00:00 IST is 0, Saturday 23:00 IST is 167.
- */
-export function getHourOfWeekIST(date: Date = new Date()): number {
-  const istOffsetMs = 5.5 * 3600 * 1000;
-  const istTime = new Date(date.getTime() + istOffsetMs);
-  const day = istTime.getUTCDay(); // 0 = Sunday, 1 = Monday, ...
-  const hour = istTime.getUTCHours(); // 0 to 23
-  return day * 24 + hour;
-}
+import { getHourOfWeekIST as getHourOfWeekISTHelper } from "@/lib/time/ist";
+
+export { getHourOfWeekISTHelper as getHourOfWeekIST };

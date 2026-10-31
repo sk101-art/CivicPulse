@@ -6,6 +6,7 @@ import { ChevronLeft, MapPin, Clock, Shield, AlertTriangle } from "lucide-react"
 import Link from 'next/link';
 import { StatusTracker } from "@/components/citizen/StatusTracker";
 import { VoteButton, CommentSection } from "@/components/citizen/Interactions";
+import { formatDateIST } from "@/lib/time/ist";
 
 export default async function ReportDetails({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -87,9 +88,9 @@ export default async function ReportDetails({ params }: { params: Promise<{ id: 
             <div className="p-6 md:p-8 rounded-2xl bg-card border border-white/5 space-y-6">
               <div className="space-y-4">
                 {(() => {
-                  const displayLocation = (issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending'))
+                  const displayLocation = (issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending') && !issue.address.includes('Report Location'))
                     ? issue.address
-                    : `${issue.lat.toFixed(4)}° N, ${issue.lng.toFixed(4)}° E`;
+                    : `Near ${issue.lat.toFixed(4)}, ${issue.lng.toFixed(4)}`;
 
                   return (
                     <>
@@ -108,7 +109,7 @@ export default async function ReportDetails({ params }: { params: Promise<{ id: 
                           <MapPin className="w-3.5 h-3.5" /> {displayLocation}
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" /> {new Date(issue.createdAt).toLocaleDateString()}
+                          <Clock className="w-3.5 h-3.5" /> {formatDateIST(issue.createdAt)}
                         </div>
                         <div className="px-2 py-0.5 rounded bg-white/5 border border-white/5 text-[9px] font-bold text-white/60">
                           {issue.category}

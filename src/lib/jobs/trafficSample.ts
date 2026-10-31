@@ -3,6 +3,7 @@ import { Status } from "@prisma/client";
 import { getFlowSegment } from "@/lib/external/tomtom";
 import { calculateCongestionR, getHourOfWeekIST } from "@/lib/traffic/congestion";
 import { isConfigured } from "@/lib/env";
+import { startOfDayIST, nowIST } from "@/lib/time/ist";
 
 export const DAILY_TOMTOM_BUDGET = 1500;
 
@@ -31,10 +32,8 @@ export async function runTrafficSample(
     };
   }
 
-  const now = new Date();
-  const startOfDay = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0)
-  );
+  const now = nowIST();
+  const startOfDay = startOfDayIST(now);
 
   // Check calls made today against daily budget
   const samplesToday = await prisma.trafficSample.count({

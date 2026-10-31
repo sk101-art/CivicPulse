@@ -9,6 +9,7 @@ import { RefreshButton } from '@/components/ui/RefreshButton';
 import { useReports, Report as HookReport } from '@/hooks/useReports';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { formatPriority } from '@/lib/priority';
+import { formatDateIST } from '@/lib/time/ist';
 
 interface ReportItem extends Omit<HookReport, 'priorityScore' | 'voteCount' | 'commentCount' | 'createdAt'> {
   id: string;
@@ -192,7 +193,7 @@ export function ActiveReports({ initialReports }: ActiveReportsProps) {
                       {sc.label}
                     </span>
                     <span className="text-[10px] font-mono uppercase tracking-widest text-white/20 font-bold">
-                      {report.createdAt ? new Date(report.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      {report.createdAt ? formatDateIST(report.createdAt, { month: 'short', day: 'numeric' }) : ''}
                     </span>
                   </div>
                 </Link>

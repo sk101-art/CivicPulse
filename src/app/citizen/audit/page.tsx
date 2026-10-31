@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/CaptureCamera';
+import { formatDateTimeIST } from '@/lib/time/ist';
 
 interface AuditTaskItem {
   id: string;
@@ -389,7 +390,7 @@ export default function CitizenAuditPage() {
 
                   <div className="text-[11px] font-mono text-amber-300 flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5" />
-                    <span>Expires: {new Date(task.dueAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}</span>
+                    <span>Expires: {formatDateTimeIST(task.dueAt)}</span>
                   </div>
                 </div>
 

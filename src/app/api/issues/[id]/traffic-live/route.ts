@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getFlowSegment } from "@/lib/external/tomtom";
 import { buildPlaceProfile } from "@/lib/traffic/profile";
 import { DayType } from "@prisma/client";
+import { getHourIST, isWeekendIST, getDayTypeIST, nowIST } from "@/lib/time/ist";
 
 export const dynamic = "force-dynamic";
 
@@ -63,11 +64,10 @@ export async function GET(
         ? `Live: ${currentSpeed} km/h vs ${freeFlowSpeed} free-flow (${slowerPct}% slower) · updated just now`
         : `Live: ${currentSpeed} km/h (free-flow) · updated just now`;
 
-    // 2. 24-hour profile for matched day type (best repair window day type or requested day type)
-    const now = new Date();
-    const currentHour = now.getHours();
-    const isWeekend = now.getDay() === 0 || now.getDay() === 6;
-    const todayDayType = isWeekend ? DayType.WEEKEND : DayType.WEEKDAY;
+    // 2. 24-hour profile for matched day type (best repair window day type or requested day type) in IST
+    const now = nowIST();
+    const currentHour = getHourIST(now);
+    const todayDayType = isWeekendIST(now) ? DayType.WEEKEND : DayType.WEEKDAY;
 
     const storedDayType = (issue.bestRepairWindow as { dayType?: string } | null)?.dayType;
     const targetDayType: DayType =
@@ -127,7 +127,7 @@ export async function GET(
   } catch (error: unknown) {
     console.error("GET /api/issues/[id]/traffic-live error (returning graceful unavailable):", error);
     // Graceful fallback on DB errors or overload instead of 500
-    const now = new Date();
+    const now = nowIST();
     return NextResponse.json(
       {
         live: {
@@ -142,8 +142,8 @@ export async function GET(
           unavailable: true,
         },
         profile24h: [],
-        currentHour: now.getHours(),
-        dayType: now.getDay() === 0 || now.getDay() === 6 ? DayType.WEEKEND : DayType.WEEKDAY,
+        currentHour: getHourIST(now),
+        dayType: isWeekendIST(now) ? DayType.WEEKEND : DayType.WEEKDAY,
         source: "ESTIMATED",
         fromCache: false,
         unavailable: true,

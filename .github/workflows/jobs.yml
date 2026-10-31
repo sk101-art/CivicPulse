@@ -21,7 +21,7 @@ on:
         required: true
         default: "ai-queue"
         type: choice
-        options: [sla-check, ai-queue, weather, priority-recompute, traffic-sample, durability, traffic-profile, insights, ai-assess, repair-windows]
+        options: [sla-check, ai-queue, weather, priority-recompute, traffic-sample, durability, traffic-profile, insights, ai-assess, repair-windows, geocode-backfill]
 
 jobs:
   run:

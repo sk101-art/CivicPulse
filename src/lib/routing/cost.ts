@@ -1,4 +1,5 @@
 import { Category } from "@prisma/client";
+import { getHourIST } from "@/lib/time/ist";
 
 export type VehicleType = "motorcycle" | "car" | "pedestrian" | "wheelchair";
 
@@ -89,12 +90,7 @@ export const VEHICLE_SENSITIVITY: Record<
  * Streetlights hazard only applies during dark hours.
  */
 export function isStreetlightsActiveIST(date: Date = new Date()): boolean {
-  // Convert date to IST hours (UTC + 5:30)
-  const utcHours = date.getUTCHours();
-  const utcMinutes = date.getUTCMinutes();
-  const istTotalMinutes = (utcHours * 60 + utcMinutes + 330) % 1440;
-  const istHour = Math.floor(istTotalMinutes / 60);
-
+  const istHour = getHourIST(date);
   // 19:00 to 06:00 (19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5)
   return istHour >= 19 || istHour < 6;
 }

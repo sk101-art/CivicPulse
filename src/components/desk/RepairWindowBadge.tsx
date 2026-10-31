@@ -28,10 +28,17 @@ export function RepairWindowBadge({
     // CRITICAL: Desk queue cards must NEVER call /repair-window live!
     // Cards only render from stored initialResult.
     // Only the issue drawer (variant === 'drawer' or 'page') may call /repair-window live.
-    if (variant === 'card' || initialResult) {
+    if (variant === 'card') {
       if (initialResult) setData(initialResult);
       setLoading(false);
       return;
+    }
+
+    // For drawer and page: show initial stored window immediately without loading flicker,
+    // then fetch full candidate slots and alternatives via drawer's 10-minute cached route.
+    if (initialResult) {
+      setData(initialResult);
+      setLoading(false);
     }
 
     let isMounted = true;

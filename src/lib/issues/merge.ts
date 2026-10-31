@@ -4,6 +4,7 @@ import { Category, EvidenceRole, Issue, Report, Status } from "@prisma/client";
 import { awardPoints } from "@/lib/points";
 import { snapPointToSegment } from "@/lib/db/segments";
 import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
+import { reverseGeocode } from "@/lib/external/tomtom";
 
 export interface IngestReportInput {
   userId: string;
@@ -161,6 +162,12 @@ export async function ingestReportWithSpatialMerge(
 
   const snapped = await snapPointToSegment(lat, lng, category, 20).catch(() => null);
 
+  let finalAddress = address && address.trim() && !address.includes("Report Location") ? address.trim() : "";
+  if (!finalAddress) {
+    const geo = await reverseGeocode(lat, lng).catch(() => null);
+    finalAddress = geo?.formatted || `Near ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  }
+
   const result = await prisma.$transaction(async (tx) => {
     const newIssue = await tx.issue.create({
       data: {
@@ -168,7 +175,7 @@ export async function ingestReportWithSpatialMerge(
         status: Status.OPEN,
         lat,
         lng,
-        address: address || `Report Location (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+        address: finalAddress,
         segmentId: snapped?.id || null,
         slaDueAt,
         needsDuplicateReview,

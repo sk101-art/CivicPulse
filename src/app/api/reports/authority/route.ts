@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/prisma";
 import { NextResponse } from "next/server";
 import { Category, Band, EvidenceRole, Status, Role } from "@prisma/client";
 import { z } from "zod";
+import { reverseGeocode } from "@/lib/external/tomtom";
 
 const authorityReportSchema = z.object({
   title: z.string().optional(),
@@ -50,13 +51,19 @@ export async function POST(req: Request) {
     // Default SLA is 72 hours from filing
     const slaDueAt = new Date(Date.now() + 72 * 3600 * 1000);
 
+    let finalAddress = address && address.trim() && !address.includes("Authority Pin") ? address.trim() : "";
+    if (!finalAddress) {
+      const geo = await reverseGeocode(lat, lng).catch(() => null);
+      finalAddress = geo?.formatted || `Near ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    }
+
     const issue = await prisma.issue.create({
       data: {
         category,
         status: Status.CONFIRMED,
         lat,
         lng,
-        address: address || `Authority Pin (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+        address: finalAddress,
         agencyId: agencyId || null,
         priority: 0.5,
         band: Band.MEDIUM,

@@ -6,6 +6,7 @@ import { getRulesFallback } from "@/lib/ai/providers/rules";
 import { getFlowSegment } from "@/lib/external/tomtom";
 import { Status } from "@prisma/client";
 import { computeInputHash } from "@/lib/ai/run";
+import { formatDateTimeIST } from "@/lib/time/ist";
 
 // Quota constants (Free tier budget protection)
 export const MAX_ANALYST_DAILY_CALLS = 250;
@@ -91,6 +92,36 @@ export const AssessOutputSchema = z.object({
   keyRisks: z.array(z.string()),
   suggestedAction: z.string(),
   engine: z.string().optional(),
+  time: z.string().optional(),
+  flags: z.array(z.string()).optional(),
+  status: z.string().optional(),
+  triage: z
+    .object({
+      result: z.string(),
+      engine: z.string(),
+      time: z.string(),
+      flags: z.array(z.string()),
+      status: z.string(),
+    })
+    .optional(),
+  fixCheck: z
+    .object({
+      result: z.string(),
+      engine: z.string(),
+      time: z.string(),
+      flags: z.array(z.string()),
+      status: z.string(),
+    })
+    .optional(),
+  auditAssist: z
+    .object({
+      result: z.string(),
+      engine: z.string(),
+      time: z.string(),
+      flags: z.array(z.string()),
+      status: z.string(),
+    })
+    .optional(),
 });
 export type AssessOutput = z.infer<typeof AssessOutputSchema>;
 
@@ -113,6 +144,139 @@ export const assessJsonSchema: Record<string, unknown> = {
 export interface AssessIssueResult {
   output: AssessOutput;
   cached: boolean;
+}
+
+function enrichAssessOutput(
+  issue: any,
+  rawOutput: AssessOutput,
+  engine: string,
+  assessedAt: Date
+): AssessOutput {
+  // 1. G1 Photo Triage
+  const reportReport = issue.reports?.find((r: any) => r.role === "REPORT") || issue.reports?.[0];
+  let triageMeta: {
+    result: string;
+    engine: string;
+    time: string;
+    flags: string[];
+    status: string;
+  };
+
+  if (reportReport?.aiTriage && typeof reportReport.aiTriage === "object") {
+    const t = reportReport.aiTriage as Record<string, unknown>;
+    const flags: string[] = [];
+    if (typeof t.category === "string" && t.category !== "unknown" && t.category.toUpperCase() !== issue.category.toUpperCase()) {
+      flags.push(`Category mismatch: suggested "${t.category}" vs reported "${issue.category}"`);
+    }
+    if (t.recapture_suspected === "yes") {
+      flags.push("Recapture/screen photo suspected (extra verifier required)");
+    }
+    if (typeof t.confidence === "number" && t.confidence < 0.7) {
+      flags.push(`Low confidence (${Math.round(t.confidence * 100)}%)`);
+    }
+
+    triageMeta = {
+      result: `Category: ${t.category || issue.category}, Size: ${t.size_class || "medium"}, Lane: ${t.lane_position || "curb"}`,
+      engine: (t._engine as string) || (engine.includes("Rules") ? "Rules estimate" : "Gemini 2.5 Flash"),
+      time: formatDateTimeIST(reportReport.createdAt),
+      flags,
+      status: engine.includes("Rules") ? "unavailable" : "completed",
+    };
+  } else {
+    triageMeta = {
+      result: "AI check pending",
+      engine: "AI Pipeline",
+      time: "Pending",
+      flags: [],
+      status: "pending",
+    };
+  }
+
+  // 2. G2 Fix Check
+  const claimReport = issue.reports?.find((r: any) => r.role === "CLAIM_FIX");
+  let fixCheckMeta: {
+    result: string;
+    engine: string;
+    time: string;
+    flags: string[];
+    status: string;
+  } | undefined;
+
+  if (claimReport) {
+    if (claimReport.aiTriage && typeof claimReport.aiTriage === "object") {
+      const fc = claimReport.aiTriage as Record<string, unknown>;
+      const flags: string[] = [];
+      if (fc.defect_still_visible === "yes") {
+        flags.push("Defect still visible in claim photo");
+      }
+      if (fc.same_location === "no") {
+        flags.push("Location mismatch in repair photo");
+      }
+      if (typeof fc.confidence === "number" && fc.confidence < 0.7) {
+        flags.push(`Low confidence (${Math.round(fc.confidence * 100)}%)`);
+      }
+      fixCheckMeta = {
+        result: `Same location: ${fc.same_location}, Defect visible: ${fc.defect_still_visible}`,
+        engine: (fc._engine as string) || (engine.includes("Rules") ? "Rules estimate" : "Gemini 2.5 Flash"),
+        time: formatDateTimeIST(claimReport.createdAt),
+        flags,
+        status: engine.includes("Rules") ? "unavailable" : "completed",
+      };
+    } else {
+      fixCheckMeta = {
+        result: "AI check pending",
+        engine: "AI Pipeline",
+        time: "Pending",
+        flags: [],
+        status: "pending",
+      };
+    }
+  }
+
+  // 3. G-AUDIT-ASSIST
+  const auditTask = issue.auditTasks?.[0];
+  let auditAssistMeta: {
+    result: string;
+    engine: string;
+    time: string;
+    flags: string[];
+    status: string;
+  } | undefined;
+
+  if (auditTask) {
+    const votes = auditTask.votes || [];
+    const damaged = votes.filter((v: any) => v.observed === "DAMAGED").length;
+    const intact = votes.filter((v: any) => v.observed === "INTACT").length;
+    const flags: string[] = [];
+    if (damaged > 0 && intact > 0) {
+      flags.push("Mixed citizen audit votes; inspector review advised");
+    }
+    auditAssistMeta = {
+      result: `Audit votes: ${intact} intact, ${damaged} damaged (${auditTask.status})`,
+      engine: engine.includes("Rules") ? "Rules estimate" : "Gemini 2.5 Flash",
+      time: formatDateTimeIST(auditTask.createdAt),
+      flags,
+      status: "completed",
+    };
+  }
+
+  const assessFlags: string[] = [];
+  if (rawOutput.priorityAdjustmentRecommended !== 0) {
+    assessFlags.push(
+      `Priority adjustment ${rawOutput.priorityAdjustmentRecommended > 0 ? "+" : ""}${rawOutput.priorityAdjustmentRecommended} recommended`
+    );
+  }
+
+  return {
+    ...rawOutput,
+    engine,
+    time: formatDateTimeIST(assessedAt),
+    flags: assessFlags,
+    status: engine.includes("Rules") ? "unavailable" : "completed",
+    triage: triageMeta,
+    fixCheck: fixCheckMeta,
+    auditAssist: auditAssistMeta,
+  };
 }
 
 export async function assessIssue(
@@ -153,8 +317,11 @@ export async function assessIssueWithMeta(
         select: { delayRatio: true, hour: true, dayType: true },
       },
       reports: {
-        select: { id: true, photoUrl: true, note: true },
-        take: 3,
+        select: { id: true, photoUrl: true, note: true, role: true, aiTriage: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      },
+      auditTasks: {
+        select: { id: true, kind: true, status: true, votes: true, createdAt: true },
       },
     },
   });
@@ -250,7 +417,7 @@ export async function assessIssueWithMeta(
           .catch(() => {});
 
         return {
-          output: { ...parsed.data, engine },
+          output: enrichAssessOutput(issue, parsed.data, engine, cachedRun.createdAt),
           cached: true,
         };
       }
@@ -261,7 +428,7 @@ export async function assessIssueWithMeta(
   if (!quotaOk) {
     const fallback = getRulesFallback("G-ASSESS", inputPayload) as AssessOutput;
     return {
-      output: { ...fallback, engine: "Rules estimate" },
+      output: enrichAssessOutput(issue, fallback, "Rules estimate", new Date()),
       cached: false,
     };
   }
@@ -299,10 +466,7 @@ Recommend a priority adjustment (-10 to +10), summarize risks, and suggest actio
 
   const engine = formatAiEngineName(aiResult.provider, aiResult.model);
   return {
-    output: {
-      ...aiResult.data,
-      engine,
-    },
+    output: enrichAssessOutput(issue, aiResult.data, engine, new Date()),
     cached: aiResult.cached,
   };
 }

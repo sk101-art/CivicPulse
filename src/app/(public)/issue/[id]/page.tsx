@@ -16,6 +16,7 @@ import { getRepairWindowForIssue } from "@/lib/traffic/repairWindow";
 import { assessIssue } from "@/lib/ai/analyst";
 import type { PriorityBreakdown as PriorityBreakdownType } from "@/lib/priority";
 import { Status, Band, EvidenceRole, Role } from "@prisma/client";
+import { formatDateIST, formatDateTimeIST } from "@/lib/time/ist";
 
 export const revalidate = 0;
 
@@ -195,9 +196,9 @@ export default async function PublicIssuePage({
             {issue.category.replace(/_/g, " ")}
           </span>
           <h1 className="text-2xl sm:text-3xl font-display font-black text-white">
-            {(issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending'))
+            {(issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending') && !issue.address.includes('Report Location'))
               ? issue.address
-              : `${issue.lat.toFixed(4)}° N, ${issue.lng.toFixed(4)}° E`}
+              : `Near ${issue.lat.toFixed(4)}, ${issue.lng.toFixed(4)}`}
           </h1>
           <p className="text-xs font-mono text-white/50 flex items-center gap-1.5">
             <MapPin className="w-4 h-4 text-cyan" />
@@ -292,7 +293,7 @@ export default async function PublicIssuePage({
             </span>
             <div className="flex items-center gap-2 text-sm font-bold text-white font-mono">
               <Clock className="w-4 h-4 text-rose-400" />
-              {new Date(issue.slaDueAt).toLocaleDateString()}
+              {formatDateIST(issue.slaDueAt)}
             </div>
             <div className="text-xs font-mono text-white/50 pt-1">
               Target: {issue.agency?.slaHours ?? 72} hours from filing
@@ -367,7 +368,11 @@ export default async function PublicIssuePage({
 
         {/* Real-time Traffic Intelligence Card & 24h Profile */}
         <div className="space-y-2">
-          <LiveTrafficCard issueId={issue.id} variant="page" />
+          <LiveTrafficCard
+            issueId={issue.id}
+            variant="page"
+            dayType={(issue.bestRepairWindow as { dayType?: "WEEKDAY" | "WEEKEND" } | null)?.dayType}
+          />
         </div>
 
         {/* Evidence Photo Gallery */}
@@ -416,7 +421,7 @@ export default async function PublicIssuePage({
                       Accuracy: {report.gpsAccuracyM.toFixed(1)}m
                     </span>
                     <span className="text-[11px]">
-                      {new Date(report.capturedAt).toLocaleString()}
+                      {formatDateTimeIST(report.capturedAt)}
                     </span>
                   </div>
                   {report.note && (
@@ -476,7 +481,7 @@ export default async function PublicIssuePage({
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="font-bold text-cyan">{log.actorName}</span>
                   <span className="text-white/40">
-                    {new Date(log.createdAt).toLocaleString()}
+                    {formatDateTimeIST(log.createdAt)}
                   </span>
                 </div>
 

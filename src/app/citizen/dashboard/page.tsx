@@ -160,9 +160,9 @@ export default async function CitizenDashboard() {
         <ActiveReports
           key={userReports.length > 0 ? userReports[0].id : 'empty'}
           initialReports={userReports.map(r => {
-            const displayAddress = (r.issue.address && r.issue.address.trim() && r.issue.address.toLowerCase() !== 'bengaluru' && !r.issue.address.toLowerCase().includes('pending'))
+            const displayAddress = (r.issue.address && r.issue.address.trim() && r.issue.address.toLowerCase() !== 'bengaluru' && !r.issue.address.toLowerCase().includes('pending') && !r.issue.address.includes('Report Location'))
               ? r.issue.address
-              : `${r.lat.toFixed(4)}° N, ${r.lng.toFixed(4)}° E`;
+              : `Near ${r.lat.toFixed(4)}, ${r.lng.toFixed(4)}`;
 
             return {
               id: r.id,

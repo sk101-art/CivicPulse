@@ -63,15 +63,37 @@ export async function GET(
         }
       }
 
+      const isAiAction = log.action.startsWith("AI_") || Boolean(log.note && log.note.startsWith("AI "));
+      const flags: string[] = [];
+      if (log.action === "AI_FLAGGED_CATEGORY_MISMATCH" || (log.note && log.note.includes("differs from reported"))) {
+        flags.push("Category mismatch");
+      }
+      if (log.action === "AI_RECAPTURE_FLAGGED" || (log.note && log.note.includes("recapture"))) {
+        flags.push("Recapture/screen photo");
+      }
+      if (log.action === "AI_FLAGGED_FIX_CHECK" || (log.note && log.note.includes("defect remains damaged"))) {
+        flags.push("Defect still visible / location mismatch");
+      }
+      if (log.note && log.note.toLowerCase().includes("low confidence")) {
+        flags.push("Low confidence");
+      }
+
+      const engine = isAiAction
+        ? (log.note?.includes("Rules") ? "Rules estimate" : "Gemini 2.5 Flash")
+        : undefined;
+
       return {
         id: log.id,
-        actorName,
+        actorName: isAiAction ? `AI System (${engine})` : actorName,
         action: log.action,
         note: log.note,
         fromStatus: log.fromStatus,
         toStatus: log.toStatus,
         createdAt: log.createdAt.toISOString(),
         evidenceThumbnail: log.reportId ? reportMap.get(log.reportId) || null : null,
+        isAiAction,
+        engine,
+        flags,
       };
     });
 

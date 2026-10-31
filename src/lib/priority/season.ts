@@ -1,4 +1,5 @@
 import { PriorityConfig } from "@/config/priority";
+import { getISTComponents } from "@/lib/time/ist";
 
 export type SeasonIST = "summer" | "sw_monsoon" | "ne_monsoon" | "winter";
 
@@ -10,9 +11,7 @@ export type SeasonIST = "summer" | "sw_monsoon" | "ne_monsoon" | "winter";
  * - Winter: January to February (Months 1..2)
  */
 export function getSeasonIST(date: Date): SeasonIST {
-  const istOffsetMs = 5.5 * 3600 * 1000;
-  const istDate = new Date(date.getTime() + istOffsetMs);
-  const istMonth = istDate.getUTCMonth() + 1; // 1 = January, 12 = December
+  const istMonth = getISTComponents(date).month; // 1 = January, 12 = December
 
   if (istMonth >= 3 && istMonth <= 5) return "summer";
   if (istMonth >= 6 && istMonth <= 9) return "sw_monsoon";
