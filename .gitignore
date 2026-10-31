@@ -54,3 +54,9 @@ projectreport.txt
 redesign.md
 scratch/
 backups/
+
+# QA evidence (screenshots, traces, videos) and generated camera fixtures
+/qa-evidence/
+/qa-evidence-*.zip
+/tests/qa/fixtures/
+/qa-run-*.log
