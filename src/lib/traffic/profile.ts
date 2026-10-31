@@ -226,7 +226,24 @@ export async function buildPlaceProfile(
       orderBy: [{ dayType: "asc" }, { hour: "asc" }],
     });
 
+    const isMajor = Boolean(
+      issue.roadClass &&
+        ["motorway", "trunk", "primary", "secondary"].includes(
+          issue.roadClass.toLowerCase()
+        )
+    );
+
+    const hasInvalidAllZeroDay =
+      isMajor &&
+      [DayType.WEEKDAY, DayType.WEEKEND].some((dt) => {
+        const daytime = existing.filter(
+          (p) => p.dayType === dt && p.hour >= 7 && p.hour <= 20
+        );
+        return daytime.length > 0 && daytime.every((p) => p.delayRatio === 0);
+      });
+
     const isComplete =
+      !hasInvalidAllZeroDay &&
       existing.length === 48 &&
       existing.every(
         (p) =>
@@ -249,18 +266,26 @@ export async function buildPlaceProfile(
       };
     }
 
-    // Retain existing TOMTOM_HISTORIC or LIVE_SAMPLE points so we only query missing/estimated hours
-    for (const p of existing) {
-      if (
-        p.source === ProfileSource.TOMTOM_HISTORIC ||
-        p.source === ProfileSource.LIVE_SAMPLE
-      ) {
-        existingTomTomMap.set(`${p.dayType}-${p.hour}`, {
-          hour: p.hour,
-          dayType: p.dayType,
-          delayRatio: p.delayRatio,
-          source: p.source,
-        });
+    // Retain existing TOMTOM_HISTORIC or LIVE_SAMPLE points so we only query missing/estimated hours,
+    // but drop any dayType whose daytime profile is all-zero on a major corridor
+    for (const dt of [DayType.WEEKDAY, DayType.WEEKEND]) {
+      const dtPoints = existing.filter((p) => p.dayType === dt);
+      const daytime = dtPoints.filter((p) => p.hour >= 7 && p.hour <= 20);
+      const isInvalid = isMajor && daytime.length > 0 && daytime.every((p) => p.delayRatio === 0);
+      if (!isInvalid) {
+        for (const p of dtPoints) {
+          if (
+            p.source === ProfileSource.TOMTOM_HISTORIC ||
+            p.source === ProfileSource.LIVE_SAMPLE
+          ) {
+            existingTomTomMap.set(`${p.dayType}-${p.hour}`, {
+              hour: p.hour,
+              dayType: p.dayType,
+              delayRatio: p.delayRatio,
+              source: p.source,
+            });
+          }
+        }
       }
     }
 
@@ -502,8 +527,46 @@ export async function buildPlaceProfile(
     pointsToCreate.push(...batchResults);
   }
 
+  // Validate that FRC0-FRC3 / arterial roads do not store an all-zero daytime profile.
+  // If historic time is missing or equals no-traffic for every hour, treat that day's profile as FAILED
+  // (source ESTIMATED with low confidence, retry next traffic-profile run) instead of storing zeros.
+  const isMajorRoad = Boolean(
+    (issue.roadClass && ["motorway", "trunk", "primary", "secondary"].includes(issue.roadClass.toLowerCase())) ||
+    (flow?.frc && ["FRC0", "FRC1", "FRC2", "FRC3"].includes(flow.frc))
+  );
+
+  for (const dayType of [DayType.WEEKDAY, DayType.WEEKEND]) {
+    const dayPoints = pointsToCreate.filter((p) => p.dayType === dayType);
+    const tomtomDaytime = dayPoints.filter(
+      (p) => p.source === ProfileSource.TOMTOM_HISTORIC && p.hour >= 7 && p.hour <= 20
+    );
+
+    const tomtomAllZero =
+      tomtomDaytime.length === 0 ||
+      tomtomDaytime.every((p) => p.delayRatio === 0);
+
+    if (isMajorRoad && tomtomAllZero) {
+      for (const p of dayPoints) {
+        p.delayRatio = getEstimatedHourlyDelay(p.hour, dayType, isArterial);
+        p.source = ProfileSource.ESTIMATED;
+      }
+    }
+  }
+
   // Interpolate any hours missing TomTom data from neighbouring TomTom hours before blending live samples
   interpolateMissingHours(pointsToCreate, isArterial);
+
+  // Safety guard: Never store an all-zero daytime profile for an FRC0-FRC3 road after interpolation
+  for (const dayType of [DayType.WEEKDAY, DayType.WEEKEND]) {
+    const dayPoints = pointsToCreate.filter((p) => p.dayType === dayType);
+    const daytimePoints = dayPoints.filter((p) => p.hour >= 7 && p.hour <= 20);
+    if (isMajorRoad && daytimePoints.every((p) => p.delayRatio === 0)) {
+      for (const p of dayPoints) {
+        p.delayRatio = getEstimatedHourlyDelay(p.hour, dayType, isArterial);
+        p.source = ProfileSource.ESTIMATED;
+      }
+    }
+  }
 
   // Blend live samples if present
   for (const p of pointsToCreate) {

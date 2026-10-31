@@ -432,7 +432,7 @@ export async function seedDemoData() {
       deteriorationScore: 52,
       expectedDaysToWorsen: 10,
       isHotspot: false,
-      lanePosition: 'CENTER',
+      lanePosition: 'SHOULDER',
       deteriorationDrivers: [
         { name: 'Moderate moisture: 14 mm rain', impactScore: 15 },
         { name: 'Collector corridor bus traffic', impactScore: 12 },
@@ -457,7 +457,7 @@ export async function seedDemoData() {
       deteriorationScore: 52,
       expectedDaysToWorsen: 10,
       isHotspot: false,
-      lanePosition: 'CENTER',
+      lanePosition: 'SHOULDER',
       deteriorationDrivers: [
         { name: 'Moderate moisture: 14 mm rain', impactScore: 15 },
         { name: 'Collector corridor bus traffic', impactScore: 12 },
