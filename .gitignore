@@ -60,3 +60,4 @@ backups/
 /qa-evidence-*.zip
 /tests/qa/fixtures/
 /qa-run-*.log
+.playwright-auth/

@@ -149,31 +149,31 @@ export async function seedDemoData() {
   // 2. Ensure Users (Authority & Citizens)
   const deskA = await prisma.user.upsert({
     where: { email: 'desk-a@civicpulse.local' },
-    update: { name: 'Desk Officer A', role: Role.AUTHORITY },
+    update: { name: 'Desk Officer A', role: Role.AUTHORITY, passwordHash: hashedPassword },
     create: { email: 'desk-a@civicpulse.local', name: 'Desk Officer A', passwordHash: hashedPassword, role: Role.AUTHORITY },
   });
 
   const deskB = await prisma.user.upsert({
     where: { email: 'desk-b@civicpulse.local' },
-    update: { name: 'Desk Officer B', role: Role.AUTHORITY },
+    update: { name: 'Desk Officer B', role: Role.AUTHORITY, passwordHash: hashedPassword },
     create: { email: 'desk-b@civicpulse.local', name: 'Desk Officer B', passwordHash: hashedPassword, role: Role.AUTHORITY },
   });
 
   const citizenA = await prisma.user.upsert({
     where: { email: 'citizen@example.com' },
-    update: { name: 'Aarav Patel (Alpha)', role: Role.CITIZEN },
+    update: { name: 'Aarav Patel (Alpha)', role: Role.CITIZEN, passwordHash: hashedPassword },
     create: { email: 'citizen@example.com', name: 'Aarav Patel (Alpha)', passwordHash: hashedPassword, role: Role.CITIZEN },
   });
 
   const citizenB = await prisma.user.upsert({
     where: { email: 'citizen-b@civicpulse.local' },
-    update: { name: 'Priya Sharma (Beta)', role: Role.CITIZEN, createdAt: new Date(now.getTime() - 48 * dayMs) },
+    update: { name: 'Priya Sharma (Beta)', role: Role.CITIZEN, passwordHash: hashedPassword, createdAt: new Date(now.getTime() - 48 * dayMs) },
     create: { email: 'citizen-b@civicpulse.local', name: 'Priya Sharma (Beta)', passwordHash: hashedPassword, role: Role.CITIZEN, createdAt: new Date(now.getTime() - 48 * dayMs) },
   });
 
   const citizenC = await prisma.user.upsert({
     where: { email: 'citizen-c@civicpulse.local' },
-    update: { name: 'Kavita Rao (Gamma)', role: Role.CITIZEN, createdAt: new Date(now.getTime() - 15 * dayMs) },
+    update: { name: 'Kavita Rao (Gamma)', role: Role.CITIZEN, passwordHash: hashedPassword, createdAt: new Date(now.getTime() - 15 * dayMs) },
     create: { email: 'citizen-c@civicpulse.local', name: 'Kavita Rao (Gamma)', passwordHash: hashedPassword, role: Role.CITIZEN, createdAt: new Date(now.getTime() - 15 * dayMs) },
   });
 
