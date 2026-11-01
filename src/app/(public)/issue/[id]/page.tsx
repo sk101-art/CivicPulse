@@ -152,7 +152,7 @@ export default async function PublicIssuePage({
         {/* Title & Location Header */}
         <div className="space-y-2">
           <span className="text-xs font-mono uppercase text-cyan tracking-widest block">
-            {issue.category.replace(/_/g, " ")}
+            {(issue.category || "OTHER").replace(/_/g, " ")}
           </span>
           <h1 className="text-2xl sm:text-3xl font-display font-black text-white">
             {displayLocation(issue.address, issue.lat, issue.lng)}

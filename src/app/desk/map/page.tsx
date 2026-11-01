@@ -23,7 +23,7 @@ export default async function DeskMapPage() {
     id: i.id,
     latitude: i.lat,
     longitude: i.lng,
-    title: `${i.category.replace(/_/g, ' ')} at ${i.address || 'Bengaluru'}`,
+    title: `${(i.category || 'OTHER').replace(/_/g, ' ')} at ${i.address || 'Bengaluru'}`,
     status: i.status,
     category: i.category,
     priorityScore: i.priority,

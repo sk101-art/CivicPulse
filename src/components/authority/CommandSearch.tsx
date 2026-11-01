@@ -43,6 +43,7 @@ export function CommandSearch() {
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
         <input 
           type="text" 
+          aria-label="Search tickets"
           placeholder="Search tickets..."
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
@@ -58,6 +59,7 @@ export function CommandSearch() {
       <div className="relative flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all cursor-pointer">
          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Sort:</span>
          <select 
+            aria-label="Sort tickets"
             onChange={(e) => handleSort(e.target.value)}
             className="bg-transparent text-[10px] font-bold uppercase tracking-widest outline-none cursor-pointer appearance-none pr-5 text-white"
             defaultValue={searchParams.get('sort') || 'latest'}

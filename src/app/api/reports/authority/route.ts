@@ -137,7 +137,7 @@ export async function GET() {
       latitude: i.lat,
       longitude: i.lng,
       priorityScore: i.priority,
-      title: `${i.category.replace(/_/g, " ")} at ${i.address || "Bengaluru"}`,
+      title: `${(i.category || "OTHER").replace(/_/g, " ")} at ${i.address || "Bengaluru"}`,
     }));
 
     return NextResponse.json(formatted, {

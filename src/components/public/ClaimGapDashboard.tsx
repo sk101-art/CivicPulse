@@ -43,7 +43,7 @@ export function ClaimGapDashboard({
   const getGapBadge = (item: ClaimGapGroupStats) => {
     if (item.insufficientData) {
       return (
-        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono bg-white/5 border border-white/10 text-white/40">
+        <span className="px-2.5 py-1 rounded-lg text-[10px] font-mono bg-white/5 border border-white/10 text-zinc-300">
           Insufficient data (&lt; 5 claims)
         </span>
       );
@@ -87,7 +87,7 @@ export function ClaimGapDashboard({
             className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2 ${
               view === 'ward'
                 ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
-                : 'bg-white/5 text-white/70 hover:bg-white/10'
+                : 'bg-white/5 text-zinc-200 hover:bg-white/10'
             }`}
           >
             <Building2 className="w-3.5 h-3.5" />
@@ -99,7 +99,7 @@ export function ClaimGapDashboard({
             className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2 ${
               view === 'desk'
                 ? 'bg-cyan-500 text-black shadow-lg shadow-cyan-500/20'
-                : 'bg-white/5 text-white/70 hover:bg-white/10'
+                : 'bg-white/5 text-zinc-200 hover:bg-white/10'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
@@ -109,14 +109,14 @@ export function ClaimGapDashboard({
 
         {/* Period toggle */}
         <div className="flex items-center gap-2">
-          <span className="text-[11px] font-mono uppercase text-white/50">Period:</span>
+          <span className="text-[11px] font-mono uppercase text-zinc-300">Period:</span>
           <button
             onClick={() => handlePeriodChange(30)}
             disabled={isPending}
             className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
               period === 30
                 ? 'bg-white/20 text-white border border-white/30'
-                : 'text-white/50 hover:text-white'
+                : 'text-zinc-300 hover:text-white'
             }`}
           >
             Last 30 Days
@@ -127,7 +127,7 @@ export function ClaimGapDashboard({
             className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-all ${
               period === 90
                 ? 'bg-white/20 text-white border border-white/30'
-                : 'text-white/50 hover:text-white'
+                : 'text-zinc-300 hover:text-white'
             }`}
           >
             Last 90 Days
@@ -144,7 +144,7 @@ export function ClaimGapDashboard({
               <BarChart3 className="w-4 h-4 text-cyan-400" />
               Ward Choropleth & Claim Gap Severity
             </h3>
-            <span className="text-[10px] font-mono text-white/40">
+            <span className="text-[10px] font-mono text-zinc-300">
               Disputed Claims ÷ Total Claims
             </span>
           </div>
@@ -173,10 +173,10 @@ export function ClaimGapDashboard({
                         </span>
                       )}
                     </div>
-                    <span className="text-white/40">{ward.code}</span>
+                    <span className="text-zinc-300">{ward.code}</span>
                   </div>
                   <div className="flex items-center justify-between pt-1">
-                    <div className="text-[11px] font-mono text-white/60">
+                    <div className="text-[11px] font-mono text-zinc-300">
                       {ward.claimed} claimed fixes
                     </div>
                     <div>{getGapBadge(ward)}</div>
@@ -194,14 +194,14 @@ export function ClaimGapDashboard({
           <h3 className="text-sm font-bold font-mono text-white uppercase tracking-wider">
             {view === 'ward' ? 'Ward Integrity Scorecard' : 'Desk Officer Accountability Scorecard'}
           </h3>
-          <span className="text-xs font-mono text-white/40">
+          <span className="text-xs font-mono text-zinc-300">
             {activeList.length} entity / entities monitored
           </span>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs font-mono">
-            <thead className="bg-white/5 text-white/50 uppercase text-[10px] tracking-wider border-b border-white/10">
+            <thead className="bg-white/5 text-zinc-300 uppercase text-[10px] tracking-wider border-b border-white/10">
               <tr>
                 <th className="p-4">{view === 'ward' ? 'Ward Name & Code' : 'Desk Officer'}</th>
                 <th className="p-4 text-center">Claimed Fixes</th>
@@ -232,7 +232,7 @@ export function ClaimGapDashboard({
                           )}
                         </div>
                         {item.code && (
-                          <div className="text-[10px] text-white/40 font-normal">{item.code}</div>
+                          <div className="text-[10px] text-zinc-300 font-normal">{item.code}</div>
                         )}
                       </div>
                     </div>
@@ -254,7 +254,7 @@ export function ClaimGapDashboard({
                     </span>
                   </td>
 
-                  <td className="p-4 text-center text-white/50">{item.pending}</td>
+                  <td className="p-4 text-center text-zinc-300">{item.pending}</td>
 
                   <td className="p-4 text-center">{getGapBadge(item)}</td>
 
@@ -265,7 +265,7 @@ export function ClaimGapDashboard({
                         {item.medianHoursToVerify}h
                       </span>
                     ) : (
-                      <span className="text-white/30">—</span>
+                      <span className="text-zinc-400">—</span>
                     )}
                   </td>
                 </tr>

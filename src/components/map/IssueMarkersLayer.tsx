@@ -75,14 +75,14 @@ export function IssueMarkersLayer({
             <Popup>
               <div className="min-w-[160px] p-1 font-sans">
                 <b className="text-sm text-zinc-900 block font-semibold leading-snug">
-                  {r.title || `${r.category.replace(/_/g, " ")} at ${r.address || "Bengaluru"}`}
+                  {r.title || `${(r.category || "OTHER").replace(/_/g, " ")} at ${r.address || "Bengaluru"}`}
                 </b>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 uppercase font-bold">
                     {r.status}
                   </span>
                   <span className="text-[10px] font-mono text-zinc-500 uppercase">
-                    {r.category.replace(/_/g, " ")}
+                    {(r.category || "OTHER").replace(/_/g, " ")}
                   </span>
                 </div>
 

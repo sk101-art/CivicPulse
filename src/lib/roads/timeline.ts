@@ -118,7 +118,7 @@ export async function getSegmentTimeline(
     items.push({
       id: `issue-${issue.id}-created`,
       type: "REPORTED",
-      title: `Issue Reported: ${issue.category.replace(/_/g, " ")}`,
+      title: `Issue Reported: ${(issue.category || "OTHER").replace(/_/g, " ")}`,
       description: issue.address || "Citizen submitted defect report",
       occurredAt: issue.createdAt.toISOString(),
       agency: issue.agency?.name || issue.agency?.code || null,
@@ -136,7 +136,7 @@ export async function getSegmentTimeline(
       items.push({
         id: `issue-${issue.id}-recurrence`,
         type: "RECURRENCE",
-        title: `Defect Recurrence (${issue.category.replace(/_/g, " ")})`,
+        title: `Defect Recurrence (${(issue.category || "OTHER").replace(/_/g, " ")})`,
         description: `Recurrent defect linked to prior resolved issue #${issue.recurrenceOf.slice(0, 8)}`,
         occurredAt: issue.createdAt.toISOString(),
         agency: issue.agency?.name || issue.agency?.code || null,

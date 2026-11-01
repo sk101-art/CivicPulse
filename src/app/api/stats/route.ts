@@ -28,7 +28,7 @@ export async function GET() {
 
     const recentReports = recentIssues.map((i) => ({
       id: i.id,
-      title: `${i.category.replace(/_/g, ' ')} at ${i.address || 'Bengaluru'}`,
+      title: `${(i.category || 'OTHER').replace(/_/g, ' ')} at ${i.address || 'Bengaluru'}`,
       category: i.category,
       status: i.status,
       createdAt: i.createdAt,

@@ -154,7 +154,7 @@ export async function GET(
     </div>
     <div class="card">
       <div class="card-title">Asset Category & Priority</div>
-      <div class="card-value">${issue.category.replace(/_/g, " ")}</div>
+      <div class="card-value">${(issue.category || "OTHER").replace(/_/g, " ")}</div>
       <div style="font-size: 11px; color: #4b5563; margin-top: 4px;">Priority Index: ${issue.priority.toFixed(1)} · Band: ${issue.band}</div>
     </div>
   </div>

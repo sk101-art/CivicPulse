@@ -8,6 +8,7 @@ import { Status } from "@prisma/client";
 import { computeInputHash } from "@/lib/ai/run";
 import { formatDateTimeIST } from "@/lib/time/ist";
 import { formatAiEngineName, engineFromAiRunModel, RULES_ENGINE, UNKNOWN_ENGINE } from "@/lib/ai/engineName";
+import { loadClaimGapData } from "@/lib/issues/claimGapData";
 
 export { formatAiEngineName };
 
@@ -768,54 +769,221 @@ export const chatJsonSchema: Record<string, unknown> = {
   },
 };
 
+function calculateMedian(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : Math.round(((sorted[mid - 1] + sorted[mid]) / 2) * 10) / 10;
+}
+
+function formatBestWindow(bw: unknown): string {
+  if (!bw) return "Off-peak";
+  if (typeof bw === "string") return bw;
+  if (typeof bw === "object" && "display" in (bw as Record<string, unknown>)) {
+    return String((bw as Record<string, unknown>).display);
+  }
+  return "Off-peak";
+}
+
 export async function askDeskAnalyst(
   query: string,
   contextFilter?: { wardId?: string }
 ): Promise<ChatOutput> {
-  const [issues, wards] = await Promise.all([
+  const [
+    issues,
+    wards,
+    issuesWithLifespan,
+    contractorReopened,
+    contractorTotals,
+    statusCounts,
+    bandCounts,
+    slaBreachedCount,
+    claimGap30,
+    claimGap90,
+    unresolvedCriticalGroups,
+  ] = await Promise.all([
+    // 1. Top 20 open issues by priority
     prisma.issue.findMany({
       where: {
         status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED, Status.ASSIGNED, Status.REOPENED_IN_WARRANTY] },
         ...(contextFilter?.wardId ? { wardId: contextFilter.wardId } : {}),
       },
       orderBy: { priority: "desc" },
-      take: 12,
+      take: 20,
       select: {
         id: true,
         category: true,
         priority: true,
+        band: true,
+        bandOverride: true,
         address: true,
         wardId: true,
         deteriorationScore: true,
         deteriorationRisk: true,
-        isHotspot: true,
+        bestRepairWindow: true,
         contractorName: true,
         segment: { select: { name: true, roadClass: true } },
       },
     }),
+    // 2. All wards
     prisma.ward.findMany({
       select: { id: true, code: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    // 3. Issues with lifespan for repair lifespans
+    prisma.issue.findMany({
+      where: { lifespanDays: { not: null } },
+      select: { lifespanDays: true, wardId: true, contractorName: true },
+    }),
+    // 4. Contractor reopened in warranty count
+    prisma.issue.groupBy({
+      by: ["contractorName"],
+      where: { status: Status.REOPENED_IN_WARRANTY },
+      _count: { id: true },
+    }),
+    // 5. Contractor total issues count
+    prisma.issue.groupBy({
+      by: ["contractorName"],
+      _count: { id: true },
+    }),
+    // 6. Counts by status
+    prisma.issue.groupBy({
+      by: ["status"],
+      _count: { id: true },
+    }),
+    // 7. Counts by band
+    prisma.issue.groupBy({
+      by: ["band"],
+      _count: { id: true },
+    }),
+    // 8. SLA-breached count
+    prisma.issue.count({
+      where: { slaBreached: true },
+    }),
+    // 9. Claim gap data 30 days
+    loadClaimGapData(30),
+    // 10. Claim gap data 90 days
+    loadClaimGapData(90),
+    // 11. Unresolved critical issues by ward
+    prisma.issue.groupBy({
+      by: ["wardId"],
+      where: {
+        status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED, Status.ASSIGNED, Status.REOPENED_IN_WARRANTY] },
+        band: "CRITICAL",
+      },
+      _count: { id: true },
     }),
   ]);
 
   const wardMap = new Map(wards.map((w) => [w.id, w]));
 
+  // 1. Median repair lifespan (city-wide and per-ward)
+  const allLifespans = issuesWithLifespan
+    .map((i) => i.lifespanDays)
+    .filter((d): d is number => d !== null && d !== undefined);
+  const cityWideMedianDays = calculateMedian(allLifespans);
+
+  const wardLifespanGroups = new Map<string, number[]>();
+  for (const item of issuesWithLifespan) {
+    if (item.wardId && item.lifespanDays !== null) {
+      const wardName = wardMap.get(item.wardId)?.name || item.wardId;
+      if (!wardLifespanGroups.has(wardName)) wardLifespanGroups.set(wardName, []);
+      wardLifespanGroups.get(wardName)!.push(item.lifespanDays);
+    }
+  }
+  const perWardLifespan = Array.from(wardLifespanGroups.entries())
+    .map(([ward, days]) => ({ ward, medianLifespanDays: calculateMedian(days) ?? 0 }))
+    .sort((a, b) => a.medianLifespanDays - b.medianLifespanDays);
+
+  // 2. Contractor lifespan, reopen-in-warranty counts, and defect liability rate
+  const contractorLifespanGroups = new Map<string, number[]>();
+  for (const item of issuesWithLifespan) {
+    if (item.contractorName && item.lifespanDays !== null) {
+      if (!contractorLifespanGroups.has(item.contractorName)) contractorLifespanGroups.set(item.contractorName, []);
+      contractorLifespanGroups.get(item.contractorName)!.push(item.lifespanDays);
+    }
+  }
+  const reopenedMap = new Map(contractorReopened.map((r) => [r.contractorName || "unassigned", r._count.id]));
+  const totalMap = new Map(contractorTotals.map((t) => [t.contractorName || "unassigned", t._count.id]));
+  const allContractors = new Set([...contractorLifespanGroups.keys(), ...reopenedMap.keys(), ...totalMap.keys()]);
+  const contractorStats = Array.from(allContractors)
+    .filter((c) => c && c !== "unassigned")
+    .map((contractor) => {
+      const days = contractorLifespanGroups.get(contractor) || [];
+      const medianLifespanDays = calculateMedian(days);
+      const reopenedInWarranty = reopenedMap.get(contractor) || 0;
+      const totalIssues = totalMap.get(contractor) || 0;
+      const defectLiabilityRatePercent = totalIssues > 0 ? Math.round((reopenedInWarranty / totalIssues) * 1000) / 10 : 0;
+      return {
+        contractor,
+        medianLifespanDays,
+        reopenedInWarranty,
+        totalIssues,
+        defectLiabilityRatePercent,
+      };
+    })
+    .sort((a, b) => b.defectLiabilityRatePercent - a.defectLiabilityRatePercent || b.reopenedInWarranty - a.reopenedInWarranty);
+
+  // 3. Claim gap per ward and per desk (30 / 90 days)
+  const formatClaimGap = (data: Awaited<ReturnType<typeof loadClaimGapData>>) => ({
+    totalClaims: data.totalClaims,
+    byWard: data.byWard.map((w) => ({
+      ward: w.name,
+      claimed: w.claimed,
+      verified: w.verified,
+      disputed: w.disputed,
+      pending: w.pending,
+      claimGapPercent: w.disputedPercentage,
+    })),
+    byDesk: data.byDesk.map((d) => ({
+      desk: d.name,
+      claimed: d.claimed,
+      verified: d.verified,
+      disputed: d.disputed,
+      claimGapPercent: d.disputedPercentage,
+    })),
+  });
+
+  // 4. Unresolved critical issues by ward
+  const criticalMap = new Map(unresolvedCriticalGroups.map((g) => [g.wardId || "unknown", g._count.id]));
+  const unresolvedCriticalByWard = wards
+    .map((w) => ({ ward: w.name, criticalCount: criticalMap.get(w.id) || 0 }))
+    .sort((a, b) => b.criticalCount - a.criticalCount);
+
+  // 5. Top 20 open issues by priority
+  const topIssues = issues.map((i) => {
+    const w = i.wardId ? wardMap.get(i.wardId) : null;
+    return {
+      id: i.id,
+      title: `${i.category} on ${i.address || i.segment?.name || "ORR Corridor"}`,
+      address: i.address || i.segment?.name || "ORR Corridor",
+      category: i.category,
+      band: i.bandOverride || i.band,
+      priority: Math.round(i.priority),
+      deterioration: i.deteriorationScore ?? 35,
+      risk: i.deteriorationRisk || "LOW",
+      bestWindow: formatBestWindow(i.bestRepairWindow),
+      contractor: i.contractorName || "Cauvery Infrastructure Ltd.",
+      ward: w ? `${w.name} (${w.code})` : "ORR Pilot Corridor",
+    };
+  });
+
   const inputPayload = {
     query,
-    issues: issues.map((i) => {
-      const w = i.wardId ? wardMap.get(i.wardId) : null;
-      return {
-        id: i.id,
-        title: `${i.category} on ${i.address || "ORR Corridor"}`,
-        category: i.category,
-        location: i.address || i.segment?.name || "ORR Corridor",
-        ward: w ? `${w.name} (${w.code})` : "ORR Pilot Corridor",
-        priority: Math.round(i.priority),
-        deteriorationScore: i.deteriorationScore ?? 35,
-        risk: i.deteriorationRisk || "LOW",
-        contractor: i.contractorName || "cauvery",
-      };
-    }),
+    metrics: {
+      repairLifespan: {
+        cityWideMedianDays,
+        perWard: perWardLifespan,
+      },
+      contractors: contractorStats,
+      claimGap30d: formatClaimGap(claimGap30),
+      claimGap90d: formatClaimGap(claimGap90),
+      countsByStatus: Object.fromEntries(statusCounts.map((s) => [s.status, s._count.id])),
+      countsByBand: Object.fromEntries(bandCounts.map((b) => [b.band, b._count.id])),
+      slaBreachedCount,
+      unresolvedCriticalByWard,
+    },
+    issues: topIssues,
   };
 
   const quotaOk = await tryIncrementAnalystQuota();
@@ -825,17 +993,22 @@ export async function askDeskAnalyst(
   }
 
   const prompt = `Desk Officer Query: "${query}"
-Context Issues:
-${JSON.stringify(inputPayload.issues, null, 2)}
+
+Grounded Snapshot Data:
+${JSON.stringify(inputPayload, null, 2)}
 
 Instructions:
-Answer the officer's specific question directly with specific civic infrastructure reasoning using the contextual issues provided.
-Explicitly cite relevant issue IDs in brackets like [#issue-id] along with their exact title/category, physical location, ward, priority, and risk status.
-Do not output a generic one-size-fits-all answer; directly address the specific query.`;
+1. Strict Grounding: You are an operations desk analyst for civic road and pavement infrastructure. Answer the query strictly based on the Grounded Snapshot Data above.
+2. Refusal on Out-of-Domain/Unanswerable: If the question is outside civic infrastructure operations, road defect management, contractor performance, or repair records (e.g., weather forecast, personal questions, or general knowledge), or if the requested fact is completely absent, answer with a clear refusal (e.g., "I cannot answer this question as I only have access to civic infrastructure operations and road defect data.").
+3. For normal operations questions:
+   - Answer directly and factually using the relevant metric(s) in the snapshot (repair lifespan in days, contractor defect liability rates, claim gap figures, counts by status/band, SLA breaches, or ward rankings).
+   - In your answer, ALWAYS explicitly cite relevant issue IDs in brackets like [#issue-id] along with their category/address/title from the top issues list that correspond to that ward, contractor, or query. If answering a metric question, cite an example open issue from that ward or contractor.
+   - Do NOT output "unknown" or refuse when the data exists in the snapshot.
+   - Do NOT include any numbers not found in the snapshot.`;
 
   const aiResult = await runAi<ChatOutput>({
     feature: "G-CHAT",
-    promptVer: "v1.2",
+    promptVer: "v1.3",
     userPrompt: prompt,
     schema: ChatOutputSchema,
     jsonSchema: chatJsonSchema,

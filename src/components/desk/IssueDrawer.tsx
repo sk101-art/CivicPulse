@@ -363,7 +363,7 @@ export function IssueDrawer({
             <h2 className="text-xl font-bold text-white tracking-tight">
               {(issue.category || 'OTHER').replace(/_/g, ' ')}
             </h2>
-            <p className="text-xs font-mono text-white/50 flex items-center gap-1.5">
+            <p className="text-xs font-mono text-zinc-300 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
               {issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending') && !issue.address.includes('Report Location')
                 ? issue.address
@@ -394,7 +394,7 @@ export function IssueDrawer({
           {/* Details Grid */}
           <div className="grid grid-cols-2 gap-4 text-xs font-mono">
             <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
-              <span className="text-white/40 uppercase tracking-wider block">Assigned Agency</span>
+              <span className="text-zinc-300 uppercase tracking-wider block">Assigned Agency</span>
               <div className="flex items-center gap-2 text-white font-bold">
                 <Building2 className="w-4 h-4 text-cyan-400" />
                 {issue.agency?.name || 'Unassigned'}
@@ -402,7 +402,7 @@ export function IssueDrawer({
             </div>
 
             <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
-              <span className="text-white/40 uppercase tracking-wider block">Handoff Count</span>
+              <span className="text-zinc-300 uppercase tracking-wider block">Handoff Count</span>
               <div className="flex items-center gap-2 text-white font-bold">
                 <ArrowRightLeft className="w-4 h-4 text-amber-400" />
                 {issue.handoffCount} handoffs
@@ -410,7 +410,7 @@ export function IssueDrawer({
             </div>
 
             <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
-              <span className="text-white/40 uppercase tracking-wider block">SLA Due At</span>
+              <span className="text-zinc-300 uppercase tracking-wider block">SLA Due At</span>
               <div className="flex items-center gap-2 text-white">
                 <Clock className="w-4 h-4 text-rose-400" />
                 {formatDateTimeIST(issue.slaDueAt)}
@@ -418,7 +418,7 @@ export function IssueDrawer({
             </div>
 
             <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
-              <span className="text-white/40 uppercase tracking-wider block">Reports & Evidence</span>
+              <span className="text-zinc-300 uppercase tracking-wider block">Reports & Evidence</span>
               <div className="flex items-center gap-2 text-white">
                 <UserCheck className="w-4 h-4 text-lime-400" />
                 {formatEvidenceCount(issue)}
@@ -527,7 +527,7 @@ export function IssueDrawer({
                       : (analystSummary.engine || UNKNOWN_ENGINE)}
                   </span>
                   {analystSummary.time && (
-                    <span className="text-[10px] font-mono text-white/40">{analystSummary.time}</span>
+                    <span className="text-[10px] font-mono text-zinc-300">{analystSummary.time}</span>
                   )}
                   {analystSummary.priorityAdjustmentRecommended !== 0 && !priorityAccepted && (
                     <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-mono font-bold">
@@ -572,7 +572,7 @@ export function IssueDrawer({
                       {analystSummary.triage.time && analystSummary.triage.time !== "Pending" && (
                         <>
                           <span className="text-white/30">•</span>
-                          <span className="text-white/40">{analystSummary.triage.time}</span>
+                          <span className="text-zinc-300">{analystSummary.triage.time}</span>
                         </>
                       )}
                     </div>
@@ -603,7 +603,7 @@ export function IssueDrawer({
                       {analystSummary.fixCheck.time && analystSummary.fixCheck.time !== "Pending" && (
                         <>
                           <span className="text-white/30">•</span>
-                          <span className="text-white/40">{analystSummary.fixCheck.time}</span>
+                          <span className="text-zinc-300">{analystSummary.fixCheck.time}</span>
                         </>
                       )}
                     </div>
@@ -667,7 +667,7 @@ export function IssueDrawer({
           {/* Evidence photo preview */}
           {issue.reports && issue.reports[0]?.photoUrl && (
             <div className="space-y-2">
-              <span className="text-xs font-mono uppercase tracking-wider text-white/50 block">
+              <span className="text-xs font-mono uppercase tracking-wider text-zinc-300 block">
                 Latest Evidence Photo
               </span>
               <div className="relative w-full h-48 rounded-xl overflow-hidden border border-white/10 bg-black/40">
@@ -870,7 +870,7 @@ export function IssueDrawer({
           {/* Action Buttons Toolbar */}
           {!activeForm && (
             <div className="space-y-3">
-              <span className="text-xs font-mono uppercase tracking-wider text-white/50 block">
+              <span className="text-xs font-mono uppercase tracking-wider text-zinc-300 block">
                 Allowed State Actions
               </span>
               <div className="flex flex-wrap gap-2.5">
@@ -975,7 +975,7 @@ export function IssueDrawer({
                 )}
 
                 {allowedActions.length === 0 && (
-                  <div className="text-xs font-mono text-white/40 italic">
+                  <div className="text-xs font-mono text-zinc-300 italic">
                     No further desk actions permitted for status {issue.status} (Terminal state)
                   </div>
                 )}
@@ -994,7 +994,7 @@ export function IssueDrawer({
             </div>
 
             {logs.length === 0 && !loadingLogs ? (
-              <p className="text-xs font-mono text-white/40 italic">No action log entries found.</p>
+              <p className="text-xs font-mono text-zinc-300 italic">No action log entries found.</p>
             ) : (
               <div className="space-y-3 relative before:absolute before:inset-0 before:left-3 before:w-0.5 before:bg-white/10">
                 {logs.map((log) => (
@@ -1002,12 +1002,12 @@ export function IssueDrawer({
                     <div className="absolute left-1.5 top-1.5 w-3.5 h-3.5 rounded-full bg-cyan-500/30 border-2 border-cyan-400 -translate-x-1/2" />
                     <div className="flex items-center justify-between text-xs font-mono">
                       <span className="font-bold text-cyan-300">{log.actorName}</span>
-                      <span className="text-white/40">{formatTimeIST(log.createdAt)}</span>
+                      <span className="text-zinc-300">{formatTimeIST(log.createdAt)}</span>
                     </div>
                     <div className="text-xs font-mono text-white/80">
                       Action: <span className="font-bold text-white">{log.action}</span>
                       {log.fromStatus && log.toStatus && log.fromStatus !== log.toStatus && (
-                        <span className="text-white/50 text-[11px] ml-1.5">
+                        <span className="text-zinc-300 text-[11px] ml-1.5">
                           ({log.fromStatus} &rarr; {log.toStatus})
                         </span>
                       )}

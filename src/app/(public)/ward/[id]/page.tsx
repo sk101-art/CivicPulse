@@ -158,10 +158,10 @@ export default async function WardPublicPage({
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs font-bold text-white">
-                        {issue.category.replace(/_/g, " ")}
+                        {(issue.category || "OTHER").replace(/_/g, " ")}
                       </span>
                       <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-white/5 border border-white/10 text-white/60">
-                        {issue.status.replace(/_/g, " ")}
+                        {(issue.status || "OPEN").replace(/_/g, " ")}
                       </span>
                       {issue.lifespanDays !== null && (
                         <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">

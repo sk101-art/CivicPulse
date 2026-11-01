@@ -149,14 +149,14 @@ export function DeskAnalystPanel() {
                 Co-Pilot
               </span>
             </div>
-            <p className="text-[11px] font-mono text-white/50">
+            <p className="text-[11px] font-mono text-zinc-200">
               Grounded intelligence: ward briefings, pavement decay analysis, and contractor auditing
             </p>
           </div>
         </div>
         <button
           type="button"
-          className="p-1 rounded-lg text-white/50 hover:text-white"
+          className="p-1 rounded-lg text-zinc-200 hover:text-white"
         >
           {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </button>
@@ -173,7 +173,7 @@ export function DeskAnalystPanel() {
                   {brief.headline}
                 </span>
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-white/40">
+                  <span className="text-[10px] text-zinc-300">
                     {brief.wardCode === 'ALL' ? 'Pilot Wards' : `Ward ${brief.wardCode}`}
                   </span>
                   <span
@@ -189,7 +189,7 @@ export function DeskAnalystPanel() {
               </p>
               {brief.recommendedActions && brief.recommendedActions.length > 0 && (
                 <div className="space-y-1 pt-1">
-                  <span className="text-[10px] font-mono text-white/40 uppercase tracking-wider block">
+                  <span className="text-[10px] font-mono text-zinc-300 uppercase tracking-wider block">
                     Recommended Actions
                   </span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
@@ -221,7 +221,7 @@ export function DeskAnalystPanel() {
                       : 'bg-purple-950/30 border border-purple-800/40 text-purple-100 mr-8'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-[10px] font-bold uppercase text-white/40 mb-1">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase text-zinc-300 mb-1">
                     <span>{m.sender === 'user' ? 'Desk Officer' : 'AI Analyst'}</span>
                     {m.sender === 'analyst' && (
                       <span
@@ -240,7 +240,7 @@ export function DeskAnalystPanel() {
                   </p>
                   {m.citedIssueIds && m.citedIssueIds.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-1 border-t border-white/10">
-                      <span className="text-[9px] text-white/40 uppercase">Citations:</span>
+                      <span className="text-[9px] text-zinc-300 uppercase">Citations:</span>
                       {m.citedIssueIds.map((id) => (
                         <a
                           key={id}
@@ -287,7 +287,7 @@ export function DeskAnalystPanel() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Ask analyst: e.g. 'Which road corridors need attention before rain hits?'"
-              className="flex-1 px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-xs font-mono placeholder:text-white/30 focus:outline-none focus:border-purple-500"
+              className="flex-1 px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-xs font-mono placeholder:text-zinc-400 focus:outline-none focus:border-purple-500"
             />
             <button
               type="submit"

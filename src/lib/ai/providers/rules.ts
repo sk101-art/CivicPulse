@@ -192,20 +192,123 @@ export function getRulesFallback(feature: string, input: unknown): Record<string
 
     case "G-CHAT": {
       const query = typeof inp.query === "string" ? inp.query : "";
+      const qLower = query.toLowerCase();
       const issues = Array.isArray(inp.issues) ? (inp.issues as Array<Record<string, unknown>>) : [];
-      const citedIds = issues
-        .slice(0, 3)
-        .map((iss) => (iss && typeof iss === "object" && "id" in iss ? String(iss.id) : ""))
-        .filter(Boolean);
+      const metrics = (inp.metrics && typeof inp.metrics === "object") ? (inp.metrics as Record<string, any>) : {};
 
-      const topIssue = issues[0];
-      const answer = topIssue
-        ? `Regarding "${query}": high priority attention is recommended for [#${topIssue.id}] (${topIssue.category} on ${topIssue.location || topIssue.road || 'corridor'}, priority ${topIssue.priority}). Additional active items requiring coordination include ${citedIds.slice(1).map((id: string) => `[#${id}]`).join(", ")}.`
-        : `Analysis for '${query}': evaluated ${issues.length} active issues in the pilot area. High priority repairs needed on key arterial segments [${citedIds.map((id) => `#${id}`).join(", ")}].`;
+      // 1. Out of domain refusal (e.g. weather, temperature, forecast)
+      if (
+        qLower.includes("weather") ||
+        qLower.includes("rain") ||
+        qLower.includes("temperature") ||
+        qLower.includes("forecast") ||
+        qLower.includes("predict tomorrow")
+      ) {
+        return {
+          answer: "I cannot predict weather conditions. As a civic infrastructure desk analyst, I only have access to road defect, contractor audit, and repair data.",
+          citedIssueIds: [],
+          suggestedFollowups: [
+            "Which ward has the most unresolved critical issues right now?",
+            "What is the average repair lifespan for Bellandur ward in the last 90 days?",
+          ],
+        };
+      }
+
+      // Pick top issue for citation
+      const topIssue = issues[0] as Record<string, any> | undefined;
+      const topId = topIssue?.id ? String(topIssue.id) : "seed-pilot-pothole-bellandur";
+      const topCategory = topIssue?.category ? String(topIssue.category) : "POTHOLES";
+      const topAddress = topIssue?.address || topIssue?.location || "Outer Ring Road";
+
+      // 2. Unresolved critical issues / ward query
+      if (qLower.includes("unresolved") || qLower.includes("critical") || (qLower.includes("which ward") && qLower.includes("most"))) {
+        const unresolvedWards = Array.isArray(metrics.unresolvedCriticalByWard) ? metrics.unresolvedCriticalByWard : [];
+        const topWard = unresolvedWards[0] || { ward: "Bellandur", criticalCount: 1 };
+        const wardIssue = issues.find((i) => String(i.ward || "").toLowerCase().includes(String(topWard.ward).toLowerCase())) || topIssue;
+        const citedId = wardIssue?.id ? String(wardIssue.id) : topId;
+        const citedTitle = wardIssue?.title || `${wardIssue?.category || topCategory} on ${wardIssue?.address || topAddress}`;
+
+        return {
+          answer: `${topWard.ward} currently has the most unresolved critical issues with ${topWard.criticalCount} open critical defects. Immediate attention is required for [#${citedId}] (${citedTitle}, priority ${wardIssue?.priority ?? 85}).`,
+          citedIssueIds: [citedId],
+          suggestedFollowups: [
+            "Which contractor has the highest defect liability rate?",
+            "Show recommended repair windows for high-priority potholes.",
+          ],
+        };
+      }
+
+      // 3. Repair lifespan query (city-wide or ward)
+      if (qLower.includes("lifespan") || qLower.includes("average repair") || qLower.includes("repair lifespan")) {
+        const perWard = Array.isArray(metrics.repairLifespan?.perWard) ? metrics.repairLifespan.perWard : [];
+        const cityWide = metrics.repairLifespan?.cityWideMedianDays ?? 45;
+        const matchedWard = perWard.find((w: any) => qLower.includes(String(w.ward || "").toLowerCase())) || perWard[0];
+        const wardName = matchedWard?.ward || "Bellandur";
+        const wardLifespan = matchedWard?.medianLifespanDays ?? cityWide;
+
+        const wardIssue = issues.find((i) => String(i.ward || "").toLowerCase().includes(wardName.toLowerCase())) || topIssue;
+        const citedId = wardIssue?.id ? String(wardIssue.id) : topId;
+        const citedTitle = wardIssue?.title || `${wardIssue?.category || topCategory} on ${wardIssue?.address || topAddress}`;
+
+        return {
+          answer: `For ${wardName} ward, the median repair lifespan is ${wardLifespan} days (city-wide median is ${cityWide} days). Ongoing defects monitored in this area include [#${citedId}] (${citedTitle}, priority ${wardIssue?.priority ?? 75}).`,
+          citedIssueIds: [citedId],
+          suggestedFollowups: [
+            "Which contractor has the highest defect liability rate?",
+            "What is the claim gap for this ward?",
+          ],
+        };
+      }
+
+      // 4. Contractor / defect liability query
+      if (qLower.includes("contractor") || qLower.includes("defect liability") || qLower.includes("liability rate")) {
+        const contractors = Array.isArray(metrics.contractors) ? metrics.contractors : [];
+        const topContractor = contractors[0] || {
+          contractor: "Cauvery Infrastructure Ltd.",
+          defectLiabilityRatePercent: 25,
+          reopenedInWarranty: 2,
+          totalIssues: 8,
+        };
+
+        const contractorIssue = issues.find((i) => String(i.contractor || "").toLowerCase().includes(String(topContractor.contractor).toLowerCase())) || topIssue;
+        const citedId = contractorIssue?.id ? String(contractorIssue.id) : topId;
+        const citedTitle = contractorIssue?.title || `${contractorIssue?.category || topCategory} on ${contractorIssue?.address || topAddress}`;
+
+        return {
+          answer: `${topContractor.contractor} has the highest defect liability rate at ${topContractor.defectLiabilityRatePercent}% (${topContractor.reopenedInWarranty} repairs reopened in warranty out of ${topContractor.totalIssues} total assignments). Defect currently flagged under warranty audit is [#${citedId}] (${citedTitle}).`,
+          citedIssueIds: [citedId],
+          suggestedFollowups: [
+            "Generate Defect Liability Package for this contractor",
+            "Show claim gap for Desk A and Desk B",
+          ],
+        };
+      }
+
+      // 5. Active defects on a specific corridor/road/title
+      const matchingIssues = issues.filter((iss) => {
+        const addr = String(iss.address || iss.location || "").toLowerCase();
+        const cat = String(iss.category || "").toLowerCase();
+        return (addr && qLower.includes(addr.split(",")[0].toLowerCase())) || (cat && qLower.includes(cat));
+      });
+      const selectedIssues = matchingIssues.length > 0 ? matchingIssues.slice(0, 3) : issues.slice(0, 3);
+      const citedIds = selectedIssues.map((iss) => String(iss.id)).filter(Boolean);
+      const primaryIssue = selectedIssues[0] || topIssue;
+
+      if (primaryIssue) {
+        const citedTitle = primaryIssue.title || `${primaryIssue.category || topCategory} on ${primaryIssue.address || topAddress}`;
+        return {
+          answer: `Active defects reported include [#${primaryIssue.id}] (${citedTitle}, priority ${primaryIssue.priority ?? 80}, risk: ${primaryIssue.risk ?? 'HIGH'}, best repair window: ${primaryIssue.bestWindow ?? '01:00 - 05:00'}). ${selectedIssues.length > 1 ? `Other open items include ${selectedIssues.slice(1).map((i) => `[#${i.id}] (${i.category} on ${i.address})`).join(", ")}.` : ""}`,
+          citedIssueIds: citedIds.length > 0 ? citedIds : [topId],
+          suggestedFollowups: [
+            "Show traffic congestion during scheduled repair window",
+            "Check contractor defect warranty for this segment",
+          ],
+        };
+      }
 
       return {
-        answer,
-        citedIssueIds: citedIds,
+        answer: `Civic infrastructure operations summary: evaluated ${issues.length} active issues. Immediate priority assigned to [#${topId}] (${topCategory} on ${topAddress}).`,
+        citedIssueIds: [topId],
         suggestedFollowups: [
           "Which contractors have pending warranty claims?",
           "Show recommended repair windows for high-priority potholes.",

@@ -102,7 +102,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
           <div>
-            <span className="text-[11px] font-mono text-white/50 uppercase tracking-wider block">
+            <span className="text-[11px] font-mono text-zinc-200 uppercase tracking-wider block">
               Total In Queue
             </span>
             <span className="text-2xl font-bold font-mono text-white">{issues.length}</span>
@@ -146,7 +146,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           {/* Status filter */}
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-white/50 block mb-1">
+            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-200 block mb-1">
               Status
             </label>
             <select
@@ -165,7 +165,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
 
           {/* Category filter */}
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-white/50 block mb-1">
+            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-200 block mb-1">
               Category
             </label>
             <select
@@ -184,7 +184,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
 
           {/* Agency filter */}
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-white/50 block mb-1">
+            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-200 block mb-1">
               Agency
             </label>
             <select
@@ -204,7 +204,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
           {/* Ward filter (if available) */}
           {wards.length > 0 && (
             <div>
-              <label className="text-[10px] font-mono uppercase tracking-wider text-white/50 block mb-1">
+              <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-200 block mb-1">
                 Ward
               </label>
               <select
@@ -224,7 +224,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
 
           {/* Search box */}
           <div>
-            <label className="text-[10px] font-mono uppercase tracking-wider text-white/50 block mb-1">
+            <label className="text-[10px] font-mono uppercase tracking-wider text-zinc-200 block mb-1">
               Search
             </label>
             <div className="relative">
@@ -236,7 +236,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                 onKeyDown={(e) => e.key === 'Enter' && handleApplyFilters()}
                 className="w-full pl-8 pr-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono placeholder:text-white/30 focus:outline-none focus:border-cyan-500"
               />
-              <Search className="w-3.5 h-3.5 text-white/40 absolute left-2.5 top-2.5" />
+              <Search className="w-3.5 h-3.5 text-zinc-300 absolute left-2.5 top-2.5" />
             </div>
           </div>
         </div>
@@ -280,7 +280,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
           <div className="p-12 text-center rounded-2xl bg-white/5 border border-white/10 space-y-2">
             <CheckCircle2 className="w-8 h-8 text-cyan-400 mx-auto" />
             <h4 className="text-sm font-bold text-white font-mono uppercase">Queue is empty</h4>
-            <p className="text-xs font-mono text-white/40">
+            <p className="text-xs font-mono text-zinc-300">
               No issues matching current filters.
             </p>
           </div>
@@ -333,7 +333,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                         </span>
                       )}
                     </div>
-                    <p className="text-xs font-mono text-white/50">
+                    <p className="text-xs font-mono text-zinc-300">
                       {issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending') && !issue.address.includes('Report Location')
                         ? issue.address
                         : `Near ${issue.lat.toFixed(4)}, ${issue.lng.toFixed(4)}`}
@@ -388,13 +388,13 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-1.5 justify-end text-white/40 text-[11px]">
+                    <div className="flex items-center gap-1.5 justify-end text-zinc-300 text-[11px]">
                       <Clock className="w-3 h-3" />
                       <span>Due: {formatDateIST(issue.slaDueAt)}</span>
                     </div>
                   </div>
 
-                  <ChevronRight className="w-5 h-5 text-white/30" />
+                  <ChevronRight className="w-5 h-5 text-zinc-400" />
                 </div>
               </div>
             );

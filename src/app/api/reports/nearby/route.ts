@@ -91,7 +91,7 @@ export async function GET(req: Request) {
       longitude: r.lng,
       lat: r.lat,
       lng: r.lng,
-      title: `${r.category.replace(/_/g, " ")} at ${r.address || "Location"}`,
+      title: `${(r.category || "OTHER").replace(/_/g, " ")} at ${r.address || "Location"}`,
       status: r.status,
       category: r.category,
       priorityScore: r.priority,

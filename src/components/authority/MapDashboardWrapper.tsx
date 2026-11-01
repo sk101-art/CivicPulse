@@ -151,15 +151,15 @@ export function MapDashboardWrapper({ reports: initialReports, showReportButton 
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-mono uppercase tracking-widest font-bold opacity-30">Issue Title</label>
-                  <input type="text" placeholder="Brief identifying title..." value={formData.title}
+                  <label htmlFor="issue-title-input" className="text-[10px] font-mono uppercase tracking-widest font-bold text-zinc-300">Issue Title</label>
+                  <input id="issue-title-input" type="text" placeholder="Brief identifying title..." value={formData.title}
                     onChange={e => setFormData({ ...formData, title: e.target.value })}
                     className="neon-input w-full p-4 text-sm font-bold rounded-xl" />
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-mono uppercase tracking-widest font-bold opacity-30">Field Observations</label>
-                  <textarea placeholder="Provide detailed field observations..." rows={3} value={formData.description}
+                  <label htmlFor="issue-desc-input" className="text-[10px] font-mono uppercase tracking-widest font-bold text-zinc-300">Field Observations</label>
+                  <textarea id="issue-desc-input" placeholder="Provide detailed field observations..." rows={3} value={formData.description}
                     onChange={e => setFormData({ ...formData, description: e.target.value })}
                     className="neon-input w-full p-4 text-sm leading-relaxed resize-none rounded-xl" />
                 </div>

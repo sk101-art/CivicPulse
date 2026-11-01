@@ -15,7 +15,7 @@ export default async function ClaimGapPage() {
         <div className="flex items-center justify-between">
           <Link
             href="/citizen/dashboard"
-            className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-zinc-400 hover:text-white transition"
+            className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-zinc-200 hover:text-white transition"
           >
             <ArrowLeft className="w-4 h-4" />
             Home
@@ -41,7 +41,7 @@ export default async function ClaimGapPage() {
           <h1 className="text-3xl font-display font-black text-white">
             Claim Gap & Accountability Scorecard
           </h1>
-          <p className="text-xs sm:text-sm font-mono text-white/60 max-w-3xl leading-relaxed">
+          <p className="text-xs sm:text-sm font-mono text-zinc-300 max-w-3xl leading-relaxed">
             The Claim Gap measures the percentage of repair claims disputed by on-site citizens (disputed claims ÷ total claims). Lower claim gaps represent accurate and verified contractor work.
           </p>
         </div>

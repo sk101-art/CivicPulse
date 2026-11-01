@@ -64,7 +64,7 @@ export function RepairWindowBadge({
 
   if (loading) {
     return (
-      <div className={`flex items-center gap-2 text-xs font-mono text-white/40 ${className}`}>
+      <div className={`flex items-center gap-2 text-xs font-mono text-zinc-300 ${className}`}>
         <CalendarClock className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
         <span>Calculating repair window...</span>
       </div>
@@ -158,9 +158,9 @@ export function RepairWindowBadge({
             <span className="px-2 py-0.5 rounded bg-white/10 text-white font-bold">
               {bestWindow.laneClosure.remainingLanes} of {bestWindow.laneClosure.totalLanes} lanes open
             </span>
-            <span className="text-white/40">·</span>
+            <span className="text-zinc-400">·</span>
             <span>Queue delay: {bestWindow.laneClosure.estimatedQueueDelayMin}</span>
-            <span className="text-white/40">·</span>
+            <span className="text-zinc-400">·</span>
             <span>Closure: {bestWindow.laneClosure.blockedLane}</span>
           </div>
         )}
@@ -169,7 +169,7 @@ export function RepairWindowBadge({
       {/* Alternative windows (up to 2 more) */}
       {windows.length > 1 && (
         <div className="space-y-1.5 pt-1">
-          <span className="text-[10px] font-mono uppercase tracking-wider text-white/40 block">
+          <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-300 block">
             Alternative 2-Hour Windows (Next 7 Days)
           </span>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
@@ -182,7 +182,7 @@ export function RepairWindowBadge({
                   <span className="text-white/90 font-bold">{win.display}</span>
                   <span className="text-[10px] font-bold text-cyan-400">{win.score > 100 ? `Score: ${win.score}` : `${win.score ?? 75}/100`}</span>
                 </div>
-                <div className="text-[10px] text-white/50 truncate">
+                <div className="text-[10px] text-zinc-300 truncate">
                   {win.condition}
                 </div>
               </div>
@@ -209,7 +209,7 @@ export function RepairWindowBadge({
 
           {showCalendar && (
             <div data-testid="repair-calendar-heatmap" className="space-y-2 p-3 rounded-xl bg-black/40 border border-white/10">
-              <div className="flex items-center justify-between text-[10px] font-mono text-white/50 pb-1">
+              <div className="flex items-center justify-between text-[10px] font-mono text-zinc-300 pb-1">
                 <span>Next 7 Days (84 × 2h Slots)</span>
                 <div className="flex items-center gap-2">
                   <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span> ≥80</span>
