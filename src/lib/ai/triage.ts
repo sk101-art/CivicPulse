@@ -32,6 +32,7 @@ export const g1TriageSchema = z.object({
   recapture_suspected: z.enum(["yes", "no", "unknown"]),
   faces_or_plates: z.enum(["yes", "no", "unknown"]),
   confidence: z.number().min(0).max(1),
+  is_fallback: z.boolean().optional().default(false),
 });
 
 export type G1TriageResult = z.infer<typeof g1TriageSchema>;
@@ -167,121 +168,132 @@ Examine the attached photo:
   });
 
   const triageData = runResult.data;
+  const isFallback = Boolean(
+    runResult.provider === "rules" ||
+    runResult.model.startsWith("rules") ||
+    triageData.is_fallback
+  );
 
-  // 1. Store in Report.aiTriage with engine and execution time
+  // 1. Store in Report.aiTriage with engine, execution time, and fallback marker
   const triagedAt = new Date().toISOString();
   await prisma.report.update({
     where: { id: report.id },
     data: {
       aiTriage: {
         ...triageData,
+        is_fallback: isFallback,
         _engine: formatAiEngineName(runResult.provider, runResult.model),
         _triagedAt: triagedAt,
+        _isFallback: isFallback,
       } as unknown as Prisma.InputJsonValue,
     },
   });
 
-  // 2. Category disagreement / unknown check (flag for desk review, NEVER auto-change category)
-  const categoryDiffers =
-    triageData.category !== "unknown" &&
-    triageData.category.toUpperCase() !== reportedCategory.toUpperCase();
+  // When result came from rules fallback, do NOT raise category-mismatch, indoor, or recapture flags,
+  // and do NOT write AI_FLAGGED_* ActionLog entries.
+  if (!isFallback) {
+    // 2. Category disagreement / unknown check (flag for desk review, NEVER auto-change category)
+    const categoryDiffers =
+      triageData.category !== "unknown" &&
+      triageData.category.toUpperCase() !== reportedCategory.toUpperCase();
 
-  const isUnknownMismatch =
-    triageData.category === "unknown" ||
-    triageData.shows_reported_defect === "no";
+    const isUnknownMismatch =
+      triageData.category === "unknown" ||
+      triageData.shows_reported_defect === "no";
 
-  const isIndoor = triageData.scene === "indoor";
-  const recaptureSuspected =
-    triageData.recapture_suspected === "yes" ||
-    triageData.scene === "screen";
+    const isIndoor = triageData.scene === "indoor";
+    const recaptureSuspected =
+      triageData.recapture_suspected === "yes" ||
+      triageData.scene === "screen";
 
-  const issueUpdates: Record<string, unknown> = {};
+    const issueUpdates: Record<string, unknown> = {};
 
-  if (categoryDiffers) {
-    issueUpdates.needsDuplicateReview = true;
-    await prisma.actionLog.create({
-      data: {
-        issueId: report.issue.id,
-        actorId: "system",
-        action: "AI_FLAGGED_CATEGORY_MISMATCH",
-        reportId: report.id,
-        note: `AI photo triage suggested "${triageData.category}" (differs from reported "${reportedCategory}") with confidence ${triageData.confidence.toFixed(2)} — flagged for desk review.`,
-      },
-    }).catch(() => {});
-  } else if (isUnknownMismatch) {
-    issueUpdates.needsDuplicateReview = true;
-    await prisma.actionLog.create({
-      data: {
-        issueId: report.issue.id,
-        actorId: "system",
-        action: "AI_FLAGGED_CATEGORY_MISMATCH",
-        reportId: report.id,
-        note: `Photo does not show a ${reportedCategory} — desk review`,
-      },
-    }).catch(() => {});
-  }
-
-  // Flag indoor scenes
-  if (isIndoor) {
-    issueUpdates.needsDuplicateReview = true;
-    const currentHazard = (issueUpdates.hazardFlag as string | undefined) ?? report.issue.hazardFlag ?? "";
-    if (!currentHazard.includes("INDOOR_SCENE")) {
-      issueUpdates.hazardFlag = currentHazard ? `${currentHazard},INDOOR_SCENE` : "INDOOR_SCENE";
+    if (categoryDiffers) {
+      issueUpdates.needsDuplicateReview = true;
+      await prisma.actionLog.create({
+        data: {
+          issueId: report.issue.id,
+          actorId: "system",
+          action: "AI_FLAGGED_CATEGORY_MISMATCH",
+          reportId: report.id,
+          note: `AI photo triage suggested "${triageData.category}" (differs from reported "${reportedCategory}") with confidence ${triageData.confidence.toFixed(2)} — flagged for desk review.`,
+        },
+      }).catch(() => {});
+    } else if (isUnknownMismatch) {
+      issueUpdates.needsDuplicateReview = true;
+      await prisma.actionLog.create({
+        data: {
+          issueId: report.issue.id,
+          actorId: "system",
+          action: "AI_FLAGGED_CATEGORY_MISMATCH",
+          reportId: report.id,
+          note: `Photo does not show a ${reportedCategory} — desk review`,
+        },
+      }).catch(() => {});
     }
-    await prisma.actionLog.create({
-      data: {
-        issueId: report.issue.id,
-        actorId: "system",
-        action: "AI_FLAGGED_INDOOR_SCENE",
-        reportId: report.id,
-        note: "Photo shows an indoor scene, not outdoor road infrastructure — flagged for desk review.",
-      },
-    }).catch(() => {});
-  }
 
-  // 3. Recapture suspected check (or screen scene) -> sets "needs one extra verifier"
-  if (recaptureSuspected) {
-    const currentHazard = (issueUpdates.hazardFlag as string | undefined) ?? report.issue.hazardFlag ?? "";
-    if (!currentHazard.includes("NEEDS_EXTRA_VERIFIER")) {
-      issueUpdates.hazardFlag = currentHazard ? `${currentHazard},NEEDS_EXTRA_VERIFIER` : "NEEDS_EXTRA_VERIFIER";
+    // Flag indoor scenes
+    if (isIndoor) {
+      issueUpdates.needsDuplicateReview = true;
+      const currentHazard = (issueUpdates.hazardFlag as string | undefined) ?? report.issue.hazardFlag ?? "";
+      if (!currentHazard.includes("INDOOR_SCENE")) {
+        issueUpdates.hazardFlag = currentHazard ? `${currentHazard},INDOOR_SCENE` : "INDOOR_SCENE";
+      }
+      await prisma.actionLog.create({
+        data: {
+          issueId: report.issue.id,
+          actorId: "system",
+          action: "AI_FLAGGED_INDOOR_SCENE",
+          reportId: report.id,
+          note: "Photo shows an indoor scene, not outdoor road infrastructure — flagged for desk review.",
+        },
+      }).catch(() => {});
     }
-    await prisma.actionLog.create({
-      data: {
-        issueId: report.issue.id,
-        actorId: "system",
-        action: "AI_RECAPTURE_FLAGGED",
-        reportId: report.id,
-        note: triageData.scene === "screen"
-          ? "AI detected screen photo — requirement set: needs one extra verifier."
-          : "AI detected suspected recapture/screen-photo — requirement set: needs one extra verifier.",
-      },
-    }).catch(() => {});
+
+    // 3. Recapture suspected check (or screen scene) -> sets "needs one extra verifier"
+    if (recaptureSuspected) {
+      const currentHazard = (issueUpdates.hazardFlag as string | undefined) ?? report.issue.hazardFlag ?? "";
+      if (!currentHazard.includes("NEEDS_EXTRA_VERIFIER")) {
+        issueUpdates.hazardFlag = currentHazard ? `${currentHazard},NEEDS_EXTRA_VERIFIER` : "NEEDS_EXTRA_VERIFIER";
+      }
+      await prisma.actionLog.create({
+        data: {
+          issueId: report.issue.id,
+          actorId: "system",
+          action: "AI_RECAPTURE_FLAGGED",
+          reportId: report.id,
+          note: triageData.scene === "screen"
+            ? "AI detected screen photo — requirement set: needs one extra verifier."
+            : "AI detected suspected recapture/screen-photo — requirement set: needs one extra verifier.",
+        },
+      }).catch(() => {});
+    }
+
+    // 4. Size class feeds S only when the reporter left it empty
+    let shouldRecomputePriority = false;
+    if (!report.issue.sizeClass && triageData.size_class !== "unknown") {
+      issueUpdates.sizeClass = triageData.size_class;
+      shouldRecomputePriority = true;
+    }
+
+    if (!report.issue.lanePosition && triageData.lane_position !== "unknown") {
+      issueUpdates.lanePosition = triageData.lane_position;
+      shouldRecomputePriority = true;
+    }
+
+    if (Object.keys(issueUpdates).length > 0) {
+      await prisma.issue.update({
+        where: { id: report.issue.id },
+        data: issueUpdates,
+      });
+    }
+
+    if (shouldRecomputePriority) {
+      await recomputeIssuePriority(report.issue.id).catch(() => {});
+    }
   }
 
-  // 4. Size class feeds S only when the reporter left it empty
-  let shouldRecomputePriority = false;
-  if (!report.issue.sizeClass && triageData.size_class !== "unknown") {
-    issueUpdates.sizeClass = triageData.size_class;
-    shouldRecomputePriority = true;
-  }
-
-  if (!report.issue.lanePosition && triageData.lane_position !== "unknown") {
-    issueUpdates.lanePosition = triageData.lane_position;
-    shouldRecomputePriority = true;
-  }
-
-  if (Object.keys(issueUpdates).length > 0) {
-    await prisma.issue.update({
-      where: { id: report.issue.id },
-      data: issueUpdates,
-    });
-  }
-
-  if (shouldRecomputePriority) {
-    await recomputeIssuePriority(report.issue.id).catch(() => {});
-  }
-
-  return triageData;
+  return { ...triageData, is_fallback: isFallback };
 }
 
 /**
@@ -332,6 +344,23 @@ export async function processG1Job(jobId: string, options?: ProcessG1TriageOptio
 
     const result = await processG1Triage(reportId, options);
     if (result) {
+      if (result.is_fallback) {
+        // Leave the AiJob retryable (status queued, attempts incremented)
+        // so the photo is checked by real AI on a later run, up to 3 attempts.
+        if (job.attempts + 1 >= 3) {
+          await prisma.aiJob.update({
+            where: { id: jobId },
+            data: { status: "failed", attempts: 3 },
+          });
+        } else {
+          await prisma.aiJob.update({
+            where: { id: jobId },
+            data: { status: "queued" },
+          });
+        }
+        return { ok: true, skipped: "fallback_left_queued" };
+      }
+
       await prisma.aiJob.update({
         where: { id: jobId },
         data: { status: "completed" },

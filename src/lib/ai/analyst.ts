@@ -260,34 +260,45 @@ function enrichAssessOutput(
 
   if (reportReport?.aiTriage && typeof reportReport.aiTriage === "object") {
     const t = reportReport.aiTriage as Record<string, unknown>;
+    const isFallback = Boolean(
+      t.is_fallback ||
+      t._isFallback ||
+      t._engine === RULES_ENGINE ||
+      stageEngines.triage === RULES_ENGINE
+    );
+
     const flags: string[] = [];
-    if (typeof t.category === "string" && t.category !== "unknown" && t.category.toUpperCase() !== issue.category.toUpperCase()) {
-      flags.push(`Category mismatch: suggested "${t.category}" vs reported "${issue.category}"`);
-    }
-    if (t.category === "unknown" || t.shows_reported_defect === "no") {
-      flags.push("Photo doesn't show the reported issue");
-    }
-    if (t.scene === "indoor") {
-      flags.push("Indoor scene (not road/roadside)");
-    }
-    if (t.scene === "screen" || t.recapture_suspected === "yes") {
-      flags.push("Recapture/screen photo suspected (extra verifier required)");
-    }
-    if (t.scene === "other") {
-      flags.push("Non-road scene detected");
-    }
-    if (typeof t.confidence === "number" && t.confidence < 0.7) {
-      flags.push(`Low confidence (${Math.round(t.confidence * 100)}%)`);
+    if (!isFallback) {
+      if (typeof t.category === "string" && t.category !== "unknown" && t.category.toUpperCase() !== issue.category.toUpperCase()) {
+        flags.push(`Category mismatch: suggested "${t.category}" vs reported "${issue.category}"`);
+      }
+      if (t.category === "unknown" || t.shows_reported_defect === "no") {
+        flags.push("Photo doesn't show the reported issue");
+      }
+      if (t.scene === "indoor") {
+        flags.push("Indoor scene (not road/roadside)");
+      }
+      if (t.scene === "screen" || t.recapture_suspected === "yes") {
+        flags.push("Recapture/screen photo suspected (extra verifier required)");
+      }
+      if (t.scene === "other") {
+        flags.push("Non-road scene detected");
+      }
+      if (typeof t.confidence === "number" && t.confidence < 0.7) {
+        flags.push(`Low confidence (${Math.round(t.confidence * 100)}%)`);
+      }
     }
 
     const runAt = (typeof t._triagedAt === "string" ? new Date(t._triagedAt) : undefined) || stageEngines.triageRunAt;
 
     triageMeta = {
-      result: `Category: ${t.category || issue.category}, Size: ${t.size_class || "medium"}, Lane: ${t.lane_position || "curb"}`,
-      engine: stageEngines.triage,
+      result: isFallback
+        ? "AI unavailable — photo not checked yet"
+        : `Category: ${t.category || issue.category}, Size: ${t.size_class || "medium"}, Lane: ${t.lane_position || "curb"}`,
+      engine: isFallback ? RULES_ENGINE : stageEngines.triage,
       time: runAt ? formatDateTimeIST(runAt) : formatDateTimeIST(reportReport.createdAt),
       flags,
-      status: stageEngines.triage === RULES_ENGINE ? "unavailable" : "completed",
+      status: isFallback ? "unavailable" : "completed",
     };
   } else if (!reportReport?.photoUrl) {
     triageMeta = {

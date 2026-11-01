@@ -3,18 +3,18 @@ export function getRulesFallback(feature: string, input: unknown): Record<string
 
   switch (feature) {
     case "G1": {
-      // Photo triage
-      const reportedCategory = typeof inp.category === "string" ? inp.category : "unknown";
+      // Photo triage fallback when no AI provider was available
       return {
-        category: reportedCategory,
-        shows_reported_defect: "yes",
-        scene: "road",
+        category: "unknown",
+        shows_reported_defect: "unclear",
+        scene: "other",
         size_class: "unknown",
         lane_position: "unknown",
         water_present: "unknown",
-        recapture_suspected: "no",
+        recapture_suspected: "unknown",
         faces_or_plates: "no",
-        confidence: 0.5,
+        confidence: 0,
+        is_fallback: true,
       };
     }
 

@@ -1,14 +1,16 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db/prisma";
 import { Category, EvidenceRole, Status, Band } from "@prisma/client";
-import { processG1Triage } from "@/lib/ai/triage";
+import { processG1Triage, processG1Job } from "@/lib/ai/triage";
 import { assessIssueWithMeta } from "@/lib/ai/analyst";
+import { RULES_ENGINE } from "@/lib/ai/engineName";
 import { LlmAdapter, LlmGenerateResult } from "@/lib/external/llm/types";
 import { formatDateTimeIST } from "@/lib/time/ist";
 
-describe("G1 Photo Triage enhancements: unknown mismatch, scene detection, warning chips, run time", () => {
+describe("G1 Photo Triage enhancements: unknown mismatch, scene detection, warning chips, run time, and rules fallback", () => {
   const createdIssueIds: string[] = [];
   const createdReportIds: string[] = [];
+  const createdJobIds: string[] = [];
   let testUserId: string;
 
   beforeAll(async () => {
@@ -18,6 +20,9 @@ describe("G1 Photo Triage enhancements: unknown mismatch, scene detection, warni
   });
 
   afterAll(async () => {
+    for (const jId of createdJobIds) {
+      await prisma.aiJob.delete({ where: { id: jId } }).catch(() => {});
+    }
     for (const rId of createdReportIds) {
       await prisma.report.delete({ where: { id: rId } }).catch(() => {});
     }
@@ -183,5 +188,135 @@ describe("G1 Photo Triage enhancements: unknown mismatch, scene detection, warni
     const assessed = await assessIssueWithMeta(issue.id, { skipCache: true });
     expect(assessed.output.triage?.flags).toContain("Indoor scene (not road/roadside)");
     expect(assessed.output.triage?.flags).toContain("Photo doesn't show the reported issue");
+  });
+
+  it("when G1 uses rules fallback: returns unknown/unclear/other/0 confidence, produces no flags/logs, stays retryable in AiJob, and G1 card shows 'AI unavailable — photo not checked yet' without mismatch chip", async () => {
+    const issue = await prisma.issue.create({
+      data: {
+        category: Category.POTHOLES,
+        status: Status.OPEN,
+        lat: 12.9352,
+        lng: 77.6945,
+        address: "Fallback Test Road",
+        slaDueAt: new Date(Date.now() + 72 * 3600 * 1000),
+        band: Band.LOW,
+        needsDuplicateReview: false,
+      },
+    });
+    createdIssueIds.push(issue.id);
+
+    const report = await prisma.report.create({
+      data: {
+        issueId: issue.id,
+        userId: testUserId,
+        role: EvidenceRole.REPORT,
+        photoUrl: "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+        photoSha256: `sha256-rules-fb-${Date.now()}`,
+        signature: "sig-rules-fb",
+        lat: 12.9352,
+        lng: 77.6945,
+        gpsAccuracyM: 3.5,
+        capturedAt: new Date(),
+      },
+    });
+    createdReportIds.push(report.id);
+
+    const job = await prisma.aiJob.create({
+      data: {
+        feature: "G1",
+        targetId: report.id,
+        status: "queued",
+        attempts: 0,
+      },
+    });
+    createdJobIds.push(job.id);
+
+    // Run processG1Job with empty adapters to force rules fallback
+    const outcome = await processG1Job(job.id, { adapters: [] });
+    expect(outcome.ok).toBe(true);
+    expect(outcome.skipped).toBe("fallback_left_queued");
+
+    // 1. Check report.aiTriage contents
+    const updatedReport = await prisma.report.findUnique({ where: { id: report.id } });
+    const aiTriage = updatedReport?.aiTriage as Record<string, unknown>;
+    expect(aiTriage).toBeDefined();
+    expect(aiTriage.category).toBe("unknown");
+    expect(aiTriage.shows_reported_defect).toBe("unclear");
+    expect(aiTriage.scene).toBe("other");
+    expect(aiTriage.recapture_suspected).toBe("unknown");
+    expect(aiTriage.confidence).toBe(0);
+    expect(aiTriage.is_fallback).toBe(true);
+
+    // 2. Check that no flags or logs were raised
+    const updatedIssue = await prisma.issue.findUnique({ where: { id: issue.id } });
+    expect(updatedIssue?.needsDuplicateReview).toBe(false);
+    expect(updatedIssue?.hazardFlag).toBeNull();
+
+    const logs = await prisma.actionLog.findMany({ where: { issueId: issue.id } });
+    const aiLogs = logs.filter((l) => l.action.startsWith("AI_FLAGGED_") || l.action === "AI_RECAPTURE_FLAGGED");
+    expect(aiLogs).toHaveLength(0);
+
+    // 3. Check AiJob remains queued with attempts incremented
+    const updatedJob = await prisma.aiJob.findUnique({ where: { id: job.id } });
+    expect(updatedJob?.status).toBe("queued");
+    expect(updatedJob?.attempts).toBe(1);
+
+    // 4. Check G1 card meta via assessIssueWithMeta
+    const assessed = await assessIssueWithMeta(issue.id, { skipCache: true });
+    expect(assessed.output.triage).toBeDefined();
+    expect(assessed.output.triage?.result).toBe("AI unavailable — photo not checked yet");
+    expect(assessed.output.triage?.engine).toBe(RULES_ENGINE);
+    expect(assessed.output.triage?.status).toBe("unavailable");
+    expect(assessed.output.triage?.flags).not.toContain("Photo doesn't show the reported issue");
+    expect(assessed.output.triage?.flags).toHaveLength(0);
+  });
+
+  it("marks AiJob as failed when rules fallback reaches 3 attempts", async () => {
+    const issue = await prisma.issue.create({
+      data: {
+        category: Category.STREETLIGHTS,
+        status: Status.OPEN,
+        lat: 12.9352,
+        lng: 77.6945,
+        address: "Retry Limit Test Road",
+        slaDueAt: new Date(Date.now() + 72 * 3600 * 1000),
+        band: Band.LOW,
+      },
+    });
+    createdIssueIds.push(issue.id);
+
+    const report = await prisma.report.create({
+      data: {
+        issueId: issue.id,
+        userId: testUserId,
+        role: EvidenceRole.REPORT,
+        photoUrl: "data:image/jpeg;base64,/9j/4AAQSkZJRg==",
+        photoSha256: `sha256-limit-${Date.now()}`,
+        signature: "sig-limit",
+        lat: 12.9352,
+        lng: 77.6945,
+        gpsAccuracyM: 3.5,
+        capturedAt: new Date(),
+      },
+    });
+    createdReportIds.push(report.id);
+
+    // Job with attempts = 2 (next attempt will be 3rd)
+    const job = await prisma.aiJob.create({
+      data: {
+        feature: "G1",
+        targetId: report.id,
+        status: "queued",
+        attempts: 2,
+      },
+    });
+    createdJobIds.push(job.id);
+
+    const outcome = await processG1Job(job.id, { adapters: [] });
+    expect(outcome.ok).toBe(true);
+
+    const updatedJob = await prisma.aiJob.findUnique({ where: { id: job.id } });
+    expect(updatedJob?.status).toBe("failed");
+    expect(updatedJob?.attempts).toBe(3);
   });
 });
