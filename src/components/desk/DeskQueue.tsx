@@ -317,7 +317,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-white">
-                        {issue.category.replace(/_/g, ' ')}
+                        {(issue.category || 'OTHER').replace(/_/g, ' ')}
                       </span>
                       <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-white/10 text-white">
                         {issue.status}

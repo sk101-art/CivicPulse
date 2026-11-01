@@ -8,6 +8,7 @@
 import { chromium, FullConfig } from "@playwright/test";
 import { createSeedDb } from "../../scripts/lib/db-target";
 import { seedDemoData } from "../../scripts/seed-demo";
+import { verifySchemaParity } from "../../scripts/verify-schema-parity";
 import path from "path";
 import fs from "fs";
 
@@ -21,15 +22,34 @@ const ROLES = [
 ];
 
 export default async function globalSetup(_config: FullConfig) {
+  // 0. Verify public & test schema parity (no column drift)
+  const parity = await verifySchemaParity();
+  if (!parity.ok) {
+    throw new Error(`Schema drift detected between public and test schemas: ${JSON.stringify(parity.discrepancies)}`);
+  }
+
   // 1. Seed
-  const { pool, verify } = createSeedDb();
-  await verify();
-  await seedDemoData();
-  await pool.end().catch(() => {});
+  if (process.env.QA_SKIP_SEED === "1") {
+    console.log("[QA Phase 2 Setup] QA_SKIP_SEED=1 set; skipping database reseeding.");
+  } else {
+    const { pool, verify } = createSeedDb();
+    await verify();
+    await seedDemoData();
+    await pool.end().catch(() => {});
+  }
 
   // 2. Login each role and save storage state
   const stateDir = path.resolve(process.cwd(), ".playwright-auth");
   fs.mkdirSync(stateDir, { recursive: true });
+
+  const allAuthExist = ROLES.every((r) =>
+    fs.existsSync(path.join(stateDir, `${r.name}.json`))
+  );
+
+  if (process.env.QA_SKIP_SEED === "1" && allAuthExist) {
+    console.log("[QA Phase 2 Setup] Auth sessions already exist; skipping re-login.");
+    return;
+  }
 
   const browser = await chromium.launch();
   try {

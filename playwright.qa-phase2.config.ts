@@ -55,7 +55,7 @@ export default defineConfig({
   webServer: {
     command: `npx next start -p ${E2E_PORT}`,
     port: E2E_PORT,
-    reuseExistingServer: false,
+    reuseExistingServer: process.env.QA_REUSE === '1',
     timeout: 60000,
     env: {
       APP_DATABASE_URL: testDbUrl,

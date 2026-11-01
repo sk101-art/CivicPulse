@@ -210,10 +210,11 @@ export function DeskAnalystPanel() {
 
           {/* Chat Messages Log */}
           {messages.length > 0 && (
-            <div className="space-y-2 max-h-60 overflow-y-auto p-2 rounded-xl bg-black/30 border border-white/5">
+            <div data-testid="analyst-chat-messages" className="space-y-2 max-h-60 overflow-y-auto p-2 rounded-xl bg-black/30 border border-white/5">
               {messages.map((m) => (
                 <div
                   key={m.id}
+                  data-testid={m.sender === 'user' ? 'analyst-chat-question' : 'analyst-chat-response'}
                   className={`p-2.5 rounded-xl text-xs font-mono ${
                     m.sender === 'user'
                       ? 'bg-cyan-950/40 border border-cyan-800/40 text-cyan-200 ml-8'
@@ -231,7 +232,12 @@ export function DeskAnalystPanel() {
                       </span>
                     )}
                   </div>
-                  <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                  <p
+                    data-testid={m.sender === 'user' ? 'analyst-question-text' : 'analyst-answer-text'}
+                    className="leading-relaxed whitespace-pre-wrap"
+                  >
+                    {m.text}
+                  </p>
                   {m.citedIssueIds && m.citedIssueIds.length > 0 && (
                     <div className="flex flex-wrap items-center gap-1.5 mt-2 pt-1 border-t border-white/10">
                       <span className="text-[9px] text-white/40 uppercase">Citations:</span>
@@ -289,7 +295,7 @@ export function DeskAnalystPanel() {
               disabled={isAsking || !query.trim()}
               className="px-4 py-2.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-black text-xs font-mono font-bold flex items-center gap-1.5 transition-colors disabled:opacity-40"
             >
-              {isAsking ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+              {isAsking ? <Loader2 data-testid="analyst-chat-loading" className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
               Ask
             </button>
           </form>

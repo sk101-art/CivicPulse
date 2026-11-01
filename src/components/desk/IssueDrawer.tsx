@@ -361,7 +361,7 @@ export function IssueDrawer({
               )}
             </div>
             <h2 className="text-xl font-bold text-white tracking-tight">
-              {issue.category.replace(/_/g, ' ')}
+              {(issue.category || 'OTHER').replace(/_/g, ' ')}
             </h2>
             <p className="text-xs font-mono text-white/50 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-cyan-400" />
