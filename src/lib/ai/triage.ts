@@ -252,10 +252,10 @@ export async function processG1Job(jobId: string, options?: ProcessG1TriageOptio
       if (issueReport) {
         reportId = issueReport.id;
       } else {
-        // Target report/issue no longer exists: mark failed with no retry and move on (not an error)
+        // Target report/issue no longer exists: mark skipped with no retry and move on (not an error)
         await prisma.aiJob.update({
           where: { id: jobId },
-          data: { status: "failed", attempts: 3 },
+          data: { status: "skipped", attempts: 3 },
         });
         return { ok: true, skipped: "target_deleted" };
       }
@@ -271,7 +271,7 @@ export async function processG1Job(jobId: string, options?: ProcessG1TriageOptio
     } else {
       await prisma.aiJob.update({
         where: { id: jobId },
-        data: { status: "failed", attempts: 3 },
+        data: { status: "skipped", attempts: 3 },
       });
       return { ok: true, skipped: "target_deleted" };
     }

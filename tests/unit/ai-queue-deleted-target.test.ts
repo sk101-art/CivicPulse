@@ -23,7 +23,7 @@ describe("AI Queue deleted target and error handling", () => {
     }
   });
 
-  it("G1 job with deleted/non-existent target is marked failed with attempts=3 and skipped without error", async () => {
+  it("G1 job with deleted/non-existent target is marked skipped with attempts=3 and skipped without error", async () => {
     const job = await prisma.aiJob.create({
       data: {
         feature: "G1",
@@ -39,11 +39,11 @@ describe("AI Queue deleted target and error handling", () => {
     expect(result.skipped).toBe("target_deleted");
 
     const updated = await prisma.aiJob.findUnique({ where: { id: job.id } });
-    expect(updated?.status).toBe("failed");
+    expect(updated?.status).toBe("skipped");
     expect(updated?.attempts).toBe(3);
   });
 
-  it("G2 job with deleted/non-existent target is marked failed with attempts=3 and skipped without error", async () => {
+  it("G2 job with deleted/non-existent target is marked skipped with attempts=3 and skipped without error", async () => {
     const job = await prisma.aiJob.create({
       data: {
         feature: "G2",
@@ -59,7 +59,7 @@ describe("AI Queue deleted target and error handling", () => {
     expect(result.skipped).toBe("target_deleted");
 
     const updated = await prisma.aiJob.findUnique({ where: { id: job.id } });
-    expect(updated?.status).toBe("failed");
+    expect(updated?.status).toBe("skipped");
     expect(updated?.attempts).toBe(3);
   });
 

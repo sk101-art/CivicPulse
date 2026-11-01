@@ -44,8 +44,8 @@ function resolveConnectionString(rawUrl?: string): string {
 }
 
 const rawTargetUrl = isTestEnv
-  ? (process.env.DATABASE_URL_TEST || env.APP_DATABASE_URL)
-  : env.APP_DATABASE_URL;
+  ? (process.env.DATABASE_URL_TEST || env.APP_DATABASE_URL || process.env.DATABASE_URL)
+  : (env.APP_DATABASE_URL || process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL);
 
 const connectionString = resolveConnectionString(rawTargetUrl);
 
@@ -71,7 +71,7 @@ function getOrCreatePool(): Pool {
 
   const pool = new Pool({
     connectionString,
-    ...(isTestEnv ? { options: '-c search_path=test,public' } : {}),
+    options: isTestEnv ? '-c search_path=test,public' : '-c search_path=public',
     ...buildPoolConfig({ isTest: isTestEnv, poolMax: process.env.DB_POOL_MAX }),
   });
 
@@ -89,7 +89,7 @@ function getOrCreatePool(): Pool {
 const pool = getOrCreatePool();
 const adapter = new PrismaPg(
   pool,
-  isTestEnv ? { schema: 'test' } : undefined
+  { schema: isTestEnv ? 'test' : 'public' }
 );
 
 export const prisma =

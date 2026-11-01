@@ -56,6 +56,8 @@ export interface JobResult {
   partial?: boolean;
   firstError?: string;
   durationMs: number;
+  queued?: number;
+  picked?: number;
 }
 
 function budgetLeft(startedAt: number): boolean {
@@ -102,7 +104,12 @@ async function runSlaCheck(startedAt: number): Promise<Omit<JobResult, "job" | "
  */
 async function runAiQueue(startedAt: number): Promise<Omit<JobResult, "job" | "durationMs">> {
   if (!isConfigured("GEMINI_API_KEY") && !isConfigured("GROQ_API_KEY")) {
-    return { processed: 0, skipped: "No LLM key set (GEMINI_API_KEY / GROQ_API_KEY); jobs left queued" };
+    return {
+      processed: 0,
+      skipped: "No LLM key set (GEMINI_API_KEY / GROQ_API_KEY); jobs left queued",
+      queued: 0,
+      picked: 0,
+    };
   }
 
   // Recover jobs left "processing" by a run that was cut off.
@@ -111,20 +118,29 @@ async function runAiQueue(startedAt: number): Promise<Omit<JobResult, "job" | "d
     data: { status: "queued" },
   });
 
+  const queued = await prisma.aiJob.count({
+    where: { status: "queued", feature: { in: ["G1", "G2"] }, attempts: { lt: 3 } },
+  });
+
   const jobs = await prisma.aiJob.findMany({
     where: { status: "queued", feature: { in: ["G1", "G2"] }, attempts: { lt: 3 } },
     orderBy: { createdAt: "asc" },
     take: 20,
   });
 
+  console.log(`[ai-queue] Queued G1/G2 in DB: ${queued}, picked: ${jobs.length}`);
+
   let processed = 0;
   let failed = 0;
+  let skipped = 0;
   let firstError: string | undefined;
   for (const job of jobs) {
     if (!budgetLeft(startedAt)) break;
     const res = job.feature === "G1" ? await processG1Job(job.id) : await processG2Job(job.id);
     if (res.ok) {
-      if (!res.skipped) {
+      if (res.skipped) {
+        skipped++;
+      } else {
         processed++;
       }
     } else {
@@ -137,6 +153,9 @@ async function runAiQueue(startedAt: number): Promise<Omit<JobResult, "job" | "d
   return {
     processed,
     failed,
+    skipped: skipped > 0 ? skipped : undefined,
+    queued,
+    picked: jobs.length,
     ...(firstError ? { firstError } : {}),
   };
 }
