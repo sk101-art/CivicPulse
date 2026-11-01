@@ -7,6 +7,8 @@ export function getRulesFallback(feature: string, input: unknown): Record<string
       const reportedCategory = typeof inp.category === "string" ? inp.category : "unknown";
       return {
         category: reportedCategory,
+        shows_reported_defect: "yes",
+        scene: "road",
         size_class: "unknown",
         lane_position: "unknown",
         water_present: "unknown",

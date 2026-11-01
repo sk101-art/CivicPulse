@@ -24,6 +24,8 @@ export const g1TriageSchema = z.object({
     "OTHER",
     "unknown",
   ]),
+  shows_reported_defect: z.enum(["yes", "no", "unclear"]).default("unclear"),
+  scene: z.enum(["road", "indoor", "screen", "other"]).default("road"),
   size_class: z.enum(["small", "medium", "large", "unknown"]),
   lane_position: z.enum(["wheel_path", "edge", "footpath", "unknown"]),
   water_present: z.enum(["yes", "no", "unknown"]),
@@ -39,6 +41,8 @@ export const g1JsonSchema: Record<string, unknown> = {
   additionalProperties: false,
   required: [
     "category",
+    "shows_reported_defect",
+    "scene",
     "size_class",
     "lane_position",
     "water_present",
@@ -64,6 +68,14 @@ export const g1JsonSchema: Record<string, unknown> = {
         "OTHER",
         "unknown",
       ],
+    },
+    shows_reported_defect: {
+      type: "string",
+      enum: ["yes", "no", "unclear"],
+    },
+    scene: {
+      type: "string",
+      enum: ["road", "indoor", "screen", "other"],
     },
     size_class: {
       type: "string",
@@ -114,11 +126,11 @@ export async function processG1Triage(
     include: { issue: true },
   });
 
-  if (!report) {
+  if (!report || !report.issue) {
     return null;
   }
 
-  const reportedCategory = report.issue.category.toString();
+  const reportedCategory = String(report.issue.category || "unknown");
 
   // Load the evidence photo (data URI or our own Supabase storage URL)
   const image = await loadImageForLlm(report.photoUrl);
@@ -127,7 +139,22 @@ export async function processG1Triage(
   const runResult = await runAi<G1TriageResult>({
     feature: "G1",
     promptVer: "g1-v1",
-    userPrompt: `Reporter's selected category: ${reportedCategory}. Analyze the attached road evidence photo.`,
+    systemPrompt: `You are an expert civic infrastructure vision analyst triaging citizen-submitted road defect photos.
+Analyze the photo carefully and answer structured questions:
+1. scene: Is the photo taken outdoors on a road or roadside ("road"), indoors ("indoor"), displaying a screen or printed picture ("screen"), or another non-road environment ("other")?
+2. shows_reported_defect: Does the photo actually show the reported issue (${reportedCategory})? Answer "yes" if the defect is visible, "no" if absent or clearly not shown, or "unclear" if blurry/dark/ambiguous.
+3. category: Which specific defect is visible? If no road defect is shown or the reported defect is absent/unclear, choose "unknown".
+4. size_class: "small", "medium", "large", or "unknown".
+5. lane_position: "wheel_path", "edge", "footpath", or "unknown".
+6. water_present: "yes", "no", or "unknown".
+7. recapture_suspected: "yes" if the image appears to be a photo of a screen, monitor, or printed photograph, otherwise "no".
+8. faces_or_plates: "yes" if human faces or vehicle license plates are visible, otherwise "no".
+9. confidence: Float between 0.0 and 1.0 indicating confidence in your assessment.`,
+    userPrompt: `Reporter's selected category: "${reportedCategory}".
+Examine the attached photo:
+- Determine if the photo shows a road/roadside scene or an indoor/screen scene (scene: road|indoor|screen|other).
+- Explicitly determine whether the photo shows the reported defect ("${reportedCategory}") (shows_reported_defect: yes|no|unclear).
+- If the defect is not visible or the scene is not a road, set category to "unknown" and shows_reported_defect to "no".`,
     images,
     schema: g1TriageSchema,
     jsonSchema: g1JsonSchema,
@@ -141,21 +168,32 @@ export async function processG1Triage(
 
   const triageData = runResult.data;
 
-  // 1. Store in Report.aiTriage
+  // 1. Store in Report.aiTriage with engine and execution time
+  const triagedAt = new Date().toISOString();
   await prisma.report.update({
     where: { id: report.id },
     data: {
-      // Record which engine produced this result so the desk never has to guess.
-      aiTriage: { ...triageData, _engine: formatAiEngineName(runResult.provider, runResult.model) } as unknown as Prisma.InputJsonValue,
+      aiTriage: {
+        ...triageData,
+        _engine: formatAiEngineName(runResult.provider, runResult.model),
+        _triagedAt: triagedAt,
+      } as unknown as Prisma.InputJsonValue,
     },
   });
 
-  // 2. Category disagreement check (flag for desk review, NEVER auto-change category)
+  // 2. Category disagreement / unknown check (flag for desk review, NEVER auto-change category)
   const categoryDiffers =
     triageData.category !== "unknown" &&
     triageData.category.toUpperCase() !== reportedCategory.toUpperCase();
 
-  const recaptureSuspected = triageData.recapture_suspected === "yes";
+  const isUnknownMismatch =
+    triageData.category === "unknown" ||
+    triageData.shows_reported_defect === "no";
+
+  const isIndoor = triageData.scene === "indoor";
+  const recaptureSuspected =
+    triageData.recapture_suspected === "yes" ||
+    triageData.scene === "screen";
 
   const issueUpdates: Record<string, unknown> = {};
 
@@ -170,11 +208,40 @@ export async function processG1Triage(
         note: `AI photo triage suggested "${triageData.category}" (differs from reported "${reportedCategory}") with confidence ${triageData.confidence.toFixed(2)} — flagged for desk review.`,
       },
     }).catch(() => {});
+  } else if (isUnknownMismatch) {
+    issueUpdates.needsDuplicateReview = true;
+    await prisma.actionLog.create({
+      data: {
+        issueId: report.issue.id,
+        actorId: "system",
+        action: "AI_FLAGGED_CATEGORY_MISMATCH",
+        reportId: report.id,
+        note: `Photo does not show a ${reportedCategory} — desk review`,
+      },
+    }).catch(() => {});
   }
 
-  // 3. Recapture suspected check -> sets "needs one extra verifier"
+  // Flag indoor scenes
+  if (isIndoor) {
+    issueUpdates.needsDuplicateReview = true;
+    const currentHazard = (issueUpdates.hazardFlag as string | undefined) ?? report.issue.hazardFlag ?? "";
+    if (!currentHazard.includes("INDOOR_SCENE")) {
+      issueUpdates.hazardFlag = currentHazard ? `${currentHazard},INDOOR_SCENE` : "INDOOR_SCENE";
+    }
+    await prisma.actionLog.create({
+      data: {
+        issueId: report.issue.id,
+        actorId: "system",
+        action: "AI_FLAGGED_INDOOR_SCENE",
+        reportId: report.id,
+        note: "Photo shows an indoor scene, not outdoor road infrastructure — flagged for desk review.",
+      },
+    }).catch(() => {});
+  }
+
+  // 3. Recapture suspected check (or screen scene) -> sets "needs one extra verifier"
   if (recaptureSuspected) {
-    const currentHazard = report.issue.hazardFlag || "";
+    const currentHazard = (issueUpdates.hazardFlag as string | undefined) ?? report.issue.hazardFlag ?? "";
     if (!currentHazard.includes("NEEDS_EXTRA_VERIFIER")) {
       issueUpdates.hazardFlag = currentHazard ? `${currentHazard},NEEDS_EXTRA_VERIFIER` : "NEEDS_EXTRA_VERIFIER";
     }
@@ -184,7 +251,9 @@ export async function processG1Triage(
         actorId: "system",
         action: "AI_RECAPTURE_FLAGGED",
         reportId: report.id,
-        note: "AI detected suspected recapture/screen-photo — requirement set: needs one extra verifier.",
+        note: triageData.scene === "screen"
+          ? "AI detected screen photo — requirement set: needs one extra verifier."
+          : "AI detected suspected recapture/screen-photo — requirement set: needs one extra verifier.",
       },
     }).catch(() => {});
   }

@@ -426,6 +426,14 @@ export default async function PublicIssuePage({
                         <span>•</span>
                         <span>Pos: <strong className="text-white">{String((report.aiTriage as Record<string, unknown>).lane_position || "—")}</strong></span>
                       </div>
+                      {((report.aiTriage as Record<string, unknown>).category === "unknown" ||
+                        (report.aiTriage as Record<string, unknown>).shows_reported_defect === "no") && (
+                        <div className="pt-1.5">
+                          <span data-testid="g1-mismatch-warning-chip" className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                            Photo doesn&apos;t show the reported issue
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

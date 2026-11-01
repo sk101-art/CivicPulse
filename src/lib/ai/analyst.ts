@@ -136,11 +136,14 @@ export interface AssessIssueResult {
 
 interface StageEngines {
   triage: string;
+  triageRunAt?: Date;
   fixCheck: string;
+  fixCheckRunAt?: Date;
 }
 
 /**
- * Engine that produced a stored G1/G2 aiTriage payload: the `_engine` tag written alongside it,
+ * Engine and run timestamp that produced a stored G1/G2 aiTriage payload:
+ * the `_engine` and `_triagedAt` tag written alongside it,
  * else the AiRun recorded for the same input hash, else "Unknown engine". Never assumed.
  */
 async function resolveStageEngine(
@@ -148,21 +151,36 @@ async function resolveStageEngine(
   feature: "G1" | "G2",
   promptVer: string,
   inputPayload: Record<string, unknown>
-): Promise<string> {
-  if (!aiTriage || typeof aiTriage !== "object") return UNKNOWN_ENGINE;
-  const tagged = (aiTriage as Record<string, unknown>)._engine;
-  if (typeof tagged === "string" && tagged.trim()) return tagged;
+): Promise<{ engine: string; runAt?: Date }> {
+  if (!aiTriage || typeof aiTriage !== "object") return { engine: UNKNOWN_ENGINE };
+  const t = aiTriage as Record<string, unknown>;
+  const tagged = t._engine;
+  const triagedAtStr = typeof t._triagedAt === "string" ? t._triagedAt : undefined;
+  let runAt = triagedAtStr ? new Date(triagedAtStr) : undefined;
+  let engine = typeof tagged === "string" && tagged.trim() ? tagged : undefined;
 
-  try {
-    const run = await prisma.aiRun.findFirst({
-      where: { feature, inputHash: computeInputHash(feature, promptVer, inputPayload) },
-      orderBy: { createdAt: "desc" },
-      select: { model: true },
-    });
-    return engineFromAiRunModel(run?.model);
-  } catch {
-    return UNKNOWN_ENGINE;
+  if (!engine || !runAt) {
+    try {
+      const run = await prisma.aiRun.findFirst({
+        where: { feature, inputHash: computeInputHash(feature, promptVer, inputPayload) },
+        orderBy: { createdAt: "desc" },
+        select: { model: true, createdAt: true },
+      });
+      if (!engine && run?.model) {
+        engine = engineFromAiRunModel(run.model);
+      }
+      if (!runAt && run?.createdAt) {
+        runAt = run.createdAt;
+      }
+    } catch {
+      // ignore
+    }
   }
+
+  return {
+    engine: engine || UNKNOWN_ENGINE,
+    runAt,
+  };
 }
 
 interface StageEngineReport {
@@ -183,14 +201,15 @@ async function resolveStageEngines(issue: {
   const claimReport = reports.find((r) => r.role === "CLAIM_FIX");
 
   // Payload shapes must match processG1Triage / processG2FixCheck exactly for the hash lookup.
-  const [triage, fixCheck] = await Promise.all([
+  const emptyStage: { engine: string; runAt?: Date } = { engine: UNKNOWN_ENGINE };
+  const [triageRes, fixCheckRes] = await Promise.all([
     originalReport
       ? resolveStageEngine(originalReport.aiTriage, "G1", "g1-v1", {
           reportId: originalReport.id,
           category,
           photoSha256: originalReport.photoSha256,
         })
-      : Promise.resolve(UNKNOWN_ENGINE),
+      : Promise.resolve(emptyStage),
     claimReport
       ? resolveStageEngine(claimReport.aiTriage, "G2", "g2-v1", {
           claimReportId: claimReport.id,
@@ -200,9 +219,14 @@ async function resolveStageEngines(issue: {
           claimPhotoSha256: claimReport.photoSha256,
           originalPhotoSha256: originalReport?.photoSha256,
         })
-      : Promise.resolve(UNKNOWN_ENGINE),
+      : Promise.resolve(emptyStage),
   ]);
-  return { triage, fixCheck };
+  return {
+    triage: triageRes.engine,
+    triageRunAt: triageRes.runAt,
+    fixCheck: fixCheckRes.engine,
+    fixCheckRunAt: fixCheckRes.runAt,
+  };
 }
 
 function roadClassLabel(rc: string | null | undefined): string {
@@ -240,17 +264,28 @@ function enrichAssessOutput(
     if (typeof t.category === "string" && t.category !== "unknown" && t.category.toUpperCase() !== issue.category.toUpperCase()) {
       flags.push(`Category mismatch: suggested "${t.category}" vs reported "${issue.category}"`);
     }
-    if (t.recapture_suspected === "yes") {
+    if (t.category === "unknown" || t.shows_reported_defect === "no") {
+      flags.push("Photo doesn't show the reported issue");
+    }
+    if (t.scene === "indoor") {
+      flags.push("Indoor scene (not road/roadside)");
+    }
+    if (t.scene === "screen" || t.recapture_suspected === "yes") {
       flags.push("Recapture/screen photo suspected (extra verifier required)");
+    }
+    if (t.scene === "other") {
+      flags.push("Non-road scene detected");
     }
     if (typeof t.confidence === "number" && t.confidence < 0.7) {
       flags.push(`Low confidence (${Math.round(t.confidence * 100)}%)`);
     }
 
+    const runAt = (typeof t._triagedAt === "string" ? new Date(t._triagedAt) : undefined) || stageEngines.triageRunAt;
+
     triageMeta = {
       result: `Category: ${t.category || issue.category}, Size: ${t.size_class || "medium"}, Lane: ${t.lane_position || "curb"}`,
       engine: stageEngines.triage,
-      time: formatDateTimeIST(reportReport.createdAt),
+      time: runAt ? formatDateTimeIST(runAt) : formatDateTimeIST(reportReport.createdAt),
       flags,
       status: stageEngines.triage === RULES_ENGINE ? "unavailable" : "completed",
     };
@@ -298,7 +333,7 @@ function enrichAssessOutput(
       fixCheckMeta = {
         result: `Same location: ${fc.same_location}, Defect visible: ${fc.defect_still_visible}`,
         engine: stageEngines.fixCheck,
-        time: formatDateTimeIST(claimReport.createdAt),
+        time: ((typeof fc._triagedAt === "string" ? new Date(fc._triagedAt) : undefined) || stageEngines.fixCheckRunAt) ? formatDateTimeIST(((typeof fc._triagedAt === "string" ? new Date(fc._triagedAt) : undefined) || stageEngines.fixCheckRunAt)!) : formatDateTimeIST(claimReport.createdAt),
         flags,
         status: stageEngines.fixCheck === RULES_ENGINE ? "unavailable" : "completed",
       };

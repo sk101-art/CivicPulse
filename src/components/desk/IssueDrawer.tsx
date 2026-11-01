@@ -572,16 +572,16 @@ export function IssueDrawer({
                       {analystSummary.triage.time && analystSummary.triage.time !== "Pending" && (
                         <>
                           <span className="text-white/30">•</span>
-                          <span className="text-zinc-300">{analystSummary.triage.time}</span>
+                          <span className="text-zinc-300" data-testid="g1-run-time">{analystSummary.triage.time}</span>
                         </>
                       )}
                     </div>
                   </div>
                   <div className="text-white/80">{analystSummary.triage.result}</div>
                   {analystSummary.triage.flags && analystSummary.triage.flags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1">
+                    <div className="flex flex-wrap gap-1 pt-1" data-testid="g1-flags">
                       {analystSummary.triage.flags.map((flag) => (
-                        <span key={flag} className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">
+                        <span key={flag} data-testid="g1-flag-chip" className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">
                           {flag}
                         </span>
                       ))}
