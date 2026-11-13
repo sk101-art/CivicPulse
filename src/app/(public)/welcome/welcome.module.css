@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+.welcomeRoot {
+  --bg-main: #FFFFFF;
+  --bg-alt: #F7F6F6;
+  --text-primary: #201F20;
+  --text-secondary: #494949;
+  --text-muted: #606060;
+  --bg-inverse: #141314;
+  --text-inverse: #FCFCFD;
+  --brand-accent: #2E5BFF;
+  --brand-accent-hover: #1B47ED;
+  --hairline: #E0E0DF;
+  --font-host: 'Host Grotesk', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: var(--font-host);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+  position: relative;
+  z-index: 10;
+  line-height: 1.5;
+}
+
+.welcomeRoot :global(*) {
+  box-sizing: border-box;
+}
+
+.welcomeRoot a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
