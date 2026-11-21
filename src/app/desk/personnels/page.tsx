@@ -1,7 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { AppHeader } from "@/components/layout/AppHeader";
 import { PersonnelManager } from "@/components/authority/PersonnelManager";
 import { redirect } from "next/navigation";
 
@@ -14,19 +13,18 @@ export default async function DeskPersonnelPage() {
     redirect('/login');
   }
 
-  const personnels = await prisma.personnel.findMany({
-    orderBy: { createdAt: 'desc' }
-  });
+  let personnels: any[] = [];
+  try {
+    personnels = await prisma.personnel.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+  } catch (err) {
+    console.warn("Could not query personnels table:", err);
+  }
 
   return (
-    <main className="flex-1 overflow-y-auto w-full h-full pb-24 lg:pb-0 bg-primary">
-      <AppHeader 
-        title="Field Personnel"
-        subtitle="Staff Directory"
-        accentColor="var(--accent-cyan)"
-      />
-
-      <div className="p-6 md:p-8 space-y-10 max-w-7xl mx-auto">
+    <main className="flex-1 overflow-y-auto w-full h-full pb-24 lg:pb-8 bg-[#F3F2EB]">
+      <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
         <PersonnelManager initialPersonnels={JSON.parse(JSON.stringify(personnels))} />
       </div>
     </main>

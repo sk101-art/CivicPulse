@@ -43,7 +43,17 @@ export async function GET(req: Request) {
     }
 
     if (wardIdParam && wardIdParam !== "ALL") {
-      where.wardId = wardIdParam;
+      const matchedWard = await prisma.ward.findFirst({
+        where: {
+          OR: [
+            { id: wardIdParam },
+            { code: { equals: wardIdParam, mode: "insensitive" } },
+            { code: { equals: `WARD-${wardIdParam.replace(/^ward-?/i, '')}`, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true },
+      });
+      where.wardId = matchedWard ? matchedWard.id : wardIdParam;
     }
 
     if (slaBreachedParam === "true") {

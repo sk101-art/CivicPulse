@@ -172,6 +172,33 @@ export async function ingestReportWithSpatialMerge(
     finalAddress = geo?.formatted || `Near ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
   }
 
+  // Resolve verified geographical ward using PostGIS point-in-polygon containment
+  let resolvedWardId: string | null = null;
+  try {
+    const wardMatch = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Ward"
+      WHERE geom IS NOT NULL
+        AND ST_Contains(geom::geometry, ST_SetSRID(ST_Point(${lng}, ${lat}), 4326))
+      LIMIT 1;
+    `;
+    if (wardMatch && wardMatch.length > 0) {
+      resolvedWardId = wardMatch[0].id;
+    } else {
+      // Nearest ward fallback
+      const nearestMatch = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT id FROM "Ward"
+        WHERE geom IS NOT NULL
+        ORDER BY ST_Distance(geom::geography, ST_SetSRID(ST_Point(${lng}, ${lat}), 4326)::geography) ASC
+        LIMIT 1;
+      `;
+      if (nearestMatch && nearestMatch.length > 0) {
+        resolvedWardId = nearestMatch[0].id;
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to resolve ward via PostGIS:", err);
+  }
+
   const result = await prisma.$transaction(async (tx) => {
     const newIssue = await tx.issue.create({
       data: {
@@ -180,6 +207,7 @@ export async function ingestReportWithSpatialMerge(
         lat,
         lng,
         address: finalAddress,
+        wardId: resolvedWardId,
         segmentId: snapped?.id || null,
         slaDueAt,
         needsDuplicateReview,

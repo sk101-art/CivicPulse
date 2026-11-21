@@ -2,81 +2,10 @@
 
 import { use, useState } from 'react';
 import { isSignUpRequested, type LoginSearchParams } from '@/lib/auth/loginMode';
-import { motion } from 'framer-motion';
 import { signIn } from 'next-auth/react';
-import { Eye, EyeOff, User, Mail, Lock, ArrowRight, AlertCircle } from 'lucide-react';
-import { buttonTap, modalContent } from '@/lib/framer';
-
-function FloatingField({
-  label,
-  name,
-  type,
-  value,
-  onChange,
-  placeholder,
-  error,
-  hint,
-  right,
-  autoComplete,
-  icon: Icon
-}: {
-  label: string;
-  name?: string;
-  type: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  error?: boolean;
-  hint?: React.ReactNode;
-  right?: React.ReactNode;
-  autoComplete?: string;
-  icon?: React.ComponentType<{ className?: string }>;
-}) {
-  const [focused, setFocused] = useState(false);
-  const border = error ? 'rgba(255,46,99,0.65)' : focused ? 'rgba(0,245,212,0.4)' : 'rgba(255,255,255,0.08)';
-  
-  return (
-    <div className="space-y-2 relative z-10 w-full group">
-      <div className="flex items-center justify-between">
-        <label
-          className="block text-[9px] font-mono uppercase tracking-[0.4em] font-black text-white/75"
-          style={{ 
-            color: focused || value.length > 0 ? 'var(--accent-cyan)' : 'rgba(255,255,255,0.75)', 
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          }}
-        >
-          {label}
-        </label>
-        {hint}
-      </div>
-      <div className="relative">
-        {Icon && (
-          <div className={`absolute ${right ? 'right-14' : 'right-5'} top-1/2 -translate-y-1/2 text-white/40 group-focus-within:text-cyan/60 transition-colors`}>
-            <Icon className="w-4 h-4" />
-          </div>
-        )}
-        <input
-          name={name}
-          type={type}
-          required
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          placeholder={placeholder}
-          autoComplete={autoComplete}
-          className={`w-full ${Icon ? (right ? 'pr-24 pl-5' : 'pr-12 pl-5') : 'px-5'} py-4 text-sm rounded-xl outline-none transition-all duration-500 font-mono tracking-tight`}
-          style={{
-            background: 'rgba(10,10,11,0.95)',
-            border: `1px solid ${border}`,
-            color: 'white',
-          }}
-        />
-        {right}
-      </div>
-    </div>
-  );
-}
+import { Eye, EyeOff, User, Mail, Lock, ArrowRight, AlertCircle, Info, Building2 } from 'lucide-react';
+import { CivicLogo } from '@/components/ui/CivicLogo';
+import { CivicHallArt, CartographicBackground, TreeBranchArt } from '@/components/ui/CivicHallArt';
 
 export default function LoginPage({ searchParams }: { searchParams: Promise<LoginSearchParams> }) {
   const initialSignUp = isSignUpRequested(use(searchParams));
@@ -86,6 +15,7 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<Logi
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
@@ -96,7 +26,6 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<Logi
     setLoading(true);
     setError('');
 
-    // Pre-flight client-side validation for sign-up
     if (isSignUp) {
       const cleanName = name.trim();
       const cleanEmail = email.trim();
@@ -140,7 +69,7 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<Logi
             const json = JSON.parse(text);
             msg = json.error || json.message || text;
           } catch {
-            // plain text response
+            // fallback
           }
           throw new Error(msg || 'Registration failed. Please try again.');
         }
@@ -155,7 +84,7 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<Logi
       if (result?.error) {
         throw new Error(
           isSignUp 
-            ? 'Account was created, but automatic sign-in failed. Please click LOGIN to sign in.' 
+            ? 'Account was created, but automatic sign-in failed. Please click Sign In to enter.' 
             : 'Invalid credentials. Access denied.'
         );
       } else {
@@ -179,254 +108,269 @@ export default function LoginPage({ searchParams }: { searchParams: Promise<Logi
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8 bg-[#0A0A0B] relative overflow-hidden font-mono selection:bg-cyan/30">
-      {/* Texture Layer */}
-      <div className="absolute inset-0 opacity-5 pointer-events-none mix-blend-overlay" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/carbon-fibre.png")' }} />
-      
-      {/* Subtle Background Glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-cyan/5 blur-[120px] rounded-full pointer-events-none" />
+    <div className="min-h-screen bg-[#F3F2EB] text-[#293732] font-body relative flex items-center justify-center p-6 lg:p-12 overflow-hidden selection:bg-[#D4E3DF]">
+      {/* Background Cartography and Tree Branch */}
+      <CartographicBackground />
+      <TreeBranchArt />
 
-      <motion.div
-        variants={modalContent}
-        initial="hidden"
-        animate={success ? { opacity: 0, scale: 0.98, transition: { duration: 0.5 } } : 'visible'}
-        className="relative w-full max-w-[440px] space-y-8 z-10"
-      >
-        {/* Branding Header */}
-        <div className="text-center space-y-4">
-          <motion.div 
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center gap-2"
-          >
-            {/* Glowing Icon */}
-            <div
-              className="w-16 h-16 rounded-xl flex items-center justify-center font-black text-2xl shadow-[0_0_40px_rgba(0,245,212,0.4)] border border-cyan/30"
-              style={{ background: 'var(--accent-cyan)', color: 'white' }}
-            >
-              CP
-            </div>
-            
-            <div className="space-y-1">
-              <h1 className="text-2xl font-bold tracking-tighter text-white text-center">
-                CIVIC PULSE
+      <div className="relative z-10 w-full max-w-[1180px] grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-16 items-center">
+        
+        {/* Left Column: Civic Atlas Editorial Presentation */}
+        <div className="lg:col-span-6 flex flex-col justify-between h-full pt-2 lg:pt-4 space-y-8">
+          <div className="space-y-6">
+            <CivicLogo size={46} showSubtitle={true} />
+
+            <div className="space-y-4 pt-3">
+              <h1 className="font-display text-4xl sm:text-5xl lg:text-[46px] leading-[1.12] text-[#293732] font-semibold tracking-tight">
+                A clearer record of the city we share.
               </h1>
-              <div className="flex items-center justify-center gap-2 text-[10px] text-white/70 tracking-[0.4em] font-black">
-                <span>MUNICIPAL ROAD TRUTH LEDGER</span>
-                <span className="text-white/20">|</span>
-                <span>SYSTEM ACCESS</span>
-              </div>
+              
+              <p className="text-[#65736B] text-base sm:text-[17px] leading-relaxed max-w-lg font-body">
+                Report issues, track repairs and build a more reliable, safer city together.
+              </p>
+
+              <div className="w-14 h-1 bg-[#527B7A] rounded-full mt-4" />
             </div>
-          </motion.div>
+          </div>
+
+          {/* Architectural Heritage Illustration */}
+          <div className="w-full max-w-[480px] pt-4 hidden sm:block">
+            <CivicHallArt />
+          </div>
         </div>
 
-        {/* Auth Interface */}
-        <div className={`space-y-8 transition-all duration-500 ${shake ? 'animate-shake' : ''}`}>
-          
-          <div className="space-y-6">
-            {/* Role Selection (Grey Panel) */}
-            <div
-              className="relative flex rounded-lg p-1 gap-1"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)' }}
-            >
+        {/* Right Column: Tactile Skeuomorphic Auth Card */}
+        <div className="lg:col-span-6 flex justify-center lg:justify-end">
+          <div
+            className={`w-full max-w-[480px] bg-white rounded-[32px] p-8 sm:p-10 border border-[#DDDCD3] shadow-[0_24px_50px_-12px_rgba(41,55,50,0.12),0_4px_16px_rgba(41,55,50,0.04),inset_0_1px_0_rgba(255,255,255,1)] space-y-6 transition-all duration-300 ${
+              shake ? 'animate-shake' : ''
+            }`}
+          >
+            {/* Mode Segmented Switch (Sign In vs Create Account) */}
+            <div className="bg-[#E9ECE6] p-1.5 rounded-2xl border border-[#D8DED7] flex items-center gap-1 shadow-[inset_0_2px_4px_rgba(41,55,50,0.06)]">
               <button
                 type="button"
-                onClick={() => { setRole('citizen'); setIsSignUp(false); setError(''); }}
-                className={`relative z-10 flex-1 py-3 text-[11px] font-black uppercase tracking-[0.2em] rounded transition-all duration-300 ${
-                  role === 'citizen' ? 'bg-[#2A2A2D] text-white' : 'text-white/60 hover:text-white/80'
+                onClick={() => { setIsSignUp(false); setError(''); }}
+                className={`flex-1 py-3 text-sm font-semibold rounded-xl transition-all duration-200 cursor-pointer ${
+                  !isSignUp
+                    ? 'bg-[#3D6B6A] text-white shadow-[0_3px_8px_rgba(53,88,88,0.35),inset_0_1px_0_rgba(255,255,255,0.3)]'
+                    : 'text-[#65736B] hover:text-[#293732]'
                 }`}
               >
-                CITIZEN
+                Sign In
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (role === 'authority') {
+                    setRole('citizen');
+                  }
+                  setIsSignUp(true);
+                  setError('');
+                }}
+                className={`flex-1 py-3 text-sm font-semibold rounded-xl transition-all duration-200 cursor-pointer ${
+                  isSignUp
+                    ? 'bg-[#3D6B6A] text-white shadow-[0_3px_8px_rgba(53,88,88,0.35),inset_0_1px_0_rgba(255,255,255,0.3)]'
+                    : 'text-[#65736B] hover:text-[#293732]'
+                }`}
+              >
+                Create Account
+              </button>
+            </div>
+
+            {/* Role Segmented Selector */}
+            <div className="bg-[#E9ECE6] p-1.5 rounded-xl border border-[#D8DED7] flex items-center gap-1 shadow-[inset_0_2px_4px_rgba(41,55,50,0.06)]">
+              <button
+                type="button"
+                onClick={() => { setRole('citizen'); setError(''); }}
+                className={`flex-1 py-2.5 px-3 text-xs font-semibold rounded-lg flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer ${
+                  role === 'citizen'
+                    ? 'bg-[#3D6B6A] text-white shadow-[0_2px_6px_rgba(53,88,88,0.3),inset_0_1px_0_rgba(255,255,255,0.25)]'
+                    : 'text-[#65736B] hover:text-[#293732]'
+                }`}
+              >
+                <User className="w-4 h-4" />
+                <span>Citizen</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => { setRole('authority'); setIsSignUp(false); setError(''); }}
-                className={`relative z-10 flex-1 py-3 text-[11px] font-black uppercase tracking-[0.2em] rounded transition-all duration-300 ${
-                  role === 'authority' ? 'bg-[#2A2A2D] text-white' : 'text-white/60 hover:text-white/80'
+                className={`flex-1 py-2.5 px-3 text-xs font-semibold rounded-lg flex items-center justify-center gap-2 transition-all duration-200 cursor-pointer ${
+                  role === 'authority'
+                    ? 'bg-[#3D6B6A] text-white shadow-[0_2px_6px_rgba(53,88,88,0.3),inset_0_1px_0_rgba(255,255,255,0.25)]'
+                    : 'text-[#65736B] hover:text-[#293732]'
                 }`}
               >
-                AUTHORITY
+                <Building2 className="w-4 h-4" />
+                <span>Municipal Staff</span>
               </button>
             </div>
 
-            {/* Sub-toggle (White Text) */}
-            <div className="flex justify-center gap-10">
-              <button 
-                type="button"
-                onClick={() => { setIsSignUp(false); setError(''); }}
-                className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${!isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/60 hover:text-white/80'}`}
-              >
-                LOGIN
-              </button>
-              {role === 'citizen' ? (
-                <button
-                  type="button"
-                  onClick={() => { setIsSignUp(true); setError(''); }}
-                  className={`text-[11px] font-black uppercase tracking-[0.2em] transition-all ${isSignUp ? 'text-white underline underline-offset-8 decoration-cyan/50' : 'text-white/60 hover:text-white/80'}`}
-                >
-                  CREATE ACCOUNT
-                </button>
-              ) : (
-                <span className="text-[10px] uppercase tracking-[0.15em] text-white/60">
-                  Desk accounts are issued by the administrator
-                </span>
-              )}
-            </div>
-          </div>
+            {role === 'authority' && isSignUp && (
+              <div className="p-3 bg-[#E5E9E3] border border-[#DDDCD3] rounded-xl text-xs text-[#65736B] flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-[#527B7A] shrink-0 mt-0.5" />
+                <span>Municipal desk accounts are issued by the city administrator. Please sign in with your municipal credentials.</span>
+              </div>
+            )}
 
-          {/* Authentication Form */}
-          <form onSubmit={handleAuth} className="space-y-6">
-            <div className="space-y-5">
+            {/* Error Message Alert */}
+            {error && (
+              <div className="p-3.5 bg-[#FBF1EF] border border-[#EAC8C1] rounded-xl text-xs text-[#B76F60] flex items-center gap-2.5 font-medium">
+                <AlertCircle className="w-4 h-4 text-[#B76F60] shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Auth Form */}
+            <form onSubmit={handleAuth} className="space-y-4">
               {isSignUp && (
-                <FloatingField
-                  label="FULL NAME"
-                  name="name"
-                  type="text"
-                  value={name}
-                  onChange={setName}
-                  placeholder="e.g. Sujay Kumar"
-                  autoComplete="name"
-                  icon={User}
-                />
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-[#293732]">
+                    Full Name
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-[#929B92]" />
+                    <input
+                      name="name"
+                      type="text"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. Ananya Das"
+                      autoComplete="name"
+                      className="w-full h-12 pl-12 pr-4 bg-[#F4F6F2] border border-[#DDDCD3] rounded-xl text-sm text-[#293732] shadow-[inset_0_2px_4px_rgba(41,55,50,0.06)] focus:bg-white focus:border-[#527B7A] focus:ring-2 focus:ring-[#527B7A]/20 outline-none transition-all duration-150 placeholder:text-[#929B92]"
+                    />
+                  </div>
+                </div>
               )}
 
-              <FloatingField
-                label="EMAIL ADDRESS"
-                name="email"
-                type="email"
-                value={email}
-                onChange={setEmail}
-                placeholder={isSignUp ? "your.email@example.com" : "you@example.com"}
-                error={Boolean(error)}
-                autoComplete="email"
-                icon={Mail}
-              />
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-[#293732]">
+                  Email address
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-[#929B92]" />
+                  <input
+                    name="email"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    autoComplete="email"
+                    className="w-full h-12 pl-12 pr-4 bg-[#F4F6F2] border border-[#DDDCD3] rounded-xl text-sm text-[#293732] shadow-[inset_0_2px_4px_rgba(41,55,50,0.06)] focus:bg-white focus:border-[#527B7A] focus:ring-2 focus:ring-[#527B7A]/20 outline-none transition-all duration-150 placeholder:text-[#929B92]"
+                  />
+                </div>
+              </div>
 
-              <FloatingField
-                label={isSignUp ? "PASSWORD (MIN. 8 CHARS)" : "PASSWORD"}
-                name="password"
-                type={showPw ? 'text' : 'password'}
-                value={password}
-                onChange={setPassword}
-                placeholder={isSignUp ? "At least 8 characters" : "••••••••"}
-                error={Boolean(error)}
-                autoComplete={isSignUp ? "new-password" : "current-password"}
-                icon={Lock}
-                hint={
-                  isSignUp ? (
-                    <span
-                      className={`text-[9px] font-mono tracking-tight flex items-center gap-1.5 transition-colors ${
-                        password.length >= 8 ? 'text-emerald-400 font-bold' : 'text-white/40'
-                      }`}
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full ${
-                          password.length >= 8 ? 'bg-emerald-400' : 'bg-white/20'
-                        }`}
-                      />
-                      {password.length >= 8 ? '8+ chars (Valid)' : `Min. 8 chars (${password.length}/8)`}
-                    </span>
-                  ) : undefined
-                }
-                right={
+              <div className="space-y-1.5">
+                <label className="block text-xs font-semibold text-[#293732]">
+                  Password
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-[#929B92]" />
+                  <input
+                    name="password"
+                    type={showPw ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    autoComplete={isSignUp ? 'new-password' : 'current-password'}
+                    className="w-full h-12 pl-12 pr-12 bg-[#F4F6F2] border border-[#DDDCD3] rounded-xl text-sm text-[#293732] shadow-[inset_0_2px_4px_rgba(41,55,50,0.06)] focus:bg-white focus:border-[#527B7A] focus:ring-2 focus:ring-[#527B7A]/20 outline-none transition-all duration-150 placeholder:text-[#929B92]"
+                  />
                   <button
                     type="button"
                     onClick={() => setShowPw(!showPw)}
-                    aria-label={showPw ? 'Hide password' : 'Show password'}
-                    aria-pressed={showPw}
-                    className="absolute right-5 top-1/2 -translate-y-1/2 text-white/20 hover:text-cyan transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#929B92] hover:text-[#293732] transition-colors p-1"
                   >
-                    {showPw ? <EyeOff className="w-4 h-4" aria-hidden="true" /> : <Eye className="w-4 h-4" aria-hidden="true" />}
+                    {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
-                }
-              />
-            </div>
-
-            {/* Error Feedback Banner */}
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -6 }}
-                animate={{ opacity: 1, y: 0 }}
-                role="alert"
-                className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono flex items-start gap-2.5"
-              >
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-                <div className="flex-1 text-[11px] leading-relaxed">
-                  <span className="font-bold tracking-wider uppercase block text-rose-400 text-[9px] mb-0.5">
-                    {isSignUp ? 'Registration Error' : 'Authentication Error'}
-                  </span>
-                  <span>{error}</span>
-                  {error.toLowerCase().includes('already exists') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsSignUp(false);
-                        setError('');
-                      }}
-                      className="block mt-1.5 text-cyan hover:underline underline-offset-2 font-bold"
-                    >
-                      Switch to LOGIN to sign in with this email →
-                    </button>
-                  )}
                 </div>
-              </motion.div>
-            )}
+              </div>
 
-            {/* Primary Action Button */}
-            <div className="pt-2">
-              <motion.button
-                type="submit"
-                disabled={loading}
-                whileTap={loading ? {} : buttonTap}
-                className="w-full py-5 rounded-lg text-[11px] font-black uppercase tracking-[0.4em] transition-all duration-500 flex items-center justify-center gap-4 group cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  background: 'var(--accent-cyan)',
-                  color: 'white',
-                  boxShadow: '0 0 30px rgba(0,245,212,0.15)'
-                }}
-              >
-                {success ? (
-                  <>ACCESS GRANTED</>
-                ) : loading ? (
-                  <>VERIFYING...</>
-                ) : (
-                  <>
-                    {isSignUp ? 'INITIATE REGISTRATION' : `INITIATE ${role.toUpperCase()} SESSION`}
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                  </>
+              {/* Remember Me and Forgot Password */}
+              <div className="flex items-center justify-between text-xs pt-1">
+                <label className="flex items-center gap-2 cursor-pointer select-none text-[#65736B]">
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="w-4 h-4 rounded border-[#DDDCD3] text-[#527B7A] focus:ring-[#527B7A] accent-[#3D6B6A]"
+                  />
+                  <span>Remember me</span>
+                </label>
+
+                {!isSignUp && (
+                  <button
+                    type="button"
+                    onClick={() => setError('Password reset instructions will be sent to your verified email.')}
+                    className="text-[#527B7A] hover:underline font-medium cursor-pointer"
+                  >
+                    Forgot password?
+                  </button>
                 )}
-              </motion.button>
+              </div>
+
+              {/* Tactile Primary Button */}
+              <button
+                type="submit"
+                disabled={loading || success}
+                className="w-full mt-2 h-12 px-6 rounded-xl font-medium text-sm text-white flex items-center justify-center gap-2 bg-gradient-to-b from-[#3D6B6A] to-[#2E5453] border border-[#233A3A]/40 shadow-[0_6px_16px_rgba(46,84,83,0.32),0_1px_3px_rgba(41,55,50,0.12),inset_0_1px_0_rgba(255,255,255,0.25)] hover:from-[#467B7A] hover:to-[#355F5E] active:translate-y-px active:shadow-[0_2px_6px_rgba(53,88,88,0.25),inset_0_1px_2px_rgba(0,0,0,0.2)] transition-all duration-150 cursor-pointer disabled:opacity-60"
+              >
+                <span>
+                  {loading
+                    ? (isSignUp ? 'Creating Account...' : 'Signing In...')
+                    : (isSignUp ? 'Create Citizen Account' : 'Sign In')}
+                </span>
+                {!loading && <ArrowRight className="w-4 h-4" />}
+              </button>
+            </form>
+
+            {/* Divider */}
+            <div className="relative flex items-center justify-center my-3">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-[#DDDCD3]" />
+              </div>
+              <div className="relative px-3 bg-white text-xs text-[#929B92] font-mono tracking-wider">
+                or
+              </div>
             </div>
-          </form>
 
-          {/* Metadata Footer (Within Card flow) */}
-          <div className="space-y-8 pt-4">
-             <div className="text-center">
-                <p className="text-[10px] font-black text-white/60 uppercase tracking-[0.3em]">
-                   SECURE TUNNEL V7.4.2 ENABLED
-                </p>
-             </div>
-             
-             <div className="flex justify-center gap-6 opacity-60 text-[9px] font-black uppercase tracking-[0.2em] text-white">
-                <span>SSL_ENCRYPTED</span>
-                <span>|</span>
-                <span>GRID_MONITORED</span>
-                <span>|</span>
-                <span>AI_VERIFIED</span>
-             </div>
+            {/* Inset Guidance Callout */}
+            <div className="bg-[#F4F6F2] border border-[#E5E9E3] rounded-2xl p-4 flex items-center justify-between gap-3 shadow-[inset_0_1px_2px_rgba(41,55,50,0.03)]">
+              <div className="flex items-start gap-3">
+                <div className="w-7 h-7 rounded-full bg-[#E5E9E3] flex items-center justify-center shrink-0 mt-0.5 text-[#527B7A]">
+                  <Info className="w-4 h-4" />
+                </div>
+                <div className="space-y-0.5">
+                  <div className="text-xs font-semibold text-[#293732]">
+                    {isSignUp ? 'Already registered?' : 'New to CivicPulse?'}
+                  </div>
+                  <div className="text-[11.5px] text-[#65736B] leading-tight">
+                    {isSignUp
+                      ? 'Sign in to access your civic reporting history.'
+                      : 'Create a citizen account to report issues and contribute to your city.'}
+                  </div>
+                </div>
+              </div>
 
-             <p className="text-center text-[9px] font-black tracking-[0.3em] uppercase text-white/60">
-               © 2026 CIVICPULSE METROPOLITAN GRID
-             </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setError('');
+                }}
+                className="shrink-0 bg-white border border-[#DDDCD3] text-[#293732] text-xs font-semibold py-2 px-3.5 rounded-xl shadow-[0_2px_5px_rgba(41,55,50,0.06),inset_0_1px_0_rgba(255,255,255,0.9)] hover:bg-[#F9FAF8] active:translate-y-px transition-all cursor-pointer whitespace-nowrap"
+              >
+                {isSignUp ? 'Sign In' : 'Create Account'}
+              </button>
+            </div>
+
           </div>
         </div>
-      </motion.div>
 
-      {/* Bottom Right 'N' Logo */}
-      <div className="fixed bottom-10 right-10 opacity-20 pointer-events-none">
-         <div className="w-8 h-8 border border-white flex items-center justify-center font-black text-sm text-white">
-            N
-         </div>
       </div>
     </div>
   );

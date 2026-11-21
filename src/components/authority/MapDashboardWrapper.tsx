@@ -7,6 +7,7 @@ import { X, Send, Loader2, MapPin, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { modalBackdrop, modalContent } from '@/lib/framer';
 import { useReports } from '@/hooks/useReports';
+import { useGeoContext } from '@/context/GeoContext';
 
 const CivicMap = dynamic(() => import('./AuthorityMap'), { 
   ssr: false,
@@ -33,11 +34,13 @@ const CATEGORIES = ['POTHOLES', 'DRAINAGE', 'STREETLIGHTS', 'SIDEWALKS', 'TRAFFI
 
 export function MapDashboardWrapper({ reports: initialReports, showReportButton = false }: MapWrapperProps) {
   const router = useRouter();
+  const { currentWard } = useGeoContext();
   const [reportModal, setReportModal] = useState<{ lat: number; lng: number } | null>(null);
   const [formData, setFormData] = useState({ title: '', description: '', category: 'POTHOLES' });
   const [submitting, setSubmitting] = useState(false);
   const { reports } = useReports({
     endpoint: '/api/reports/authority',
+    wardId: currentWard?.id,
     initialData: initialReports.map(r => ({ ...r, priorityScore: r.priorityScore ?? 0 })),
     autoRefresh: 30000,
   });
@@ -82,6 +85,7 @@ export function MapDashboardWrapper({ reports: initialReports, showReportButton 
       <div className="flex-1 rounded-3xl overflow-hidden border border-white/5 shadow-2xl relative group min-h-[500px]">
         <CivicMap 
           reports={reports} 
+          ward={currentWard}
           showReportButton={showReportButton}
           onReportLocation={showReportButton ? handleReportLocation : undefined}
         />

@@ -59,19 +59,44 @@ function normalizeReport(item: RawReportInput): Report {
   };
 }
 
-export function useReports(options: {
-  endpoint: string;
+export interface UseReportsOptions {
+  endpoint?: string;
+  wardId?: string | null;
+  category?: string | null;
+  status?: string | null;
   autoRefresh?: number;
   initialData?: Report[];
-} = { endpoint: '/api/reports' }) {
+}
+
+export function useReports(options: UseReportsOptions = { endpoint: '/api/reports' }) {
   const [reports, setReports] = useState<Report[]>(() => (options.initialData || []).map(normalizeReport));
   const [loading, setLoading] = useState(() => !options.initialData);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
+  const getEffectiveUrl = useCallback(() => {
+    const rawEndpoint = options.endpoint || '/api/reports';
+    const [path, queryString] = rawEndpoint.split('?');
+    const params = new URLSearchParams(queryString || '');
+    if (options.wardId) {
+      params.set('wardId', options.wardId);
+    }
+    if (options.category && options.category !== 'ALL') {
+      params.set('category', options.category);
+    }
+    if (options.status) {
+      params.set('status', options.status);
+    }
+    const qs = params.toString();
+    return qs ? `${path}?${qs}` : path;
+  }, [options.endpoint, options.wardId, options.category, options.status]);
+
   const fetchReports = useCallback(async () => {
     try {
-      const res = await fetch(options.endpoint);
+      setLoading(true);
+      setError(null);
+      const url = getEffectiveUrl();
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         const rawList: RawReportInput[] = Array.isArray(data) ? data : data.reports || data.issues || [];
@@ -84,7 +109,7 @@ export function useReports(options: {
     } finally {
       setLoading(false);
     }
-  }, [options.endpoint]);
+  }, [getEffectiveUrl]);
 
   const invalidate = useCallback(() => {
     fetchReports();
@@ -107,7 +132,10 @@ export function useReports(options: {
     let ignore = false;
     async function load() {
       try {
-        const res = await fetch(options.endpoint);
+        setLoading(true);
+        setError(null);
+        const url = getEffectiveUrl();
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           if (!ignore) {
@@ -123,11 +151,12 @@ export function useReports(options: {
         if (!ignore) setLoading(false);
       }
     }
+
     load();
     return () => {
       ignore = true;
     };
-  }, [options.endpoint]);
+  }, [getEffectiveUrl]);
 
   // Auto-refresh interval
   useEffect(() => {

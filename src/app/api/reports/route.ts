@@ -360,6 +360,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const categoryParam = searchParams.get("category");
     const statusParam = searchParams.get("status");
+    const wardParam = searchParams.get("wardId") || searchParams.get("ward");
     const mineParam = searchParams.get("mine") === "true";
 
     if (mineParam) {
@@ -421,10 +422,40 @@ export async function GET(req: Request) {
         ? (categoryParam as Category)
         : undefined;
 
+    let validatedWardId: string | undefined = undefined;
+    if (wardParam) {
+      const lower = wardParam.toLowerCase().trim();
+      const numOnly = lower.replace(/^ward-?/i, "");
+      const matchedWard = await prisma.ward.findFirst({
+        where: {
+          OR: [
+            { id: { equals: wardParam, mode: "insensitive" } },
+            { code: { equals: wardParam, mode: "insensitive" } },
+            { code: { equals: `WARD-${wardParam}`, mode: "insensitive" } },
+            { code: { equals: `WARD-${numOnly}`, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (matchedWard) {
+        validatedWardId = matchedWard.id;
+      } else {
+        // A specific ward was requested but not found in permitted records; return empty set
+        return NextResponse.json(
+          { issues: [], reports: [] },
+          {
+            status: 200,
+            headers: { "Cache-Control": "no-store, max-age=0" },
+          }
+        );
+      }
+    }
+
     const issues = await prisma.issue.findMany({
       where: {
         ...(validStatus && { status: validStatus }),
         ...(validCategory && { category: validCategory }),
+        ...(validatedWardId && { wardId: validatedWardId }),
       },
       include: {
         reports: {
@@ -436,7 +467,7 @@ export async function GET(req: Request) {
         },
       },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 100,
     });
 
     const formatted = issues.map((i) => {

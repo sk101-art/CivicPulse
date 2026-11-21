@@ -1,39 +1,40 @@
 import type { Metadata, Viewport } from "next";
-import { Unbounded, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
+import { Newsreader, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
-const unbounded = Unbounded({
+const newsreader = Newsreader({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: ["400", "700", "900"],
+  style: ["normal", "italic"],
+  weight: ["400", "500", "600", "700"],
 });
 
-const ibmPlexSans = IBM_Plex_Sans({
+const dmSans = DM_Sans({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500", "600", "700"],
 });
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  weight: ["400", "500", "600"],
 });
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#0D1117",
+  themeColor: "#F3F2EB",
 };
 
 export const metadata: Metadata = {
-  title: "CivicPulse | Road Truth Ledger & Civic Infrastructure",
-  description: "Bengaluru road truth ledger and civic infrastructure monitoring. Empowering citizens and municipal authorities with cryptographic evidence and transparent accountability.",
-  keywords: ["civic tech", "road safety", "potholes", "bengaluru", "citizen reporting", "road truth ledger"],
+  title: "CivicPulse — Civic Atlas | Municipal Road Truth Ledger",
+  description: "A clearer record of the city we share. Municipal infrastructure monitoring, cryptographic evidence and transparent civic accountability.",
+  keywords: ["civic tech", "road safety", "potholes", "civic atlas", "road truth ledger", "citizen reporting"],
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "CivicPulse",
   },
   icons: {
@@ -53,13 +54,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${unbounded.variable} ${ibmPlexSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${newsreader.variable} ${dmSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col bg-[#F3F2EB] text-[#293732] font-body selection:bg-[#D4E3DF] selection:text-[#293732]">
         <Providers>{children}</Providers>
-        <Toaster position="bottom-right" richColors theme="dark" />
+        <Toaster position="bottom-right" richColors theme="light" />
       </body>
     </html>
   );
 }
-

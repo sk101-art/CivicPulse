@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { DeskAccessOnly } from "@/components/auth/DeskAccessOnly";
+import { GlobalHeader } from "@/components/layout/GlobalHeader";
 
 export default async function DeskLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
@@ -27,10 +28,12 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
 
   const links: Array<{
     href: string;
-    icon: 'TrendingUp' | 'User' | 'Map' | 'FileText' | 'LayoutDashboard';
+    icon: string;
     label: string;
   }> = [
-    { href: '/desk', icon: 'LayoutDashboard', label: 'Operations Queue' },
+    { href: '/desk/dashboard', icon: 'LayoutDashboard', label: 'Operations Queue' },
+    { href: '/desk/intelligence', icon: 'Compass', label: 'Ward Intelligence' },
+    { href: '/desk/briefing', icon: 'FileText', label: 'Area Briefing' },
     { href: '/desk/map', icon: 'Map', label: 'Route Optimizer' },
     { href: '/claim-gap', icon: 'TrendingUp', label: 'Claim Gap' },
     { href: '/desk/personnels', icon: 'User', label: 'Field Personnel' },
@@ -43,17 +46,7 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
       : 'Operations Desk';
 
   return (
-    <div className="min-h-screen flex font-body bg-primary">
-      {/* Background grid pattern */}
-      <div
-        className="fixed inset-0 pointer-events-none z-0 opacity-50"
-        style={{
-          backgroundImage: `linear-gradient(rgba(0,245,212,0.015) 1px, transparent 1px),
-                            linear-gradient(90deg, rgba(0,245,212,0.015) 1px, transparent 1px)`,
-          backgroundSize: '60px 60px',
-        }}
-      />
-      
+    <div className="min-h-screen flex font-body bg-[#F3F2EB] text-[#293732]">
       <AppSidebar 
         role="AUTHORITY" 
         links={links} 
@@ -61,11 +54,14 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
         userSubtitle={userSubtitle} 
       />
       
-      <div className="flex-1 flex flex-col relative z-10 w-full overflow-hidden">
-        {children}
+      <div className="flex-1 flex flex-col relative z-10 w-full min-h-screen lg:h-screen overflow-hidden bg-[#F3F2EB]">
+        <GlobalHeader role="AUTHORITY" />
+        <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+          {children}
+        </div>
       </div>
 
-      <MobileNav links={links} accentColor="var(--accent-cyan)" />
+      <MobileNav links={links} />
     </div>
   );
 }

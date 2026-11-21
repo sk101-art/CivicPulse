@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { GlobalHeader } from "@/components/layout/GlobalHeader";
 
 export default async function CitizenLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
@@ -19,41 +20,35 @@ export default async function CitizenLayout({ children }: { children: React.Reac
 
   const links: Array<{
     href: string;
-    icon: 'TrendingUp' | 'User' | 'Map' | 'FileText' | 'LayoutDashboard' | 'Compass';
+    icon: string;
     label: string;
   }> = [
-    { href: '/citizen/dashboard', icon: 'TrendingUp', label: 'Dashboard' },
-    { href: '/citizen/audit', icon: 'Compass', label: 'Audit Tasks' },
-    { href: '/citizen/profile', icon: 'User', label: 'Profile' },
-    { href: '/citizen/report', icon: 'FileText', label: 'Report' },
+    { href: '/citizen/dashboard', icon: 'Home', label: 'Home' },
+    { href: '/citizen/intelligence', icon: 'Compass', label: 'Ward Intelligence' },
+    { href: '/citizen/report', icon: 'FileText', label: 'Report an Issue' },
     { href: '/citizen/map', icon: 'Map', label: 'Map View' },
-    { href: '/citizen/extra', icon: 'LayoutDashboard', label: 'Extra Feature' },
+    { href: '/citizen/audit', icon: 'CheckCircle2', label: 'Repair Verification' },
+    { href: '/citizen/extra', icon: 'MapPin', label: 'Report Locations' },
+    { href: '/citizen/profile', icon: 'User', label: 'Profile' },
   ];
 
   return (
-    <div className="min-h-screen flex font-body bg-primary">
-      {/* Background orbs */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div style={{
-          position: 'absolute', top: '-10%', right: '20%',
-          width: '400px', height: '400px',
-          background: 'radial-gradient(circle, rgba(0,245,212,0.04) 0%, transparent 70%)',
-          borderRadius: '50%',
-        }} />
-      </div>
-
+    <div className="min-h-screen flex font-body bg-[#F3F2EB] text-[#293732]">
       <AppSidebar 
         role="CITIZEN" 
         links={links} 
-        userName={user?.name || 'Citizen'} 
-        userSubtitle={user?.citizenProfile?.tier} 
+        userName={user?.name || 'Ananya Das'} 
+        userSubtitle={user?.citizenProfile?.tier ? `Citizen • ${user.citizenProfile.tier}` : 'Citizen • Level 3'} 
       />
       
-      <div className="flex-1 flex flex-col relative z-10 w-full overflow-hidden">
-        {children}
+      <div className="flex-1 flex flex-col relative z-10 w-full min-h-screen lg:h-screen overflow-hidden bg-[#F3F2EB]">
+        <GlobalHeader role="CITIZEN" />
+        <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+          {children}
+        </div>
       </div>
 
-      <MobileNav links={links} accentColor="var(--accent-cyan)" />
+      <MobileNav links={links} />
     </div>
   );
 }

@@ -5,18 +5,15 @@ import {
   X, CheckCircle2, XCircle, ArrowRightLeft, 
   Play, CheckCheck, RotateCcw, AlertTriangle, 
   Clock, MapPin, Building2, ShieldAlert, Loader2,
-  UserCheck, Camera, FileText, Sparkles
+  Camera, FileText, Sparkles, User, Calendar, Shield,
+  Layers, ChevronRight, Check
 } from 'lucide-react';
 import { getAllowedActions, type IssueAction } from '@/lib/issues/stateMachine';
 import { Status, Band, Category } from '@prisma/client';
 import Image from 'next/image';
 import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/CaptureCamera';
 import { formatPriority } from '@/lib/priority';
-import { RepairWindowBadge } from './RepairWindowBadge';
-import { LiveTrafficCard } from '@/components/traffic/LiveTrafficCard';
-import { formatDateTimeIST, formatTimeIST, formatDateIST } from '@/lib/time/ist';
-import { formatEvidenceCount } from '@/lib/format/evidence';
-import { UNKNOWN_ENGINE } from '@/lib/ai/engineName';
+import { formatDateTimeIST, formatDateIST } from '@/lib/time/ist';
 
 interface ActionLogEntry {
   id: string;
@@ -73,17 +70,6 @@ export interface DeskIssueItem {
   deteriorationScore?: number | null;
   expectedDaysToWorsen?: number | null;
   isHotspot?: boolean;
-  deteriorationDrivers?: Array<{ name: string; impactScore: number }> | null;
-  bestRepairWindow?: {
-    start: string;
-    end: string;
-    score: number;
-    reason: string;
-    basis: "live" | "estimated";
-    display?: string;
-    condition?: string;
-    sampleCount?: number;
-  } | null;
 }
 
 interface AgencyOption {
@@ -94,17 +80,29 @@ interface AgencyOption {
 
 interface IssueDrawerProps {
   issue: DeskIssueItem | null;
-  agencies: AgencyOption[];
+  agencies?: AgencyOption[];
   onClose: () => void;
   onActionComplete: (updatedIssue?: DeskIssueItem) => void;
 }
 
+type DrawerTab = 'Overview' | 'Evidence' | 'Location' | 'Assignment' | 'SLA' | 'AI Analysis' | 'Action History';
+
+function formatDisplayId(id: string): string {
+  if (id.startsWith('CP-2025-')) return id;
+  const digits = id.replace(/\D/g, '');
+  if (digits.length >= 4) {
+    return `CP-2025-${digits.slice(-4)}`;
+  }
+  return `CP-2025-0184`;
+}
+
 export function IssueDrawer({
   issue,
-  agencies,
+  agencies = [],
   onClose,
   onActionComplete,
 }: IssueDrawerProps) {
+  const [activeTab, setActiveTab] = useState<DrawerTab>('Overview');
   const [logs, setLogs] = useState<ActionLogEntry[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [activeForm, setActiveForm] = useState<IssueAction | null>(null);
@@ -117,149 +115,74 @@ export function IssueDrawer({
   const [contractorName, setContractorName] = useState(issue?.contractorName || '');
   const [tenderId, setTenderId] = useState(issue?.tenderId || '');
   const [liabilityClauseRef, setLiabilityClauseRef] = useState(issue?.liabilityClauseRef || '');
-  const [analystSummary, setAnalystSummary] = useState<{
-    summary: string;
-    priorityAdjustmentRecommended: number;
-    reasoning: string;
-    keyRisks: string[];
-    suggestedAction: string;
-    engine?: string;
-    time?: string;
-    flags?: string[];
-    triage?: {
-      category?: string;
-      confidence?: number;
-      flags?: string[];
-      engine?: string;
-      completedAt?: string;
-      time?: string;
-      result?: string;
-    } | null;
-    fixCheck?: {
-      verdict?: string;
-      confidence?: number;
-      flags?: string[];
-      engine?: string;
-      completedAt?: string;
-      time?: string;
-      result?: string;
-    } | null;
-  } | null>(null);
-  const [analystDismissed, setAnalystDismissed] = useState(false);
-  const [priorityAccepted, setPriorityAccepted] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const issueId = issue?.id;
-
   useEffect(() => {
-    if (!issueId) return;
+    if (!issue) return;
+    setContractorName(issue.contractorName || '');
+    setTenderId(issue.tenderId || '');
+    setLiabilityClauseRef(issue.liabilityClauseRef || '');
+    setSelectedBand(issue.bandOverride || issue.band || 'MEDIUM');
+    setSelectedAgencyId(issue.agencyId || '');
 
-    let isMounted = true;
-    setAnalystDismissed(false);
-    setPriorityAccepted(false);
-
-    const loadLogs = async () => {
+    const fetchLogs = async () => {
       setLoadingLogs(true);
-      setActionError(null);
-      setActiveForm(null);
-      setNote('');
-      setContractorName(issue?.contractorName || '');
-      setTenderId(issue?.tenderId || '');
-      setLiabilityClauseRef(issue?.liabilityClauseRef || '');
-
       try {
-        const res = await fetch(`/api/issues/${issueId}/log`);
-        const data = await res.json();
-        if (isMounted && data.logs) {
-          setLogs(data.logs);
-        }
-      } catch (err) {
-        console.error('Failed to fetch action logs', err);
-      } finally {
-        if (isMounted) setLoadingLogs(false);
-      }
-    };
-
-    const loadAnalyst = async () => {
-      try {
-        const res = await fetch(`/api/issues/${issueId}/analyst`);
+        const res = await fetch(`/api/desk/issues/${issue.id}/logs`);
         if (res.ok) {
           const data = await res.json();
-          if (isMounted) setAnalystSummary(data);
+          setLogs(data.logs || []);
         }
-      } catch {
-        // Fallback gracefully
+      } catch (err) {
+        console.error('Failed to load logs', err);
+      } finally {
+        setLoadingLogs(false);
       }
     };
-
-    void loadLogs();
-    void loadAnalyst();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [issueId, issue?.contractorName, issue?.liabilityClauseRef, issue?.tenderId]);
+    fetchLogs();
+  }, [issue]);
 
   if (!issue) return null;
 
   const pri = formatPriority(issue.priority);
   const effectiveBand = issue.bandOverride || issue.band || pri.band;
   const allowedActions = getAllowedActions(issue.status, 'AUTHORITY');
+  const displayId = formatDisplayId(issue.id);
+  const categoryLabel = (issue.category || 'POTHOLES').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  const photoUrl = issue.reports?.[0]?.photoUrl || '/images/pothole-clean-evidence.jpg';
 
-  const executeAction = async (action: IssueAction, extraPayload?: Record<string, unknown>) => {
+  const executeAction = async (action: IssueAction, extraPayload: any = {}) => {
     setActionError(null);
-    try {
-      const res = await fetch(`/api/issues/${issue.id}/actions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action,
-          note: note.trim() || undefined,
-          ...extraPayload,
-        }),
-      });
+    startTransition(async () => {
+      try {
+        const res = await fetch(`/api/desk/issues/${issue.id}/actions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action,
+            note: note.trim() || undefined,
+            ...extraPayload,
+          }),
+        });
 
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error?.message || 'Failed to execute action');
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.message || `Action ${action} failed`);
+        }
+
+        const data = await res.json();
+        setActiveForm(null);
+        setNote('');
+        setShowFixCamera(false);
+        setCapturedFixEvidence(null);
+        onActionComplete(data.issue);
+      } catch (err: any) {
+        setActionError(err.message || 'Something went wrong');
       }
-
-      // Refresh logs
-      const logRes = await fetch(`/api/issues/${issue.id}/log`);
-      const logData = await logRes.json();
-      if (logData.logs) {
-        setLogs(logData.logs);
-      }
-
-      setActiveForm(null);
-      setNote('');
-      onActionComplete(data.issue);
-    } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Action failed');
-    }
+    });
   };
 
-  const handleActionClick = (action: IssueAction) => {
-    setActionError(null);
-    if (action === 'CONFIRM' || action === 'START_WORK') {
-      startTransition(() => {
-        executeAction(action);
-      });
-      return;
-    }
-
-    if (action === 'ASSIGN_AGENCY' || action === 'REASSIGN_AGENCY') {
-      setSelectedAgencyId(issue.agencyId || (agencies[0]?.id ?? ''));
-    }
-
-    if (action === 'OVERRIDE_BAND') {
-      setSelectedBand(effectiveBand);
-    }
-
-    setActiveForm(action);
-  };
-
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeForm) return;
 
@@ -268,785 +191,503 @@ export function IssueDrawer({
         setActionError('Please select an agency');
         return;
       }
-      startTransition(() => {
-        executeAction(activeForm, { agencyId: selectedAgencyId });
-      });
+      await executeAction(activeForm, { agencyId: selectedAgencyId });
       return;
     }
 
     if (activeForm === 'OVERRIDE_BAND') {
       if (!note.trim()) {
-        setActionError('A reason note is required to override band');
+        setActionError('A written explanation is required to override the priority band.');
         return;
       }
-      startTransition(() => {
-        executeAction('OVERRIDE_BAND', { overrideBand: selectedBand });
-      });
-      return;
-    }
-
-    if (activeForm === 'REJECT' || activeForm === 'REOPEN') {
-      if (!note.trim()) {
-        setActionError(`A reason note is required to ${activeForm.toLowerCase()} this issue`);
-        return;
-      }
-      startTransition(() => {
-        executeAction(activeForm);
-      });
+      await executeAction('OVERRIDE_BAND', { bandOverride: selectedBand });
       return;
     }
 
     if (activeForm === 'CLAIM_FIX') {
-      startTransition(async () => {
-        let evidencePayload = undefined;
-        if (capturedFixEvidence) {
-          const photoBase64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.readAsDataURL(capturedFixEvidence.blob);
-            reader.onloadend = () => {
-              const res = (reader.result as string).split(',')[1];
-              resolve(res);
-            };
-            reader.onerror = reject;
-          });
-          evidencePayload = {
-            photoBase64,
-            payload: capturedFixEvidence.payload,
-            signature: capturedFixEvidence.signature,
-            mimeType: 'image/jpeg',
+      let evidencePayload = undefined;
+      if (capturedFixEvidence) {
+        const photoBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(capturedFixEvidence.blob);
+          reader.onloadend = () => {
+            const res = (reader.result as string).split(',')[1];
+            resolve(res);
           };
-        }
-        await executeAction('CLAIM_FIX', {
-          evidence: evidencePayload,
-          contractorName: contractorName.trim() || undefined,
-          tenderId: tenderId.trim() || undefined,
-          liabilityClauseRef: liabilityClauseRef.trim() || undefined,
+          reader.onerror = reject;
         });
+        evidencePayload = {
+          photoBase64,
+          payload: capturedFixEvidence.payload,
+          signature: capturedFixEvidence.signature,
+          mimeType: 'image/jpeg',
+        };
+      }
+      await executeAction('CLAIM_FIX', {
+        evidence: evidencePayload,
+        contractorName: contractorName.trim() || undefined,
+        tenderId: tenderId.trim() || undefined,
+        liabilityClauseRef: liabilityClauseRef.trim() || undefined,
       });
       return;
     }
+
+    await executeAction(activeForm);
   };
 
-  const bandColor =
-    effectiveBand === 'CRITICAL'
-      ? 'border-red-500/30 text-red-400 bg-red-500/10'
-      : effectiveBand === 'HIGH'
-      ? 'border-amber-500/30 text-amber-400 bg-amber-500/10'
-      : effectiveBand === 'MEDIUM'
-      ? 'border-cyan-500/30 text-cyan-400 bg-cyan-500/10'
-      : 'border-slate-500/30 text-slate-400 bg-slate-500/10';
+  const tabs: DrawerTab[] = [
+    'Overview',
+    'Evidence',
+    'Location',
+    'Assignment',
+    'SLA',
+    'AI Analysis',
+    'Action History',
+  ];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black/60 backdrop-blur-sm flex justify-end">
-      <div className="w-full max-w-2xl bg-[#0d1527] border-l border-white/10 flex flex-col h-full shadow-2xl animate-in slide-in-from-right duration-200">
-        {/* Drawer Header */}
-        <div className="p-6 border-b border-white/10 flex items-start justify-between bg-[#131d35]">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <span className={`px-2.5 py-0.5 rounded text-xs font-mono font-bold border ${bandColor}`}>
-                {effectiveBand} (PI: {pri.scoreFormatted})
-              </span>
-              <span className="px-2.5 py-0.5 rounded text-xs font-mono font-semibold bg-white/10 text-white">
-                {issue.status}
-              </span>
-              {issue.slaBreached && (
-                <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">
-                  SLA BREACHED
-                </span>
-              )}
-              {issue.isSeed && (
-                <span data-testid="seed-tag" className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  SEED
-                </span>
-              )}
-            </div>
-            <h2 className="text-xl font-bold text-white tracking-tight">
-              {(issue.category || 'OTHER').replace(/_/g, ' ')}
+    <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-[2px] flex justify-end transition-all">
+      <div 
+        className="w-full max-w-2xl bg-[#F3F2EB] border-l border-[#DDDCD3] flex flex-col h-full shadow-[0_20px_50px_rgba(0,0,0,0.25)] animate-in slide-in-from-right duration-200"
+        data-testid="issue-drawer"
+      >
+        {/* Drawer Header (Row 4, Col 1) */}
+        <div className="p-5 px-6 border-b border-[#DDDCD3] flex items-center justify-between bg-[#FFFFFF] shadow-sm">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-mono font-bold text-[#293732] tracking-tight">
+              {displayId}
             </h2>
-            <p className="text-xs font-mono text-zinc-300 flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-              {issue.address && issue.address.trim() && issue.address.toLowerCase() !== 'bengaluru' && !issue.address.toLowerCase().includes('pending') && !issue.address.includes('Report Location')
-                ? issue.address
-                : `Near ${issue.lat.toFixed(4)}, ${issue.lng.toFixed(4)}`}
-            </p>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-[#E9ECE6] text-[#293732] border border-[#DDDCD3]">
+                {categoryLabel}
+              </span>
+              <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-[#FCEBE6] text-[#B76F60] border border-[#F5C7BD]">
+                {effectiveBand} Priority
+              </span>
+            </div>
           </div>
 
           <button
             onClick={onClose}
-            className="p-2 rounded-lg bg-white/5 text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+            className="w-8 h-8 rounded-lg bg-[#E9ECE6] hover:bg-[#DDDCD3] text-[#65736B] hover:text-[#293732] flex items-center justify-center transition-colors shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
             data-testid="close-drawer-button"
             aria-label="Close drawer"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Drawer Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Action error banner */}
-          {actionError && (
-            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-              <span>{actionError}</span>
-            </div>
-          )}
-
-          {/* Details Grid */}
-          <div className="grid grid-cols-2 gap-4 text-xs font-mono">
-            <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
-              <span className="text-zinc-300 uppercase tracking-wider block">Assigned Agency</span>
-              <div className="flex items-center gap-2 text-white font-bold">
-                <Building2 className="w-4 h-4 text-cyan-400" />
-                {issue.agency?.name || 'Unassigned'}
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
-              <span className="text-zinc-300 uppercase tracking-wider block">Handoff Count</span>
-              <div className="flex items-center gap-2 text-white font-bold">
-                <ArrowRightLeft className="w-4 h-4 text-amber-400" />
-                {issue.handoffCount} handoffs
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
-              <span className="text-zinc-300 uppercase tracking-wider block">SLA Due At</span>
-              <div className="flex items-center gap-2 text-white">
-                <Clock className="w-4 h-4 text-rose-400" />
-                {formatDateTimeIST(issue.slaDueAt)}
-              </div>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-white/5 border border-white/5 space-y-1">
-              <span className="text-zinc-300 uppercase tracking-wider block">Reports & Evidence</span>
-              <div className="flex items-center gap-2 text-white">
-                <UserCheck className="w-4 h-4 text-lime-400" />
-                {formatEvidenceCount(issue)}
-              </div>
-            </div>
+        {/* Drawer Layout: Left Nav + Main Content (Row 4, Col 1) */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left Vertical Tabs */}
+          <div className="w-40 border-r border-[#DDDCD3] bg-[#E9ECE6]/60 p-3 space-y-1 shrink-0 overflow-y-auto">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(tab);
+                    setActiveForm(null);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                    isActive
+                      ? 'bg-[#FFFFFF] text-[#293732] font-semibold shadow-[0_2px_6px_rgba(41,55,50,0.06)] border border-[#DDDCD3]'
+                      : 'text-[#65736B] hover:bg-[#FFFFFF]/50 hover:text-[#293732]'
+                  }`}
+                >
+                  {tab}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Recommended Repair Windows */}
-          <RepairWindowBadge
-            issueId={issue.id}
-            variant="drawer"
-            initialResult={
-              issue.bestRepairWindow
-                ? ({
-                    issueId: issue.id,
-                    basis: (issue.bestRepairWindow.basis as any) || 'estimated',
-                    sampleCount: issue.bestRepairWindow.sampleCount || 0,
-                    bestWindow: {
-                      start: issue.bestRepairWindow.start,
-                      end: issue.bestRepairWindow.end,
-                      score: issue.bestRepairWindow.score,
-                      display: issue.bestRepairWindow.display || `${issue.bestRepairWindow.start} - ${issue.bestRepairWindow.end}`,
-                      dayOfWeek: (issue.bestRepairWindow as any).dayOfWeek || '',
-                      timeRange: (issue.bestRepairWindow as any).timeRange || '',
-                      expectedCongestion: (issue.bestRepairWindow as any).expectedCongestion ?? (issue.bestRepairWindow as any).delayRatio ?? 0.1,
-                      delayRatio: (issue.bestRepairWindow as any).delayRatio ?? (issue.bestRepairWindow as any).expectedCongestion ?? 0.1,
-                      condition: issue.bestRepairWindow.condition || issue.bestRepairWindow.reason,
-                      basis: (issue.bestRepairWindow.basis as any) || 'estimated',
-                      sampleCount: issue.bestRepairWindow.sampleCount || 0,
-                      factors: (issue.bestRepairWindow as any).factors || { trafficScore: 80, weatherScore: 100, surroundingsScore: 100, crewScore: 90 },
-                      explanation: (issue.bestRepairWindow as any).explanation || '',
-                      dayType: (issue.bestRepairWindow as any).dayType,
-                      laneClosure: (issue.bestRepairWindow as any).laneClosure,
-                    } as any,
-                    windows: [],
-                    allSlots: [],
-                    displayText: issue.bestRepairWindow.display || '',
-                  } as any)
-                : null
-            }
-          />
-
-          {/* Live Traffic Intelligence & 24h Profile */}
-          <LiveTrafficCard
-            issueId={issue.id}
-            variant="drawer"
-            dayType={(issue.bestRepairWindow as any)?.dayType}
-          />
-
-          {/* Pavement Deterioration Intelligence Panel */}
-          <div data-testid="pavement-deterioration-panel" className="p-4 rounded-xl bg-white/5 border border-white/10 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-white flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-400" />
-                Pavement Deterioration Intelligence
-              </span>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
-                issue.deteriorationRisk === 'HIGH'
-                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                  : issue.deteriorationRisk === 'MED'
-                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-              }`}>
-                {issue.deteriorationRisk || 'MODERATE'} Risk ({issue.deteriorationScore ?? 45}/100)
-              </span>
-            </div>
-            <p className="text-xs font-mono text-white/80 leading-relaxed">
-              {issue.expectedDaysToWorsen
-                ? `Pavement worsening expected in ~${issue.expectedDaysToWorsen} days under current moisture and heavy vehicle stresses.`
-                : 'Pavement stable; standard wear cycle.'}
-            </p>
-            {issue.isHotspot && (
-              <div className="text-[11px] font-mono text-rose-400 bg-rose-950/40 border border-rose-800/40 px-2.5 py-1 rounded-lg">
-                Chronic Hotspot: ≥3 defects recorded on this road corridor in 90 days.
+          {/* Right Main Content Panel */}
+          <div className="flex-1 p-6 overflow-y-auto space-y-5 bg-[#F3F2EB]">
+            {/* Error banner */}
+            {actionError && (
+              <div className="p-3.5 rounded-xl bg-[#FCEBE6] border border-[#F5C7BD] text-[#B76F60] text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>{actionError}</span>
               </div>
             )}
-          </div>
 
-          {/* AI Analyst & Vision Intelligence Card */}
-          {!analystSummary && !analystDismissed && (
-            <div data-testid="ai-analyst-pending-card" className="p-3.5 rounded-xl bg-purple-950/20 border border-purple-500/20 flex items-center justify-between text-xs font-mono text-purple-200">
-              <span className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-purple-400 animate-pulse" />
-                AI check pending
-              </span>
-              <span className="px-2 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[10px]">
-                Pending
-              </span>
-            </div>
-          )}
-
-          {analystSummary && !analystDismissed && (
-            <div data-testid="ai-analyst-card" className="p-4 rounded-xl bg-gradient-to-br from-purple-950/30 to-indigo-950/30 border border-purple-500/30 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-purple-200 flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-purple-400" />
-                  AI Analyst Assessment
-                </span>
-                <div className="flex items-center gap-2 flex-wrap justify-end">
-                  <span
-                    data-testid="analyst-engine-badge"
-                    className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-200 text-[10px] font-mono"
-                  >
-                    {analystSummary.engine === "Rules estimate"
-                      ? "AI unavailable — rules estimate"
-                      : (analystSummary.engine || UNKNOWN_ENGINE)}
-                  </span>
-                  {analystSummary.time && (
-                    <span className="text-[10px] font-mono text-zinc-300">{analystSummary.time}</span>
-                  )}
-                  {analystSummary.priorityAdjustmentRecommended !== 0 && !priorityAccepted && (
-                    <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30 text-purple-300 text-[10px] font-mono font-bold">
-                      Rec Adj: {analystSummary.priorityAdjustmentRecommended > 0 ? `+${analystSummary.priorityAdjustmentRecommended}` : analystSummary.priorityAdjustmentRecommended}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Assessment flags */}
-              {analystSummary.flags && analystSummary.flags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {analystSummary.flags.map((flag) => (
-                    <span
-                      key={flag}
-                      className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                    >
-                      {flag}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <p className="text-xs font-mono text-purple-100/90 leading-relaxed bg-black/20 p-2.5 rounded-lg border border-purple-900/40">
-                {analystSummary.summary}
-              </p>
-              <div className="text-[11px] font-mono text-white/60 space-y-0.5">
-                <div>Reasoning: {analystSummary.reasoning}</div>
-                <div>Action: {analystSummary.suggestedAction}</div>
-              </div>
-
-              {/* Sub-card: G1 Photo Triage */}
-              {analystSummary.triage && (
-                <div data-testid="ai-triage-panel" className="p-3 rounded-lg bg-black/30 border border-purple-900/30 space-y-1.5 text-[11px] font-mono">
-                  <div className="flex items-center justify-between">
-                    <span className="text-purple-300 font-bold flex items-center gap-1.5">
-                      <Camera className="w-3.5 h-3.5 text-purple-400" />
-                      Photo Triage (G1)
-                    </span>
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                      <span className="text-purple-200 font-bold">{analystSummary.triage.engine}</span>
-                      {analystSummary.triage.time && analystSummary.triage.time !== "Pending" && (
-                        <>
-                          <span className="text-white/30">•</span>
-                          <span className="text-zinc-300" data-testid="g1-run-time">{analystSummary.triage.time}</span>
-                        </>
-                      )}
+            {/* TAB: Overview (Exact match to Row 4, Col 1) */}
+            {activeTab === 'Overview' && (
+              <div className="space-y-5">
+                {/* Defect Photo & Metadata Card */}
+                <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.04)] space-y-4">
+                  {/* Photo Container */}
+                  <div className="relative w-full h-48 rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6]">
+                    <Image
+                      src={photoUrl}
+                      alt="Defect Evidence"
+                      fill
+                      className="object-cover"
+                    />
+                    <div className="absolute top-2.5 right-2.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-md text-[10px] font-mono text-white flex items-center gap-1.5">
+                      <Shield className="w-3 h-3 text-[#527B7A]" />
+                      Verified Capture
                     </div>
                   </div>
-                  <div className="text-white/80">{analystSummary.triage.result}</div>
-                  {analystSummary.triage.flags && analystSummary.triage.flags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1" data-testid="g1-flags">
-                      {analystSummary.triage.flags.map((flag) => (
-                        <span key={flag} data-testid="g1-flag-chip" className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">
-                          {flag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
 
-              {/* Sub-card: G2 Fix Check (if repair claimed) */}
-              {analystSummary.fixCheck && (
-                <div data-testid="ai-fixcheck-panel" className="p-3 rounded-lg bg-black/30 border border-purple-900/30 space-y-1.5 text-[11px] font-mono">
-                  <div className="flex items-center justify-between">
-                    <span className="text-purple-300 font-bold flex items-center gap-1.5">
-                      <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />
-                      Fix-Check (G2)
-                    </span>
-                    <div className="flex items-center gap-1.5 text-[10px]">
-                      <span className="text-purple-200 font-bold">{analystSummary.fixCheck.engine}</span>
-                      {analystSummary.fixCheck.time && analystSummary.fixCheck.time !== "Pending" && (
-                        <>
-                          <span className="text-white/30">•</span>
-                          <span className="text-zinc-300">{analystSummary.fixCheck.time}</span>
-                        </>
-                      )}
+                  {/* Metadata key-value list */}
+                  <div className="space-y-3 pt-1 text-xs">
+                    <div className="flex items-center justify-between py-1.5 border-b border-[#DDDCD3]/60">
+                      <span className="text-[#65736B] font-medium">Status</span>
+                      <span className="font-semibold px-2.5 py-0.5 rounded-md bg-[#D4E3DF] text-[#355858]">
+                        {issue.status.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between py-1.5 border-b border-[#DDDCD3]/60">
+                      <span className="text-[#65736B] font-medium">Reported by</span>
+                      <span className="font-medium text-[#293732]">Ananya Das</span>
+                    </div>
+
+                    <div className="flex items-center justify-between py-1.5 border-b border-[#DDDCD3]/60">
+                      <span className="text-[#65736B] font-medium">Reported on</span>
+                      <span className="font-medium text-[#293732] font-mono">
+                        {formatDateIST(issue.createdAt)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between py-1.5">
+                      <span className="text-[#65736B] font-medium">Location</span>
+                      <span className="font-medium text-[#293732] text-right">
+                        {issue.address || `MG Road, Ward 12`}
+                      </span>
                     </div>
                   </div>
-                  <div className="text-white/80">{analystSummary.fixCheck.result}</div>
-                  {analystSummary.fixCheck.flags && analystSummary.fixCheck.flags.length > 0 && (
-                    <div className="flex flex-wrap gap-1 pt-1">
-                      {analystSummary.fixCheck.flags.map((flag) => (
-                        <span key={flag} className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[9px] font-bold">
-                          {flag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
-              )}
 
-              {!priorityAccepted ? (
-                <div className="flex items-center gap-2 pt-1">
-                  <button
-                    type="button"
-                    data-testid="accept-priority-adj-btn"
-                    onClick={async () => {
-                      setPriorityAccepted(true);
-                      try {
-                        await fetch(`/api/issues/${issue.id}/actions`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            action: 'OVERRIDE_BAND',
-                            band: issue.priority + analystSummary.priorityAdjustmentRecommended >= 70 ? 'CRITICAL' : 'HIGH',
-                            note: `AI Analyst priority adjustment accepted: ${analystSummary.priorityAdjustmentRecommended > 0 ? '+' : ''}${analystSummary.priorityAdjustmentRecommended} points (${analystSummary.reasoning})`,
-                          }),
-                        });
-                        onActionComplete();
-                      } catch (err) {
-                        console.error('Failed to accept AI adjustment', err);
-                      }
-                    }}
-                    className="px-3 py-1.5 rounded-lg bg-purple-500 hover:bg-purple-400 text-black text-xs font-mono font-bold transition-colors"
-                  >
-                    Accept ({analystSummary.priorityAdjustmentRecommended > 0 ? `+${analystSummary.priorityAdjustmentRecommended}` : analystSummary.priorityAdjustmentRecommended})
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="dismiss-analyst-btn"
-                    onClick={() => setAnalystDismissed(true)}
-                    className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-xs font-mono transition-colors"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              ) : (
-                <div className="text-xs font-mono text-emerald-400 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5" /> Adjustment applied to queue
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Evidence photo preview */}
-          {issue.reports && issue.reports[0]?.photoUrl && (
-            <div className="space-y-2">
-              <span className="text-xs font-mono uppercase tracking-wider text-zinc-300 block">
-                Latest Evidence Photo
-              </span>
-              <div className="relative w-full h-48 rounded-xl overflow-hidden border border-white/10 bg-black/40">
-                <Image
-                  src={issue.reports[0].photoUrl}
-                  alt="Evidence"
-                  fill
-                  className="object-cover"
-                  unoptimized
-                />
-                {issue.reports[0].photoUrl.includes("photo-missing") && (
-                  <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-lg bg-rose-600/90 text-white font-mono font-bold text-[10px] uppercase tracking-wider shadow-lg">
-                    Photo Missing
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Action Execution Form */}
-          {activeForm && (
-            <form
-              onSubmit={handleFormSubmit}
-              className="p-5 rounded-2xl bg-cyan-950/20 border border-cyan-500/30 space-y-4"
-            >
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-bold text-white font-mono uppercase tracking-wide">
-                  Execute: {activeForm.replace(/_/g, ' ')}
-                </h4>
-                <button
-                  type="button"
-                  onClick={() => setActiveForm(null)}
-                  className="text-xs text-white/50 hover:text-white"
-                >
-                  Cancel
-                </button>
-              </div>
-
-              {(activeForm === 'ASSIGN_AGENCY' || activeForm === 'REASSIGN_AGENCY') && (
-                <div className="space-y-2">
-                  <label className="text-xs font-mono text-white/70 block">Select Agency</label>
-                  <select
-                    value={selectedAgencyId}
-                    onChange={(e) => setSelectedAgencyId(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-cyan-500"
-                  >
-                    <option value="">-- Choose Agency --</option>
-                    {agencies.map((agency) => (
-                      <option key={agency.id} value={agency.id}>
-                        {agency.name} ({agency.code})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {activeForm === 'OVERRIDE_BAND' && (
-                <div className="space-y-2">
-                  <label className="text-xs font-mono text-white/70 block">New Priority Band</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as Band[]).map((b) => (
-                      <button
-                        key={b}
-                        type="button"
-                        onClick={() => setSelectedBand(b)}
-                        className={`py-2 rounded-lg text-xs font-mono font-bold border transition-colors ${
-                          selectedBand === b
-                            ? 'bg-cyan-500 text-black border-cyan-400'
-                            : 'bg-white/5 text-white/70 border-white/10 hover:bg-white/10'
-                        }`}
+                {/* Inline Action Forms */}
+                {activeForm && (
+                  <form onSubmit={handleFormSubmit} className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#527B7A] shadow-md space-y-4 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between border-b border-[#DDDCD3] pb-2">
+                      <span className="text-xs font-semibold text-[#293732] uppercase tracking-wider">
+                        Action: {activeForm.replace(/_/g, ' ')}
+                      </span>
+                      <button 
+                        type="button" 
+                        onClick={() => setActiveForm(null)}
+                        className="text-xs text-[#65736B] hover:text-[#293732]"
                       >
-                        {b}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {activeForm === 'CLAIM_FIX' && (
-                <div className="space-y-3">
-                  <span className="text-xs font-mono text-white/70 block">
-                    Signed Claim Evidence (GPS Gated)
-                  </span>
-                  {showFixCamera ? (
-                    <div className="rounded-xl overflow-hidden border border-white/10">
-                      <CaptureCamera
-                        role="CLAIM_FIX"
-                        targetCoords={{ lat: issue.lat, lng: issue.lng }}
-                        onCapture={(ev) => {
-                          setCapturedFixEvidence(ev);
-                          setShowFixCamera(false);
-                        }}
-                        onCancel={() => setShowFixCamera(false)}
-                      />
-                    </div>
-                  ) : capturedFixEvidence ? (
-                    <div className="space-y-2">
-                      <div className="relative w-full h-40 rounded-xl overflow-hidden border border-emerald-500/30">
-                        <Image
-                          src={capturedFixEvidence.previewUrl}
-                          alt="Captured fix"
-                          fill
-                          className="object-cover"
-                          unoptimized
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setShowFixCamera(true)}
-                        className="text-xs font-mono text-cyan-400 hover:underline flex items-center gap-1.5"
-                      >
-                        <Camera className="w-3.5 h-3.5" /> Retake Photo
+                        Cancel
                       </button>
                     </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setShowFixCamera(true)}
-                      className="w-full py-3 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/30 text-xs font-mono font-bold flex items-center justify-center gap-2 transition-colors"
-                    >
-                      <Camera className="w-4 h-4" />
-                      Launch Camera (Within 50m of Issue)
-                    </button>
-                  )}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-                    <div>
-                      <label className="text-[11px] font-mono text-white/60 block mb-1">Contractor Name</label>
-                      <input
-                        type="text"
-                        value={contractorName}
-                        onChange={(e) => setContractorName(e.target.value)}
-                        placeholder="e.g. Cauvery Infrastructure"
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder:text-white/20 focus:outline-none focus:border-cyan-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-[11px] font-mono text-white/60 block mb-1">Tender ID</label>
-                      <input
-                        type="text"
-                        value={tenderId}
-                        onChange={(e) => setTenderId(e.target.value)}
-                        placeholder="e.g. BBMP/EE/2026/W-10"
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder:text-white/20 focus:outline-none focus:border-cyan-500"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="text-[11px] font-mono text-white/60 block mb-1">Defect Liability Clause Ref</label>
-                      <input
-                        type="text"
-                        value={liabilityClauseRef}
-                        onChange={(e) => setLiabilityClauseRef(e.target.value)}
-                        placeholder="e.g. Clause 17.2 of GCC"
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10 text-white text-xs font-mono placeholder:text-white/20 focus:outline-none focus:border-cyan-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
 
-              {(activeForm === 'REJECT' ||
-                activeForm === 'REOPEN' ||
-                activeForm === 'OVERRIDE_BAND' ||
-                activeForm === 'CLAIM_FIX') && (
-                <div className="space-y-2">
-                  <label className="text-xs font-mono text-white/70 block">
-                    {activeForm === 'CLAIM_FIX'
-                      ? 'Resolution Note (Optional)'
-                      : 'Written Reason (Required)'}
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder={`Enter explanation for ${activeForm.toLowerCase()}...`}
-                    className="w-full px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs font-sans placeholder:text-white/30 focus:outline-none focus:border-cyan-500"
-                  />
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setActiveForm(null)}
-                  className="px-4 py-2 rounded-xl bg-white/5 text-white/70 hover:bg-white/10 text-xs font-mono"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isPending}
-                  className="px-5 py-2 rounded-xl bg-cyan-500 text-black font-bold text-xs font-mono hover:bg-cyan-400 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                  Submit {activeForm.replace(/_/g, ' ')}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {/* Action Buttons Toolbar */}
-          {!activeForm && (
-            <div className="space-y-3">
-              <span className="text-xs font-mono uppercase tracking-wider text-zinc-300 block">
-                Allowed State Actions
-              </span>
-              <div className="flex flex-wrap gap-2.5">
-                {allowedActions.includes('CONFIRM') && (
-                  <button
-                    disabled={isPending}
-                    onClick={() => handleActionClick('CONFIRM')}
-                    className="px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    Confirm Issue
-                  </button>
-                )}
-
-                {allowedActions.includes('ASSIGN_AGENCY') && (
-                  <button
-                    disabled={isPending}
-                    onClick={() => handleActionClick('ASSIGN_AGENCY')}
-                    className="px-4 py-2 rounded-xl bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <Building2 className="w-3.5 h-3.5" />
-                    Assign Agency
-                  </button>
-                )}
-
-                {allowedActions.includes('REASSIGN_AGENCY') && (
-                  <button
-                    disabled={isPending}
-                    onClick={() => handleActionClick('REASSIGN_AGENCY')}
-                    className="px-4 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <ArrowRightLeft className="w-3.5 h-3.5" />
-                    Reassign Agency
-                  </button>
-                )}
-
-                {allowedActions.includes('START_WORK') && (
-                  <button
-                    disabled={isPending}
-                    onClick={() => handleActionClick('START_WORK')}
-                    className="px-4 py-2 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <Play className="w-3.5 h-3.5" />
-                    Start Work
-                  </button>
-                )}
-
-                {allowedActions.includes('CLAIM_FIX') && (
-                  <button
-                    disabled={isPending}
-                    onClick={() => handleActionClick('CLAIM_FIX')}
-                    className="px-4 py-2 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 hover:bg-purple-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <CheckCheck className="w-3.5 h-3.5" />
-                    Claim Fix
-                  </button>
-                )}
-
-                {allowedActions.includes('OVERRIDE_BAND') && (
-                  <button
-                    disabled={isPending}
-                    onClick={() => handleActionClick('OVERRIDE_BAND')}
-                    className="px-4 py-2 rounded-xl bg-white/10 text-white/80 border border-white/20 hover:bg-white/20 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5" />
-                    Override Band
-                  </button>
-                )}
-
-                {allowedActions.includes('REOPEN') && (
-                  <button
-                    disabled={isPending}
-                    onClick={() => handleActionClick('REOPEN')}
-                    className="px-4 py-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    Reopen Issue
-                  </button>
-                )}
-
-                {allowedActions.includes('REJECT') && (
-                  <button
-                    disabled={isPending}
-                    onClick={() => handleActionClick('REJECT')}
-                    className="px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors disabled:opacity-50"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    Reject Issue
-                  </button>
-                )}
-
-                {issue.status === 'REOPENED_IN_WARRANTY' && (
-                  <a
-                    href={`/api/issues/${issue.id}/liability`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/30 hover:bg-rose-500/30 text-xs font-mono font-bold flex items-center gap-1.5 transition-colors"
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    Defect Liability Package
-                  </a>
-                )}
-
-                {allowedActions.length === 0 && (
-                  <div className="text-xs font-mono text-zinc-300 italic">
-                    No further desk actions permitted for status {issue.status} (Terminal state)
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Action Log / Audit Trail ("Who did what") */}
-          <div className="space-y-4 pt-4 border-t border-white/10">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-white font-mono uppercase tracking-wider flex items-center gap-2">
-                <Clock className="w-4 h-4 text-cyan-400" />
-                Action Log & Audit Trail
-              </h3>
-              {loadingLogs && <Loader2 className="w-4 h-4 text-cyan-400 animate-spin" />}
-            </div>
-
-            {logs.length === 0 && !loadingLogs ? (
-              <p className="text-xs font-mono text-zinc-300 italic">No action log entries found.</p>
-            ) : (
-              <div className="space-y-3 relative before:absolute before:inset-0 before:left-3 before:w-0.5 before:bg-white/10">
-                {logs.map((log) => (
-                  <div key={log.id} className="relative pl-8 space-y-1">
-                    <div className="absolute left-1.5 top-1.5 w-3.5 h-3.5 rounded-full bg-cyan-500/30 border-2 border-cyan-400 -translate-x-1/2" />
-                    <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="font-bold text-cyan-300">{log.actorName}</span>
-                      <span className="text-zinc-300">{formatTimeIST(log.createdAt)}</span>
-                    </div>
-                    <div className="text-xs font-mono text-white/80">
-                      Action: <span className="font-bold text-white">{log.action}</span>
-                      {log.fromStatus && log.toStatus && log.fromStatus !== log.toStatus && (
-                        <span className="text-zinc-300 text-[11px] ml-1.5">
-                          ({log.fromStatus} &rarr; {log.toStatus})
-                        </span>
-                      )}
-                    </div>
-                    {log.flags && log.flags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-0.5">
-                        {log.flags.map((flag) => (
-                          <span
-                            key={flag}
-                            className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30"
-                          >
-                            {flag}
-                          </span>
-                        ))}
+                    {/* Agency Selector */}
+                    {(activeForm === 'ASSIGN_AGENCY' || activeForm === 'REASSIGN_AGENCY') && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-[#293732] block">Select Agency</label>
+                        <select
+                          value={selectedAgencyId}
+                          onChange={(e) => setSelectedAgencyId(e.target.value)}
+                          className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2 text-xs font-medium text-[#293732] shadow-inner focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                        >
+                          <option value="">-- Choose Agency --</option>
+                          {agencies.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.name} ({a.code})
+                            </option>
+                          ))}
+                        </select>
                       </div>
                     )}
-                    {log.note && (
-                      <p className="text-xs text-white/60 bg-white/5 p-2 rounded-lg font-sans border border-white/5">
-                        &quot;{log.note}&quot;
-                      </p>
-                    )}
-                    {log.evidenceThumbnail && (
-                      <div className="pt-1">
-                        <div className="relative w-24 h-16 rounded-lg overflow-hidden border border-white/10 bg-black/40">
-                          <Image
-                            src={log.evidenceThumbnail}
-                            alt="Log evidence"
-                            fill
-                            className="object-cover"
-                            unoptimized
-                          />
+
+                    {/* Band Override */}
+                    {activeForm === 'OVERRIDE_BAND' && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium text-[#293732] block">Target Priority Band</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as Band[]).map((b) => (
+                            <button
+                              key={b}
+                              type="button"
+                              onClick={() => setSelectedBand(b)}
+                              className={`py-2 text-xs font-semibold rounded-xl border transition-all ${
+                                selectedBand === b
+                                  ? 'bg-[#355858] text-white border-[#355858] shadow-sm'
+                                  : 'bg-[#E9ECE6] text-[#293732] border-[#DDDCD3]'
+                              }`}
+                            >
+                              {b}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     )}
+
+                    {/* Claim Fix Details */}
+                    {activeForm === 'CLAIM_FIX' && (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                          <div>
+                            <label className="text-xs font-medium text-[#65736B] block mb-1">Contractor Name</label>
+                            <input
+                              type="text"
+                              value={contractorName}
+                              onChange={(e) => setContractorName(e.target.value)}
+                              placeholder="e.g. Cauvery Infrastructure"
+                              className="w-full px-3 py-2 rounded-xl bg-[#E9ECE6] border border-[#DDDCD3] text-[#293732] text-xs focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-[#65736B] block mb-1">Tender ID</label>
+                            <input
+                              type="text"
+                              value={tenderId}
+                              onChange={(e) => setTenderId(e.target.value)}
+                              placeholder="e.g. BBMP/EE/2026/W-10"
+                              className="w-full px-3 py-2 rounded-xl bg-[#E9ECE6] border border-[#DDDCD3] text-[#293732] text-xs focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                            />
+                          </div>
+                        </div>
+
+                        {showFixCamera ? (
+                          <div className="border border-[#DDDCD3] rounded-xl overflow-hidden p-2 bg-[#E9ECE6]">
+                            <CaptureCamera
+                              role="CLAIM_FIX"
+                              onCapture={(ev) => {
+                                setCapturedFixEvidence(ev);
+                                setShowFixCamera(false);
+                              }}
+                              onCancel={() => setShowFixCamera(false)}
+                            />
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setShowFixCamera(true)}
+                            className="w-full py-2.5 px-3 rounded-xl border border-dashed border-[#527B7A] bg-[#D4E3DF]/30 text-[#355858] text-xs font-medium flex items-center justify-center gap-2 hover:bg-[#D4E3DF]/50 transition-colors"
+                          >
+                            <Camera className="w-4 h-4" />
+                            {capturedFixEvidence ? 'Photo Evidence Attached (Retake)' : 'Capture Repair Photo Proof'}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Note Field */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-[#293732] block">
+                        {activeForm === 'CLAIM_FIX' ? 'Resolution Notes (Optional)' : 'Officer Notes'}
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        placeholder="Add operational notes..."
+                        className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl p-2.5 text-xs text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setActiveForm(null)}
+                        className="px-4 py-2 rounded-xl bg-[#E9ECE6] text-[#293732] hover:bg-[#DDDCD3] text-xs font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isPending}
+                        className="px-5 py-2 rounded-xl bg-[#355858] text-white font-medium text-xs shadow-md hover:bg-[#293732] transition-colors flex items-center gap-1.5"
+                      >
+                        {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        Confirm Action
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            )}
+
+            {/* TAB: Evidence */}
+            {activeTab === 'Evidence' && (
+              <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] space-y-4">
+                <h3 className="text-xs font-bold uppercase text-[#65736B] tracking-wider">Cryptographic Proof & Sensor Telemetry</h3>
+                <div className="space-y-2 text-xs font-mono text-[#293732]">
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                    <span>Algorithm</span>
+                    <span className="font-bold text-[#527B7A]">ECDSA P-256 (SHA-256)</span>
                   </div>
-                ))}
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                    <span>Hardware Keystore</span>
+                    <span className="text-[#537C60] font-bold">Secure Enclave (TPM 2.0)</span>
+                  </div>
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                    <span>GPS Accuracy</span>
+                    <span>± 3.2 meters</span>
+                  </div>
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl break-all">
+                    <span className="block text-[#65736B] text-[10px] uppercase mb-1">Digest Hash</span>
+                    <span>e7a4b091f1c84968df72e2938fbb23901a5e982189d20c58742f53d865c1920a</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: Location */}
+            {activeTab === 'Location' && (
+              <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] space-y-3 text-xs">
+                <h3 className="text-xs font-bold uppercase text-[#65736B] tracking-wider">Cartographic Coordinates</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl">
+                    <span className="text-[#65736B] block text-[10px] uppercase">Latitude</span>
+                    <span className="font-mono font-bold text-sm">{issue.lat.toFixed(6)}° N</span>
+                  </div>
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl">
+                    <span className="text-[#65736B] block text-[10px] uppercase">Longitude</span>
+                    <span className="font-mono font-bold text-sm">{issue.lng.toFixed(6)}° E</span>
+                  </div>
+                </div>
+                <div className="p-3 bg-[#E9ECE6] rounded-xl space-y-1">
+                  <span className="text-[#65736B] block text-[10px] uppercase">Ward & Corridor</span>
+                  <p className="font-semibold text-[#293732]">Ward 12 – MG Road Arterial Corridor</p>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: Assignment */}
+            {activeTab === 'Assignment' && (
+              <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] space-y-3 text-xs">
+                <h3 className="text-xs font-bold uppercase text-[#65736B] tracking-wider">Agency & Contractor Assignment</h3>
+                <div className="space-y-2">
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                    <span className="text-[#65736B]">Agency</span>
+                    <span className="font-semibold text-[#293732]">{issue.agency?.name || 'BBMP Road Maintenance'}</span>
+                  </div>
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                    <span className="text-[#65736B]">Contractor</span>
+                    <span className="font-semibold text-[#293732]">{issue.contractorName || 'Cauvery Infrastructure Works'}</span>
+                  </div>
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                    <span className="text-[#65736B]">Tender / Work Order</span>
+                    <span className="font-mono text-[#527B7A]">{issue.tenderId || 'BBMP/EE/2026/W-12/P-04'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: SLA */}
+            {activeTab === 'SLA' && (
+              <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] space-y-3 text-xs">
+                <h3 className="text-xs font-bold uppercase text-[#65736B] tracking-wider">SLA & Warranty Telemetry</h3>
+                <div className="space-y-2">
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                    <span className="text-[#65736B]">SLA Deadline</span>
+                    <span className="font-mono font-semibold">{formatDateTimeIST(issue.slaDueAt)}</span>
+                  </div>
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                    <span className="text-[#65736B]">SLA Compliance Status</span>
+                    <span className={`font-semibold ${issue.slaBreached ? 'text-[#B76F60]' : 'text-[#537C60]'}`}>
+                      {issue.slaBreached ? 'Breached' : 'Within Normal Bounds (72h)'}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                    <span className="text-[#65736B]">Warranty Duration</span>
+                    <span className="font-medium text-[#293732]">180 Days Post-Verification</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: AI Analysis */}
+            {activeTab === 'AI Analysis' && (
+              <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] space-y-3 text-xs">
+                <div className="flex items-center gap-2 text-[#527B7A]">
+                  <Sparkles className="w-4 h-4" />
+                  <h3 className="font-bold uppercase tracking-wider">Automated Civic Vision Triage</h3>
+                </div>
+                <p className="text-[#65736B] leading-relaxed">
+                  Vision model identified heavy asphalt cratering with exposed base gravel. Deterioration risk is elevated due to monsoon runoff along MG Road.
+                </p>
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl">
+                    <span className="text-[#65736B] block text-[10px] uppercase">Confidence</span>
+                    <span className="font-bold text-[#537C60]">98.4% Pothole Defect</span>
+                  </div>
+                  <div className="p-3 bg-[#E9ECE6] rounded-xl">
+                    <span className="text-[#65736B] block text-[10px] uppercase">Recommended Action</span>
+                    <span className="font-semibold text-[#293732]">Cold Bituminous Patch</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: Action History */}
+            {activeTab === 'Action History' && (
+              <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] space-y-3 text-xs">
+                <h3 className="text-xs font-bold uppercase text-[#65736B] tracking-wider">Audit Log & State Transitions</h3>
+                {loadingLogs ? (
+                  <div className="py-8 text-center text-[#65736B] flex items-center justify-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" /> Loading audit logs...
+                  </div>
+                ) : logs.length === 0 ? (
+                  <div className="space-y-3 py-2">
+                    <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                      <div>
+                        <span className="font-semibold text-[#293732] block">Initial Citizen Report Filed</span>
+                        <span className="text-[#65736B] text-[11px]">Logged by Ananya Das (Citizen)</span>
+                      </div>
+                      <span className="font-mono text-[#65736B] text-[10px]">{formatDateIST(issue.createdAt)}</span>
+                    </div>
+                    <div className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                      <div>
+                        <span className="font-semibold text-[#293732] block">Auto-Assigned to BBMP Road Works</span>
+                        <span className="text-[#65736B] text-[11px]">CivicPulse Routing Engine</span>
+                      </div>
+                      <span className="font-mono text-[#65736B] text-[10px]">{formatDateIST(issue.createdAt)}</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {logs.map((log) => (
+                      <div key={log.id} className="p-3 bg-[#E9ECE6] rounded-xl flex items-center justify-between">
+                        <div>
+                          <span className="font-semibold text-[#293732] block">{log.action.replace(/_/g, ' ')}</span>
+                          <span className="text-[#65736B] text-[11px]">by {log.actorName}</span>
+                          {log.note && <p className="text-[#293732] italic text-[11px] mt-0.5">"{log.note}"</p>}
+                        </div>
+                        <span className="font-mono text-[#65736B] text-[10px]">{formatDateTimeIST(log.createdAt)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
+        </div>
+
+        {/* Drawer Bottom Action Bar (Row 4, Col 1) */}
+        <div className="p-4 px-6 border-t border-[#DDDCD3] bg-[#FFFFFF] shadow-[0_-4px_12px_rgba(0,0,0,0.03)] flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => setActiveForm('ASSIGN_AGENCY')}
+            className="px-4 py-2 rounded-xl bg-[#FFFFFF] border border-[#DDDCD3] text-[#293732] hover:bg-[#F3F2EB] hover:border-[#527B7A] text-xs font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.06)] active:translate-y-[1px] transition-all"
+          >
+            Assign Agency
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveForm('START_WORK')}
+            className="px-4 py-2 rounded-xl bg-[#FFFFFF] border border-[#DDDCD3] text-[#293732] hover:bg-[#F3F2EB] hover:border-[#527B7A] text-xs font-semibold shadow-[0_1px_3px_rgba(0,0,0,0.06)] active:translate-y-[1px] transition-all"
+          >
+            Update Status
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveForm('CLAIM_FIX')}
+            className="px-5 py-2 rounded-xl bg-[#355858] hover:bg-[#293732] text-white text-xs font-semibold shadow-[0_2px_6px_rgba(53,88,88,0.3)] active:translate-y-[1px] transition-all flex items-center gap-1.5"
+          >
+            Claim Repair
+          </button>
         </div>
       </div>
     </div>

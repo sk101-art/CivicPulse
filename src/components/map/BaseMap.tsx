@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { MapContainer, TileLayer, Circle } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { ReportPoint, PlacementMode, RouteOption } from "./types";
@@ -10,10 +10,11 @@ import {
   fetchAllRoutes,
   HAZARD_RADIUS_METERS,
 } from "./utils";
-import { MapSync, MapClickHandler, CustomZoomControls } from "./MapControls";
+import { MapSync, MapClickHandler, CustomZoomControls, WardViewportSync } from "./MapControls";
 import { RouteLayer } from "./RouteLayer";
 import { RoutePanel, VehicleMode } from "./RoutePanel";
 import { IssueClustersLayer, TrafficTilesLayer, LayerControl } from "./layers";
+import { useGeoContext } from "@/context/GeoContext";
 
 export interface BaseMapProps {
   reports: ReportPoint[];
@@ -22,6 +23,7 @@ export interface BaseMapProps {
   showReportButton?: boolean;
   onReportLocation?: (lat: number, lng: number) => void;
   className?: string;
+  ward?: any;
 }
 
 export function BaseMap({
@@ -31,7 +33,19 @@ export function BaseMap({
   showReportButton = false,
   onReportLocation,
   className = "",
+  ward: propWard,
 }: BaseMapProps) {
+  let geo: ReturnType<typeof useGeoContext> | null = null;
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    geo = useGeoContext();
+  } catch {
+    // Outside GeoContextProvider fallback
+  }
+
+  const activeWard = propWard !== undefined ? propWard : geo?.currentWard;
+  const hasSelectedWard = Boolean(activeWard);
+
   const [mode, setMode] = useState<PlacementMode>(null);
   const [source, setSource] = useState<[number, number] | null>(null);
   const [destination, setDestination] = useState<[number, number] | null>(null);
@@ -176,7 +190,9 @@ export function BaseMap({
 
   const mapCenter: [number, number] =
     propCenter ||
-    (validReports.length > 0
+    (activeWard?.lat && activeWard?.lng
+      ? [activeWard.lat, activeWard.lng]
+      : validReports.length > 0
       ? [validReports[0].latitude, validReports[0].longitude]
       : [12.9716, 77.5946]);
 
@@ -184,6 +200,14 @@ export function BaseMap({
     <div
       className={`h-full w-full rounded-2xl overflow-hidden border border-white/10 relative ${className}`}
     >
+      {/* Fallback state when a ward has no geometry */}
+      {activeWard && activeWard.hasGeometry === false && !activeWard.boundaryGeoJson && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] px-4 py-2 bg-[#FAF9F5] text-[#293732] text-xs font-semibold rounded-xl shadow-lg border border-[#DDDCD3] flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          <span>Geographical boundary not registered for {activeWard.fullName || activeWard.name}. Displaying approximate center.</span>
+        </div>
+      )}
+
       <LayerControl
         showIssues={showIssuesLayer}
         onToggleIssues={setShowIssuesLayer}
@@ -224,20 +248,24 @@ export function BaseMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
-        <MapSync reports={reports} />
+        <WardViewportSync ward={activeWard} />
+        <MapSync reports={reports} hasSelectedWard={hasSelectedWard} />
         <MapClickHandler mode={mode} onPlace={handlePlace} />
 
-        <Circle
-          center={mapCenter}
-          radius={10000}
-          pathOptions={{
-            fillColor: "var(--accent-electric-blue)",
-            fillOpacity: 0.03,
-            color: "var(--accent-electric-blue)",
-            weight: 1,
-            dashArray: "5, 10",
-          }}
-        />
+        {/* Real Ward Boundary Polygon (Civic Atlas Styling) */}
+        {activeWard?.boundaryGeoJson && (
+          <GeoJSON
+            key={`ward-boundary-${activeWard.id || activeWard.code}`}
+            data={activeWard.boundaryGeoJson}
+            style={() => ({
+              color: "#527B7A",
+              weight: 2,
+              fillColor: "#527B7A",
+              fillOpacity: 0.08,
+              dashArray: "6, 6",
+            })}
+          />
+        )}
 
         <RouteLayer
           source={source}
