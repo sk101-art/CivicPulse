@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useTransition } from 'react';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
 
 export interface WardContextItem {
   id: string;
@@ -14,7 +14,7 @@ export interface WardContextItem {
   lng: number;
   bbox?: [[number, number], [number, number]] | null;
   hasGeometry?: boolean;
-  boundaryGeoJson?: any;
+  boundaryGeoJson?: GeoJSON.GeoJsonObject | null;
   issueCount?: number;
   isPilot?: boolean;
   departmentCode?: string;
@@ -109,10 +109,9 @@ const DEFAULT_STATS: WardStats = {
 };
 
 export function GeoContextProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const [role, setRole] = useState<'CITIZEN' | 'AUTHORITY' | null>(null);
   const [currentWard, setCurrentWard] = useState<WardContextItem | null>(null);
@@ -134,66 +133,78 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
     error: null,
   });
 
-  // 1. Fetch available wards & default ward context
-  const fetchGeoContext = useCallback(async () => {
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const refreshGeoContext = useCallback(async () => {
     setIsLoading(true);
-    setError(null);
-    try {
-      const urlWard = searchParams?.get('ward') || searchParams?.get('wardId');
-      const fetchUrl = urlWard ? `/api/geo/context?ward=${encodeURIComponent(urlWard)}` : '/api/geo/context';
-
-      const res = await fetch(fetchUrl);
-      if (!res.ok) {
-        throw new Error(`Failed to load geographical context (${res.status})`);
-      }
-      const data = await res.json();
-
-      setRole(data.role);
-      const wards: WardContextItem[] = data.available || [];
-      setAvailableWards(wards);
-      if (data.department) {
-        setDepartment(data.department);
-      }
-
-      // Priority resolution:
-      // 1. URL search param
-      // 2. Saved preference in localStorage
-      // 3. API default (data.current)
-      let resolvedWard: WardContextItem | null = null;
-      if (urlWard) {
-        const lower = urlWard.toLowerCase();
-        resolvedWard = wards.find(
-          (w) =>
-            w.id.toLowerCase() === lower ||
-            w.code.toLowerCase() === lower ||
-            w.code.toLowerCase() === `ward-${lower}` ||
-            w.wardNumber?.toLowerCase() === lower
-        ) || null;
-      }
-
-      if (!resolvedWard && typeof window !== 'undefined') {
-        const savedCode = localStorage.getItem(LOCAL_STORAGE_WARD_CODE);
-        const savedId = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (savedCode) {
-          resolvedWard = wards.find((w) => w.code.toLowerCase() === savedCode.toLowerCase()) || null;
-        }
-        if (!resolvedWard && savedId) {
-          resolvedWard = wards.find((w) => w.id === savedId) || null;
-        }
-      }
-
-      setCurrentWard(resolvedWard || data.current || wards[0] || null);
-    } catch (err: any) {
-      console.warn('GeoContext fetch error:', err);
-      setError(err.message || 'Unable to load location context');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [searchParams]);
+    setRefreshTrigger((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
-    fetchGeoContext();
-  }, [fetchGeoContext]);
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        const urlWard = searchParams?.get('ward') || searchParams?.get('wardId');
+        const fetchUrl = urlWard ? `/api/geo/context?ward=${encodeURIComponent(urlWard)}` : '/api/geo/context';
+
+        const res = await fetch(fetchUrl);
+        if (!res.ok) {
+          throw new Error(`Failed to load geographical context (${res.status})`);
+        }
+        const data = await res.json();
+        if (cancelled) return;
+
+        setRole(data.role);
+        const wards: WardContextItem[] = data.available || [];
+        setAvailableWards(wards);
+        if (data.department) {
+          setDepartment(data.department);
+        }
+
+        let resolvedWard: WardContextItem | null = null;
+        if (urlWard) {
+          const lower = urlWard.toLowerCase();
+          resolvedWard = wards.find(
+            (w) =>
+              w.id.toLowerCase() === lower ||
+              w.code.toLowerCase() === lower ||
+              w.code.toLowerCase() === `ward-${lower}` ||
+              w.wardNumber?.toLowerCase() === lower
+          ) || null;
+        }
+
+        if (!resolvedWard && typeof window !== 'undefined') {
+          const savedCode = localStorage.getItem(LOCAL_STORAGE_WARD_CODE);
+          const savedId = localStorage.getItem(LOCAL_STORAGE_KEY);
+          if (savedCode) {
+            resolvedWard = wards.find((w) => w.code.toLowerCase() === savedCode.toLowerCase()) || null;
+          }
+          if (!resolvedWard && savedId) {
+            resolvedWard = wards.find((w) => w.id === savedId) || null;
+          }
+        }
+
+        setCurrentWard(resolvedWard || data.current || wards[0] || null);
+      } catch (err: unknown) {
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : 'Unable to load location context';
+          console.warn('GeoContext fetch error:', err);
+          setError(msg);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, refreshTrigger]);
 
   // 2. Fetch actual ward issues, statistics, category breakdown, and audits
   const fetchWardData = useCallback(async (targetWard: WardContextItem | null, category: string) => {
@@ -210,20 +221,6 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
       }
       const data = await res.json();
 
-      if (data.ward) {
-        setCurrentWard((prev) => {
-          if (!prev || (prev.id !== data.ward.id && prev.code !== data.ward.code)) return prev;
-          return {
-            ...prev,
-            bbox: data.ward.bbox || prev.bbox,
-            hasGeometry: data.ward.hasGeometry ?? prev.hasGeometry,
-            boundaryGeoJson: data.ward.boundaryGeoJson || prev.boundaryGeoJson,
-            lat: data.ward.lat ?? prev.lat,
-            lng: data.ward.lng ?? prev.lng,
-          };
-        });
-      }
-
       setWardData({
         issues: data.issues || [],
         categoryBreakdown: data.categoryBreakdown || {},
@@ -232,22 +229,29 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         isLoading: false,
         error: null,
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to retrieve ward records';
       console.warn('Error loading ward issues:', err);
       setWardData((prev) => ({
         ...prev,
         isLoading: false,
-        error: err.message || 'Unable to retrieve ward records',
+        error: msg,
       }));
     }
   }, []);
 
-  // Re-fetch ward data whenever currentWard or selectedCategory changes
+  // Re-fetch ward data ONLY when the ward identity (code/id) or selectedCategory changes
+  const currentWardId = currentWard?.code || currentWard?.id || null;
+  const lastFetchedKeyRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (currentWard) {
-      fetchWardData(currentWard, selectedCategory);
-    }
-  }, [currentWard, selectedCategory, fetchWardData]);
+    if (!currentWard || !currentWardId) return;
+    const fetchKey = `${currentWardId}::${selectedCategory}`;
+    if (lastFetchedKeyRef.current === fetchKey) return;
+    lastFetchedKeyRef.current = fetchKey;
+
+    fetchWardData(currentWard, selectedCategory);
+  }, [currentWard, currentWardId, selectedCategory, fetchWardData]);
 
   // 3. User selects a different ward
   const selectWard = useCallback(
@@ -298,7 +302,7 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         selectedCategory,
         setSelectedCategory,
         selectWard,
-        refresh: fetchGeoContext,
+        refresh: refreshGeoContext,
         refreshWardData: () => fetchWardData(currentWard, selectedCategory),
       }}
     >

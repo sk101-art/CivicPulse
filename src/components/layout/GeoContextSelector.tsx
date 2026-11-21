@@ -111,7 +111,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
       {isOpen && (
         <div
           role="listbox"
-          className="absolute right-0 mt-2 w-72 sm:w-80 bg-white border border-[#DDDCD3] rounded-2xl shadow-[0_16px_36px_rgba(41,55,50,0.12),0_4px_12px_rgba(41,55,50,0.06),inset_0_1px_0_rgba(255,255,255,1)] z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          className="absolute right-0 mt-2 w-72 sm:w-80 bg-white border border-[#DDDCD3] rounded-2xl shadow-[0_16px_36px_rgba(41,55,50,0.18),0_4px_12px_rgba(41,55,50,0.08),inset_0_1px_0_rgba(255,255,255,1)] z-[1200] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         >
           {/* Header */}
           <div className="p-3.5 bg-[#FAF9F5] border-b border-[#DDDCD3]">

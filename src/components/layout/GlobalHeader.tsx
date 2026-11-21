@@ -33,7 +33,7 @@ export function GlobalHeader({ role = 'CITIZEN', className = '' }: GlobalHeaderP
 
   return (
     <header
-      className={`w-full bg-[#FAF9F5]/90 backdrop-blur-md border-b border-[#DDDCD3] sticky top-0 z-30 px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 transition-colors ${className}`}
+      className={`w-full bg-[#FAF9F5]/90 backdrop-blur-md border-b border-[#DDDCD3] sticky top-0 z-[1100] px-4 sm:px-6 lg:px-8 py-2.5 sm:py-3 transition-colors ${className}`}
     >
       <div className="w-full flex items-center justify-between gap-3 max-w-[1400px] mx-auto">
         {/* Left Side: Mobile Logo / Desktop Section Context */}

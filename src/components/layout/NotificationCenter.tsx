@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
@@ -9,7 +8,6 @@ import {
   Check,
   CheckCheck,
   Clock,
-  ExternalLink,
   AlertTriangle,
   RotateCcw,
   ShieldCheck,
@@ -67,7 +65,8 @@ export function NotificationCenter({ className = '' }: NotificationCenterProps) 
       try {
         const stored = localStorage.getItem(storageKey);
         if (stored) {
-          setReadIds(new Set(JSON.parse(stored)));
+          const parsed = JSON.parse(stored);
+          setTimeout(() => setReadIds(new Set(parsed)), 0);
         }
       } catch {
         // ignore
@@ -98,9 +97,10 @@ export function NotificationCenter({ className = '' }: NotificationCenterProps) 
       }
       const data = await res.json();
       setNotifications(data.notifications || []);
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unable to load notifications';
       console.warn('Error fetching notifications:', err);
-      setError(err.message || 'Unable to load notifications');
+      setError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -108,10 +108,39 @@ export function NotificationCenter({ className = '' }: NotificationCenterProps) 
 
   // Fetch on mount and when popover is opened
   useEffect(() => {
-    if (session?.user) {
-      fetchNotifications();
-    }
-  }, [session, fetchNotifications]);
+    let cancelled = false;
+    if (!session?.user) return;
+
+    const run = async () => {
+      try {
+        const res = await fetch('/api/notifications');
+        if (!res.ok) {
+          throw new Error(`Failed to load notifications (${res.status})`);
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          setNotifications(data.notifications || []);
+          setError(null);
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          const msg = err instanceof Error ? err.message : 'Unable to load notifications';
+          console.warn('Error fetching notifications:', err);
+          setError(msg);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
   // Handle click outside to close popover
   useEffect(() => {
@@ -208,7 +237,7 @@ export function NotificationCenter({ className = '' }: NotificationCenterProps) 
         <div
           role="dialog"
           aria-label="Notification Centre"
-          className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-[#DDDCD3] rounded-2xl shadow-[0_16px_36px_rgba(41,55,50,0.12),0_4px_12px_rgba(41,55,50,0.06),inset_0_1px_0_rgba(255,255,255,1)] z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+          className="absolute right-0 mt-2 w-80 sm:w-96 bg-white border border-[#DDDCD3] rounded-2xl shadow-[0_16px_36px_rgba(41,55,50,0.18),0_4px_12px_rgba(41,55,50,0.08),inset_0_1px_0_rgba(255,255,255,1)] z-[1200] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         >
           {/* Popover Header */}
           <div className="p-3.5 bg-[#FAF9F5] border-b border-[#DDDCD3] flex items-center justify-between">
