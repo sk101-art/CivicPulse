@@ -24,6 +24,7 @@ import {
 import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useGeoContext } from '@/context/GeoContext';
+import { CartoTileLayer, CartoConfigNotice } from '@/components/map/CartoTileLayer';
 
 // Dynamic Leaflet components to prevent SSR window issues
 const MapContainer = dynamic(
@@ -537,6 +538,7 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
 
       {/* ── REAL LEAFLET MAP CANVAS ── */}
       <div className="w-full h-full">
+        <CartoConfigNotice />
         <MapContainer
           center={centerCoords}
           zoom={14}
@@ -544,11 +546,7 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
           scrollWheelZoom={true}
           style={{ height: '100%', width: '100%' }}
         >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            maxZoom={19}
-          />
+          <CartoTileLayer style="voyager" />
 
           {/* Child Component using useMap() to handle dynamic ward navigation */}
           <WardViewportSync ward={currentWard} onMapReady={setMapInstance} />

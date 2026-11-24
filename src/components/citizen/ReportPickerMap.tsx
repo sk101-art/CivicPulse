@@ -1,9 +1,10 @@
 'use client';
 
 import { useMemo, useEffect, useSyncExternalStore } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import { MapContainer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { CartoTileLayer, CartoConfigNotice } from '@/components/map/CartoTileLayer';
 
 interface ReportPickerMapProps {
   latitude: number;
@@ -77,23 +78,23 @@ export default function ReportPickerMap({ latitude, longitude, onChange }: Repor
   if (!isMounted) return <div className="w-full h-full bg-white/5 animate-pulse" />;
 
   return (
-    <MapContainer
-      center={[latitude || 12.9716, longitude || 77.5946]}
-      zoom={15}
-      className="w-full h-full z-10"
-      scrollWheelZoom
-      style={{ height: '100%', minHeight: '100%', width: '100%', zIndex: 10, background: '#0A0A0B' }}
-    >
-      <TileLayer
-        attribution="&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
-        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-      />
-      <MapInvalidator />
-      <MapController lat={latitude} lng={longitude} />
-      <LocationPicker onChange={onChange} />
-      {latitude !== 0 && longitude !== 0 && (
-         <Marker position={[latitude, longitude]} icon={markerIcon} />
-      )}
-    </MapContainer>
+    <div className="relative w-full h-full">
+      <CartoConfigNotice />
+      <MapContainer
+        center={[latitude || 12.9716, longitude || 77.5946]}
+        zoom={15}
+        className="w-full h-full z-10"
+        scrollWheelZoom
+        style={{ height: '100%', minHeight: '100%', width: '100%', zIndex: 10, background: '#0A0A0B' }}
+      >
+        <CartoTileLayer style="voyager" />
+        <MapInvalidator />
+        <MapController lat={latitude} lng={longitude} />
+        <LocationPicker onChange={onChange} />
+        {latitude !== 0 && longitude !== 0 && (
+           <Marker position={[latitude, longitude]} icon={markerIcon} />
+        )}
+      </MapContainer>
+    </div>
   );
 }

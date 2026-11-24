@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import L from 'leaflet';
+import type * as LeafletType from 'leaflet';
 import { 
   Flame, 
   Layers, 
@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { HotspotCluster } from '@/lib/intelligence/wardAnalytics';
 import 'leaflet/dist/leaflet.css';
+import { CartoTileLayer, CartoConfigNotice } from '@/components/map/CartoTileLayer';
 
 // Dynamic Leaflet components
 const MapContainer = dynamic(
@@ -93,7 +94,7 @@ export function GeoIntelligenceMap({
 }: Props) {
   const [viewMode, setViewMode] = useState<MapViewMode>('ALL');
   const [selectedHotspot, setSelectedHotspot] = useState<HotspotCluster | null>(null);
-  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
+  const [mapInstance, setMapInstance] = useState<LeafletType.Map | null>(null);
 
   // Center coordinates
   const centerCoords: [number, number] = useMemo(() => {
@@ -145,9 +146,10 @@ export function GeoIntelligenceMap({
   // Custom marker pin generator
   const getMarkerIcon = useCallback((category: string, isCritical: boolean) => {
     if (typeof window === 'undefined') return undefined;
+    const leaflet = require('leaflet');
     const color = isCritical ? '#B76F60' : '#527B7A';
 
-    return L.divIcon({
+    return leaflet.divIcon({
       className: 'geo-marker-pin',
       html: `
         <div style="width: 24px; height: 32px; transform: translate(-12px, -32px);" class="hover:scale-125 transition-transform cursor-pointer">
@@ -166,7 +168,8 @@ export function GeoIntelligenceMap({
     if (!mapInstance) return;
     if (ward.bbox) {
       try {
-        const bounds = L.latLngBounds(ward.bbox);
+        const leaflet = require('leaflet');
+        const bounds = leaflet.latLngBounds(ward.bbox);
         if (bounds.isValid()) {
           mapInstance.flyToBounds(bounds, { padding: [40, 40], maxZoom: 16, duration: 0.8 });
           return;
@@ -316,6 +319,7 @@ export function GeoIntelligenceMap({
           </div>
         )}
 
+        <CartoConfigNotice />
         <MapContainer
           center={centerCoords}
           zoom={14}
@@ -323,11 +327,7 @@ export function GeoIntelligenceMap({
           scrollWheelZoom={true}
           style={{ height: '100%', width: '100%' }}
         >
-          <TileLayer
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            maxZoom={19}
-          />
+          <CartoTileLayer style="voyager" />
 
           <WardViewportSync ward={ward} onMapReady={setMapInstance} />
 

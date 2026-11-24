@@ -9,10 +9,13 @@ import { ArrowLeft } from "lucide-react";
 export const revalidate = 0;
 
 export default async function ClaimGapPage() {
-  const [{ hasSeedData, byWard, byDesk, periodDays }, session] = await Promise.all([
-    loadClaimGapData(30),
-    getServerSession(authOptions),
-  ]);
+  const { hasSeedData, byWard, byDesk, periodDays } = await loadClaimGapData(30);
+  let session = null;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    // Outside request context (e.g. unit tests)
+  }
 
   const role = session?.user?.role || 'CITIZEN';
 

@@ -128,7 +128,7 @@ export function IssueDrawer({
     const fetchLogs = async () => {
       setLoadingLogs(true);
       try {
-        const res = await fetch(`/api/desk/issues/${issue.id}/logs`);
+        const res = await fetch(`/api/issues/${issue.id}/log`);
         if (res.ok) {
           const data = await res.json();
           setLogs(data.logs || []);
@@ -155,7 +155,7 @@ export function IssueDrawer({
     setActionError(null);
     startTransition(async () => {
       try {
-        const res = await fetch(`/api/desk/issues/${issue.id}/actions`, {
+        const res = await fetch(`/api/issues/${issue.id}/actions`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({

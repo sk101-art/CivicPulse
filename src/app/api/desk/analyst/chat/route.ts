@@ -14,7 +14,11 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const query = typeof body?.query === "string" ? body.query.trim() : "";
+    const query = typeof body?.query === "string" 
+      ? body.query.trim() 
+      : typeof body?.message === "string" 
+      ? body.message.trim() 
+      : "";
 
     if (!query) {
       return apiError(400, "BAD_REQUEST", "Query string is required");

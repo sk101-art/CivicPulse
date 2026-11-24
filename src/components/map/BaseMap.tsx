@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
+import { MapContainer, GeoJSON } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { ReportPoint, PlacementMode, RouteOption } from "./types";
@@ -14,6 +14,7 @@ import { MapSync, MapClickHandler, CustomZoomControls, WardViewportSync } from "
 import { RouteLayer } from "./RouteLayer";
 import { RoutePanel, VehicleMode } from "./RoutePanel";
 import { IssueClustersLayer, TrafficTilesLayer, LayerControl } from "./layers";
+import { CartoTileLayer, CartoConfigNotice } from "./CartoTileLayer";
 import { useGeoContext } from "@/context/GeoContext";
 
 export interface BaseMapProps {
@@ -215,6 +216,8 @@ export function BaseMap({
         onToggleTraffic={setShowTrafficLayer}
       />
 
+      <CartoConfigNotice />
+
       <RoutePanel
         mode={mode}
         setMode={setMode}
@@ -244,10 +247,7 @@ export function BaseMap({
         style={{ height: "100%", width: "100%" }}
       >
         <CustomZoomControls />
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        />
+        <CartoTileLayer style="voyager" />
         <WardViewportSync ward={activeWard} />
         <MapSync reports={reports} hasSelectedWard={hasSelectedWard} />
         <MapClickHandler mode={mode} onPlace={handlePlace} />

@@ -35,7 +35,7 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
     { href: '/desk/intelligence', icon: 'Compass', label: 'Ward Intelligence' },
     { href: '/desk/briefing', icon: 'FileText', label: 'Area Briefing' },
     { href: '/desk/map', icon: 'Map', label: 'Route Optimizer' },
-    { href: '/claim-gap', icon: 'TrendingUp', label: 'Claim Gap' },
+    { href: '/desk/claim-gap', icon: 'TrendingUp', label: 'Claim Gap' },
     { href: '/desk/personnels', icon: 'User', label: 'Field Personnel' },
   ];
 

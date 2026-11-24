@@ -9,7 +9,20 @@ import {
 import type { WardIntelligenceData, TimePeriod } from '@/lib/intelligence/wardAnalytics';
 import { WardOverviewMetricsSection } from './WardOverviewMetrics';
 import { CategoryAnalysisSection } from './CategoryAnalysisSection';
-import { GeoIntelligenceMap } from './GeoIntelligenceMap';
+import dynamic from 'next/dynamic';
+
+const GeoIntelligenceMap = dynamic(
+  () => import('./GeoIntelligenceMap').then((mod) => mod.GeoIntelligenceMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[420px] rounded-3xl bg-[#E9ECE6] animate-pulse flex items-center justify-center text-xs font-mono text-[#65736B]">
+        Loading Cartography Engine...
+      </div>
+    ),
+  }
+);
+
 import { ResolutionPerformanceSection } from './ResolutionPerformanceSection';
 import { RecurringIssuesSection } from './RecurringIssuesSection';
 import { HistoricalTrendsSection } from './HistoricalTrendsSection';

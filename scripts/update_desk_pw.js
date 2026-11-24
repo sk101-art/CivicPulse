@@ -1,9 +1,14 @@
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
+require('dotenv').config({ path: '.env.local' });
 
-const pool = new Pool({
-  connectionString: 'postgresql://postgres.ofkshdculpzvqergntcs:3z5KuftkM48UuIxk@aws-0-ap-south-1.pooler.supabase.com:5432/postgres'
-});
+const connectionString = process.env.DIRECT_DATABASE_URL || process.env.APP_DATABASE_URL;
+if (!connectionString) {
+  console.error('Error: DIRECT_DATABASE_URL or APP_DATABASE_URL is not set in .env.local');
+  process.exit(1);
+}
+
+const pool = new Pool({ connectionString });
 
 async function main() {
   const hash = await bcrypt.hash('Password@1234', 10);

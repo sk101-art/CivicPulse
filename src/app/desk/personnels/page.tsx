@@ -10,14 +10,31 @@ export default async function DeskPersonnelPage() {
   const session = await getServerSession(authOptions);
   
   if (!session || session.user.role !== 'AUTHORITY') {
-    redirect('/login');
+    redirect('/login/staff');
   }
 
   let personnels: any[] = [];
   try {
     personnels = await prisma.personnel.findMany({
-      orderBy: { createdAt: 'desc' }
+      orderBy: { name: 'asc' }
     });
+
+    if (personnels.length === 0) {
+      const initialRoster = [
+        { name: 'Ravi Kumar', role: 'Senior Field Engineer', contact: '+91 98765 43021', active: true },
+        { name: 'Meera Nair', role: 'Road Works Supervisor', contact: '+91 98456 76120', active: true },
+        { name: 'Arjun Patel', role: 'Drainage Technician', contact: '+91 99879 22109', active: true },
+        { name: 'S. Ramesh', role: 'Electrical Maintenance Lead', contact: '+91 98123 77090', active: true },
+      ];
+
+      for (const p of initialRoster) {
+        await prisma.personnel.create({ data: p });
+      }
+
+      personnels = await prisma.personnel.findMany({
+        orderBy: { name: 'asc' }
+      });
+    }
   } catch (err) {
     console.warn("Could not query personnels table:", err);
   }

@@ -1,18 +1,21 @@
 const { Pool } = require('pg');
+require('dotenv').config({ path: '.env.local' });
 
-const pool = new Pool({
-  connectionString: 'postgresql://postgres.ofkshdculpzvqergntcs:3z5KuftkM48UuIxk@aws-0-ap-south-1.pooler.supabase.com:5432/postgres'
-});
+const connectionString = process.env.DIRECT_DATABASE_URL || process.env.APP_DATABASE_URL;
+if (!connectionString) {
+  console.error('Error: DIRECT_DATABASE_URL or APP_DATABASE_URL is not set in .env.local');
+  process.exit(1);
+}
+
+const pool = new Pool({ connectionString });
 
 async function main() {
   const res = await pool.query(`
-    SELECT i.id, i.category, i.status, i.lat, i.lng, i.address, i.priority, i.band, i."slaDueAt", i."slaBreached", i."createdAt"
+    SELECT i.id, i.title, i.category, i.status, w.name as ward
     FROM "Issue" i
-    WHERE i.status NOT IN ('VERIFIED_FIXED', 'REJECTED')
-    ORDER BY i.priority DESC
-    LIMIT 20
+    LEFT JOIN "Ward" w ON i."wardId" = w.id
+    LIMIT 5
   `);
-  console.log('Open issues found:', res.rows.length);
   console.table(res.rows);
   await pool.end();
 }
