@@ -10,7 +10,7 @@ import { GlobalHeader } from "@/components/layout/GlobalHeader";
 export default async function DeskLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
   if (!session) {
-    redirect('/login');
+    redirect('/login/staff');
   }
   // A signed-in citizen is told why, instead of being bounced to a login form they are already past.
   if (session.user.role !== 'AUTHORITY') {
@@ -19,7 +19,7 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
 
   const userId = session.user.id;
   if (!userId) {
-    redirect('/login');
+    redirect('/login/staff');
   }
 
   const user = await prisma.user.findUnique({

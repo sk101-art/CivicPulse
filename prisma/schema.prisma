@@ -114,6 +114,7 @@ model User {
   id             String          @id @default(cuid())
   email          String          @unique
   role           Role            @default(CITIZEN)
+  isActive       Boolean         @default(true)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   passwordHash   String
@@ -123,6 +124,18 @@ model User {
   auditTasks     AuditTask[]
   auditVotes     AuditVote[]
   auditorScore   AuditorScore?
+}
+
+model StaffInvitation {
+  id         String    @id @default(cuid())
+  email      String    @unique
+  token      String    @unique
+  role       Role      @default(AUTHORITY)
+  invitedBy  String?
+  department String?
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
 }
 
 model CitizenProfile {

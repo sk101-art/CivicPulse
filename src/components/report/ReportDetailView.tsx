@@ -50,7 +50,7 @@ export function ReportDetailView({
   priority = 'HIGH',
   priorityLabel = 'High Priority',
   photoUrl,
-  reporterName = 'Ananya Das',
+  reporterName = 'Citizen Contributor',
   agencyName = 'Municipal Depot • Ward 12 Team',
   notes = 'Large pothole causing vehicle slowdown and hazard during evening rainfall.',
   backHref = '/citizen/dashboard',

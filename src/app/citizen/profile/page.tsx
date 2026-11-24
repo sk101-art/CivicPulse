@@ -7,7 +7,11 @@ import { formatDateIST } from "@/lib/time/ist";
 
 export const revalidate = 0;
 
-export default async function CitizenProfile() {
+export default async function CitizenProfile(props: {
+  searchParams?: Promise<{ tab?: string }>;
+}) {
+  const searchParams = props.searchParams ? await props.searchParams : undefined;
+  const initialTab = (searchParams?.tab === 'settings' ? 'settings' : 'reports') as 'reports' | 'settings';
   const session = await getServerSession(authOptions);
   if (!session || session.user.role !== 'CITIZEN') {
     redirect('/login');
@@ -18,8 +22,8 @@ export default async function CitizenProfile() {
 
   const overview = await loadCitizenOverview(userId, { reportLimit: 10 }).catch(() => null);
   const user = overview?.user || { 
-    name: session.user.name || 'Ananya Das', 
-    email: session.user.email || 'ananya.das@civicpulse.org',
+    name: session.user.name || session.user.email?.split('@')[0] || 'Citizen', 
+    email: session.user.email || '',
     createdAt: new Date(),
   };
   const profile = overview?.profile || { 
@@ -50,6 +54,7 @@ export default async function CitizenProfile() {
 
   return (
     <CitizenProfileView
+      initialTab={initialTab}
       user={{
         name: user.name,
         email: user.email,

@@ -36,7 +36,7 @@ export default async function CitizenDashboard() {
     listAuditTasksForUser(userId).catch(() => ({ eligible: false, tasks: [] })),
   ]);
 
-  const user = overview?.user || { name: session.user.name || 'Ananya Das' };
+  const user = overview?.user || { name: session.user.name || session.user.email?.split('@')[0] || 'Citizen' };
   const profile = overview?.profile || { tier: 'CONTRIBUTOR', reputation: 1280 };
   const userReports = overview?.reports || [];
 

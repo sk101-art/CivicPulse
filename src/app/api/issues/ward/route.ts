@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { Category, Status } from '@prisma/client';
+import { Category, type Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,10 +18,10 @@ export async function GET(req: Request) {
     const categoryParam = url.searchParams.get('category'); // optional category filter
 
     // 1. Resolve target ward from DB
-    let targetWard: any = null;
+    type WardRecord = Awaited<ReturnType<typeof prisma.ward.findFirst>>;
+    let targetWard: WardRecord = null;
 
     if (wardParam) {
-      const lower = wardParam.toLowerCase().trim();
       targetWard = await prisma.ward.findFirst({
         where: {
           OR: [
@@ -127,7 +127,7 @@ export async function GET(req: Request) {
     });
 
     // 3. Query Issues for this Ward (optionally filtered by Category)
-    const issueWhere: any = { wardId: targetWard.id };
+    const issueWhere: Prisma.IssueWhereInput = { wardId: targetWard.id };
 
     if (categoryParam && categoryParam !== 'ALL') {
       const catUpper = categoryParam.toUpperCase().replace(/\s+/g, '_');

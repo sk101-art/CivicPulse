@@ -75,7 +75,7 @@ export default async function ReportDetails({
       priority={priorityTier}
       priorityLabel={priorityTier === 'HIGH' ? 'High Priority' : priorityTier === 'MEDIUM' ? 'Medium Priority' : 'Low Priority'}
       photoUrl={photoUrl}
-      reporterName={reporterUser?.name || 'Ananya Das'}
+      reporterName={reporterUser?.name || 'Citizen Contributor'}
       agencyName={issue?.assignments[0]?.personnel?.name || 'Municipal Depot • Ward 12 Team'}
       backHref="/citizen/dashboard"
     />

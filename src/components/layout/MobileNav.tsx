@@ -13,7 +13,8 @@ import {
   FileText, 
   CheckCircle2, 
   TrendingUp, 
-  MapPin 
+  MapPin,
+  Settings
 } from 'lucide-react';
 
 interface NavLink {
@@ -39,6 +40,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   CheckCircle2,
   TrendingUp,
   MapPin,
+  Settings,
 };
 
 export function MobileNav({ links }: MobileNavProps) {

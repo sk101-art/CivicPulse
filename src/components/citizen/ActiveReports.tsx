@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Status, Category } from '@prisma/client';
 import Link from 'next/link';
-import { ChevronRight, Wrench, Clock, MapPin, ArrowRight, ShieldCheck, Inbox, AlertTriangle, Layers } from 'lucide-react';
+import { ChevronRight, Clock, MapPin, ArrowRight, ShieldCheck, Inbox } from 'lucide-react';
 import { useReports } from '@/hooks/useReports';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { formatDateIST } from '@/lib/time/ist';

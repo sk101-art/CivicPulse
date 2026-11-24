@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { useGeoContext } from '@/context/GeoContext';
-import { MapPin, CheckCircle2, Clock, AlertTriangle, ArrowRight, Loader2 } from 'lucide-react';
+import { MapPin, ArrowRight, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 export function CityGlanceMiniMap() {
@@ -11,7 +11,6 @@ export function CityGlanceMiniMap() {
   const total = wardData.stats?.totalReported ?? 0;
   const inProgress = wardData.stats?.inProgressCount ?? 0;
   const resolved = wardData.stats?.resolvedCount ?? 0;
-  const critical = wardData.stats?.criticalCount ?? 0;
 
   const categories = wardData.categoryBreakdown || {};
 

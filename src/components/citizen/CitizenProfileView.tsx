@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { getInitials } from '@/lib/format/avatar';
 import { 
   Home, 
   ChevronRight, 
@@ -16,10 +17,13 @@ import {
   ShieldCheck, 
   ExternalLink,
   X,
-  Check
+  Check,
+  Settings
 } from 'lucide-react';
+import { AppInstallationCard } from '@/components/settings/AppInstallationCard';
 
 export interface CitizenProfileViewProps {
+  initialTab?: 'reports' | 'verifications' | 'leaderboard' | 'settings';
   user: {
     name: string | null;
     email: string | null;
@@ -123,10 +127,11 @@ export function CitizenProfileView({
   reports: propReports,
   verifications: propVerifications,
   leaderboard: propLeaderboard,
+  initialTab = 'reports',
 }: CitizenProfileViewProps) {
-  const [activeTab, setActiveTab] = useState<'reports' | 'verifications' | 'leaderboard'>('reports');
+  const [activeTab, setActiveTab] = useState<'reports' | 'verifications' | 'leaderboard' | 'settings'>(initialTab);
   const [editModalOpen, setEditModalOpen] = useState(false);
-  const [displayName, setDisplayName] = useState(user.name || 'Ananya Das');
+  const [displayName, setDisplayName] = useState(user.name || user.email?.split('@')[0] || 'Citizen');
 
   const reports = propReports && propReports.length > 0 ? propReports : DEFAULT_REPORTS;
   const verifications = propVerifications && propVerifications.length > 0 ? propVerifications : DEFAULT_VERIFICATIONS;
@@ -163,13 +168,8 @@ export function CitizenProfileView({
           {/* Identity Header Row */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-full overflow-hidden border-2 border-white shadow-[0_4px_12px_rgba(41,55,50,0.12)] shrink-0 bg-[#E5E9E3]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src="/images/avatar-ananya.jpg"
-                  alt={displayName}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-full overflow-hidden border-2 border-white shadow-[0_4px_12px_rgba(41,55,50,0.12)] shrink-0 bg-[#D4E3DF] text-[#355858] font-display font-semibold text-2xl flex items-center justify-center select-none">
+                {getInitials(displayName, user.email)}
               </div>
 
               <div className="space-y-0.5">
@@ -312,6 +312,19 @@ export function CitizenProfileView({
             >
               Leaderboard
             </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('settings')}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'settings'
+                  ? 'bg-[#355858] text-white shadow-sm'
+                  : 'bg-white/80 hover:bg-white text-[#65736B] border border-[#DDDCD3]'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>Settings</span>
+            </button>
           </div>
 
           {/* Tab 1: Report History List */}
@@ -443,6 +456,13 @@ export function CitizenProfileView({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Tab 4: Settings & App Installation */}
+          {activeTab === 'settings' && (
+            <div className="space-y-4">
+              <AppInstallationCard />
             </div>
           )}
 

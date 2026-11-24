@@ -34,6 +34,24 @@ export function WardViewportSync({
     }
   }, [map, onMapReady]);
 
+  // Automatically trigger Leaflet invalidateSize when sidebar toggles or container resizes
+  useEffect(() => {
+    if (!map) return;
+    const handleResize = () => {
+      try {
+        map.invalidateSize({ animate: false });
+      } catch (err) {
+        // Safe fallback
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('civicpulse:map-resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('civicpulse:map-resize', handleResize);
+    };
+  }, [map]);
+
   useEffect(() => {
     if (!ward || !map) return;
     const wardKey = `${ward.id || ward.code || ''}-${ward.lat}-${ward.lng}`;

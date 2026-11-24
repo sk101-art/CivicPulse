@@ -8,10 +8,12 @@ import { GlobalHeader } from "@/components/layout/GlobalHeader";
 
 export default async function CitizenLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== 'CITIZEN') redirect('/login');
+  if (!session) redirect('/login/citizen');
+  if (session.user.role === 'AUTHORITY') redirect('/desk');
+  if (session.user.role !== 'CITIZEN') redirect('/login/citizen');
 
   const userId = session.user.id;
-  if (!userId) { redirect('/login'); return null; }
+  if (!userId) { redirect('/login/citizen'); return null; }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -30,6 +32,7 @@ export default async function CitizenLayout({ children }: { children: React.Reac
     { href: '/citizen/audit', icon: 'CheckCircle2', label: 'Repair Verification' },
     { href: '/citizen/extra', icon: 'MapPin', label: 'Report Locations' },
     { href: '/citizen/profile', icon: 'User', label: 'Profile' },
+    { href: '/citizen/settings', icon: 'Settings', label: 'Settings' },
   ];
 
   return (
@@ -37,7 +40,7 @@ export default async function CitizenLayout({ children }: { children: React.Reac
       <AppSidebar 
         role="CITIZEN" 
         links={links} 
-        userName={user?.name || 'Ananya Das'} 
+        userName={user?.name || session.user.name || session.user.email?.split('@')[0] || 'Citizen'} 
         userSubtitle={user?.citizenProfile?.tier ? `Citizen • ${user.citizenProfile.tier}` : 'Citizen • Level 3'} 
       />
       

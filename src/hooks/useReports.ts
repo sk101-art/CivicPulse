@@ -69,27 +69,36 @@ export interface UseReportsOptions {
 }
 
 export function useReports(options: UseReportsOptions = { endpoint: '/api/reports' }) {
-  const [reports, setReports] = useState<Report[]>(() => (options.initialData || []).map(normalizeReport));
-  const [loading, setLoading] = useState(() => !options.initialData);
+  const {
+    endpoint = '/api/reports',
+    wardId,
+    category,
+    status,
+    autoRefresh,
+    initialData,
+  } = options;
+
+  const [reports, setReports] = useState<Report[]>(() => (initialData || []).map(normalizeReport));
+  const [loading, setLoading] = useState(() => !initialData);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const getEffectiveUrl = useCallback(() => {
-    const rawEndpoint = options.endpoint || '/api/reports';
+    const rawEndpoint = endpoint || '/api/reports';
     const [path, queryString] = rawEndpoint.split('?');
     const params = new URLSearchParams(queryString || '');
-    if (options.wardId) {
-      params.set('wardId', options.wardId);
+    if (wardId) {
+      params.set('wardId', wardId);
     }
-    if (options.category && options.category !== 'ALL') {
-      params.set('category', options.category);
+    if (category && category !== 'ALL') {
+      params.set('category', category);
     }
-    if (options.status) {
-      params.set('status', options.status);
+    if (status) {
+      params.set('status', status);
     }
     const qs = params.toString();
     return qs ? `${path}?${qs}` : path;
-  }, [options.endpoint, options.wardId, options.category, options.status]);
+  }, [endpoint, wardId, category, status]);
 
   const fetchReports = useCallback(async () => {
     try {
@@ -160,13 +169,13 @@ export function useReports(options: UseReportsOptions = { endpoint: '/api/report
 
   // Auto-refresh interval
   useEffect(() => {
-    if (options.autoRefresh && options.autoRefresh > 0) {
+    if (autoRefresh && autoRefresh > 0) {
       const interval = setInterval(() => {
         fetchReports();
-      }, options.autoRefresh);
+      }, autoRefresh);
       return () => clearInterval(interval);
     }
-  }, [options.autoRefresh, fetchReports]);
+  }, [autoRefresh, fetchReports]);
 
   return { reports, loading, error, refetch: fetchReports, invalidate };
 }

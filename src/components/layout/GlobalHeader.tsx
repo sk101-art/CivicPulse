@@ -21,7 +21,9 @@ export function GlobalHeader({ role = 'CITIZEN', className = '' }: GlobalHeaderP
     if (pathname.includes('/citizen/report')) return 'Report Defect';
     if (pathname.includes('/citizen/audit')) return 'Repair Verification';
     if (pathname.includes('/citizen/profile')) return 'Citizen Profile';
+    if (pathname.includes('/citizen/settings') || pathname.includes('/settings')) return 'Settings';
     if (pathname.includes('/citizen/map')) return 'Civic Atlas Map';
+    if (pathname.includes('/citizen/extra')) return 'Report Locations';
     if (pathname.includes('/desk/dashboard') || pathname === '/desk') return 'Operations Queue';
     if (pathname.includes('/desk/briefing')) return 'Area Briefing';
     if (pathname.includes('/desk/map')) return 'Route Optimizer';
