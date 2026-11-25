@@ -209,19 +209,35 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
     return optimizedRoute.map(item => [item.latitude, item.longitude] as [number, number]);
   }, [optimizedRoute]);
 
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+
   // Confirm & Dispatch Action
   const handleDispatch = async () => {
     if (!activePersonnel || optimizedRoute.length === 0) return;
     setIsDispatching(true);
+    setDispatchError(null);
+    setDispatchSuccess(null);
 
     try {
-      // Simulate dispatch confirmation and persist
-      await new Promise(r => setTimeout(r, 600));
+      const res = await fetch('/api/desk/dispatch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          personnelId: activePersonnel.id,
+          issueIds: optimizedRoute.map((stop) => stop.id),
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Failed to dispatch route');
+      }
+
       setDispatchSuccess(
-        `Dispatched ${optimizedRoute.length} work items to ${activePersonnel.name} (${routeStats.totalKm} km itinerary).`
+        `Dispatched ${data.dispatchedCount ?? optimizedRoute.length} work items to ${activePersonnel.name} (${routeStats.totalKm} km itinerary).`
       );
-    } catch {
-      setDispatchSuccess('Dispatch successfully registered in the operations ledger.');
+    } catch (err: unknown) {
+      setDispatchError(err instanceof Error ? err.message : 'Failed to dispatch route');
     } finally {
       setIsDispatching(false);
     }
@@ -399,9 +415,17 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
             </div>
           )}
 
+          {/* Error Banner */}
+          {dispatchError && (
+            <div className="p-3.5 rounded-xl bg-[#FCEBE6] border border-[#F5C7BD] text-xs text-[#B76F60] flex items-center gap-2 shadow-sm animate-in fade-in duration-150">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>{dispatchError}</span>
+            </div>
+          )}
+
           {/* Success Banner */}
           {dispatchSuccess && (
-            <div className="p-3.5 rounded-xl bg-[#EBF3ED] border border-[#CDE3D2] text-xs text-[#537C60] flex items-center gap-2 shadow-sm">
+            <div className="p-3.5 rounded-xl bg-[#EBF3ED] border border-[#CDE3D2] text-xs text-[#537C60] flex items-center gap-2 shadow-sm animate-in fade-in duration-150">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{dispatchSuccess}</span>
             </div>

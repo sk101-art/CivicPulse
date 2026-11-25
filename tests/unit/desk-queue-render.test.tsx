@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { DeskQueue } from "@/components/desk/DeskQueue";
+import { GeoContextProvider } from "@/context/GeoContext";
 import { RepairWindowBadge } from "@/components/desk/RepairWindowBadge";
 import { GET as getRepairWindow } from "@/app/api/issues/[id]/repair-window/route";
 import { GET as getTrafficLive } from "@/app/api/issues/[id]/traffic-live/route";
@@ -61,10 +62,12 @@ describe("Desk Queue EMAXCONN Protection & Zero Repair-Window API Calls", () => 
     ];
 
     const html = renderToStaticMarkup(
-      <DeskQueue
-        initialIssues={mockIssues as any}
-        agencies={[{ id: "agency-1", code: "BBMP", name: "BBMP Road Infrastructure" }]}
-      />
+      <GeoContextProvider>
+        <DeskQueue
+          initialIssues={mockIssues as any}
+          agencies={[{ id: "agency-1", code: "BBMP", name: "BBMP Road Infrastructure" }]}
+        />
+      </GeoContextProvider>
     );
 
     // Verify rendered output includes stored best window for issue 1

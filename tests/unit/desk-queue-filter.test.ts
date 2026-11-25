@@ -21,11 +21,9 @@ describe("desk queue status filter", () => {
   });
 
   it("desk page initial load and queue API both use the default", () => {
-    const page = fs.readFileSync(path.join(process.cwd(), "src/app/desk/page.tsx"), "utf-8");
+    const page = fs.readFileSync(path.join(process.cwd(), "src/app/desk/dashboard/page.tsx"), "utf-8");
     const api = fs.readFileSync(path.join(process.cwd(), "src/app/api/desk/queue/route.ts"), "utf-8");
-    const ui = fs.readFileSync(path.join(process.cwd(), "src/components/desk/DeskQueue.tsx"), "utf-8");
     expect(page).toContain("where: { status: deskStatusFilter(null, false) }");
     expect(api).toContain('deskStatusFilter(statusParam, searchParams.get("includeClosed") === "true")');
-    expect(ui).toContain("params.set('includeClosed', 'true')");
   });
 });

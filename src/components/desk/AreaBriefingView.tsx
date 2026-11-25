@@ -16,11 +16,13 @@ interface ChatMessage {
 }
 
 interface WardBriefData {
-  wardCode: string;
-  wardName: string;
-  headline: string;
-  brief: string;
-  recommendedActions: string[];
+  wardCode?: string;
+  wardName?: string;
+  headline?: string;
+  summary?: string;
+  brief?: string;
+  recommendations?: string[];
+  recommendedActions?: string[];
   engine?: string;
 }
 
@@ -100,7 +102,7 @@ export function AreaBriefingView() {
 
       if (res.ok) {
         const data = await res.json();
-        const replyText = data.reply || data.text || data.response || 'Telemetry analysis updated for this jurisdiction.';
+        const replyText = data.answer || data.reply || data.text || data.response || 'Telemetry analysis updated for this jurisdiction.';
         const engine = data.engine;
         setMessages(prev => [...prev, { 
           id: String(Date.now() + 1), 
@@ -241,12 +243,14 @@ export function AreaBriefingView() {
             ) : briefData ? (
               <div className="space-y-4">
                 <p className="text-xs text-[#293732] leading-relaxed bg-[#FAF9F5] p-3.5 rounded-xl border border-[#E5E9E3]">
-                  <strong>Executive Summary:</strong> {briefData.brief}
+                  <strong>Executive Summary:</strong> {briefData.summary || briefData.brief || briefData.headline}
                 </p>
 
                 <ul className="space-y-2.5 text-xs text-[#293732]">
-                  {briefData.recommendedActions && briefData.recommendedActions.length > 0 ? (
-                    briefData.recommendedActions.map((action, idx) => (
+                  {((briefData.recommendations && briefData.recommendations.length > 0)
+                    ? briefData.recommendations
+                    : briefData.recommendedActions) && ((briefData.recommendations?.length || briefData.recommendedActions?.length || 0) > 0) ? (
+                    (briefData.recommendations || briefData.recommendedActions || []).map((action, idx) => (
                       <li key={idx} className="flex items-start gap-2.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-[#355858] mt-1.5 shrink-0" />
                         <span>{action}</span>

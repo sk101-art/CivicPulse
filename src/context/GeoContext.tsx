@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useTransition } from 'react';
-import { useSearchParams, usePathname } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 
 export interface WardContextItem {
   id: string;
@@ -110,7 +110,6 @@ const DEFAULT_STATS: WardStats = {
 
 export function GeoContextProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
   const [role, setRole] = useState<'CITIZEN' | 'AUTHORITY' | null>(null);
@@ -145,7 +144,8 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
 
     const run = async () => {
       try {
-        const urlWard = searchParams?.get('ward') || searchParams?.get('wardId');
+        const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+        const urlWard = sp?.get('ward') || sp?.get('wardId');
         const fetchUrl = urlWard ? `/api/geo/context?ward=${encodeURIComponent(urlWard)}` : '/api/geo/context';
 
         const res = await fetch(fetchUrl);
@@ -204,7 +204,7 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
     return () => {
       cancelled = true;
     };
-  }, [searchParams, refreshTrigger]);
+  }, [pathname, refreshTrigger]);
 
   // 2. Fetch actual ward issues, statistics, category breakdown, and audits
   const fetchWardData = useCallback(async (targetWard: WardContextItem | null, category: string) => {
@@ -275,18 +275,16 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
 
       // 3. Update URL query parameter without a full page reload
       startTransition(() => {
-        const currentParams = new URLSearchParams(searchParams?.toString() || '');
-        const wardParam = ward.wardNumber || ward.code.replace(/^ward-/i, '');
-        currentParams.set('ward', wardParam);
-
-        const newUrl = `${pathname}?${currentParams.toString()}`;
-        // Use history.pushState so the address bar reflects the ward and browser back/forward works
         if (typeof window !== 'undefined') {
+          const currentParams = new URLSearchParams(window.location.search);
+          const wardParam = ward.wardNumber || ward.code.replace(/^ward-/i, '');
+          currentParams.set('ward', wardParam);
+          const newUrl = `${pathname || window.location.pathname}?${currentParams.toString()}`;
           window.history.pushState(null, '', newUrl);
         }
       });
     },
-    [pathname, searchParams]
+    [pathname]
   );
 
   return (
@@ -309,6 +307,10 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
       {children}
     </GeoContext.Provider>
   );
+}
+
+export function useOptionalGeoContext() {
+  return useContext(GeoContext);
 }
 
 export function useGeoContext() {

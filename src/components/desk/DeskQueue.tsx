@@ -8,6 +8,7 @@ import {
   MapPin, Inbox, Loader2
 } from 'lucide-react';
 import { IssueDrawer, type DeskIssueItem } from './IssueDrawer';
+import { RepairWindowBadge } from './RepairWindowBadge';
 import { Status, Category, Band } from '@prisma/client';
 import { formatPriority } from '@/lib/priority';
 import { useGeoContext } from '@/context/GeoContext';
@@ -367,9 +368,30 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                         </span>
                       </td>
                       <td className="py-3 px-4 font-mono text-xs">
-                        <span className={issue.slaBreached ? "text-[#B76F60] font-bold" : "text-[#65736B]"}>
-                          {calculateSlaRemaining(issue.slaDueAt, issue.slaBreached)}
-                        </span>
+                        <div className="space-y-1">
+                          <span className={issue.slaBreached ? "text-[#B76F60] font-bold" : "text-[#65736B]"}>
+                            {calculateSlaRemaining(issue.slaDueAt, issue.slaBreached)}
+                          </span>
+                          {issue.bestRepairWindow && (() => {
+                            const rw = issue.bestRepairWindow as any;
+                            const rwResult = rw.bestWindow
+                              ? rw
+                              : {
+                                  bestWindow: rw,
+                                  basis: rw.basis || 'estimated',
+                                  sampleCount: rw.sampleCount || 0,
+                                  windows: [rw],
+                                  allSlots: [rw],
+                                };
+                            return (
+                              <RepairWindowBadge
+                                issueId={issue.id}
+                                variant="card"
+                                initialResult={rwResult}
+                              />
+                            );
+                          })()}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
@@ -395,6 +417,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
       {selectedIssue && (
         <IssueDrawer
           issue={selectedIssue}
+          agencies={agencies}
           onClose={() => setSelectedIssue(null)}
           onActionComplete={handleActionComplete}
         />

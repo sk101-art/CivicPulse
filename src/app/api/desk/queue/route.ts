@@ -72,11 +72,23 @@ export async function GET(req: Request) {
       where,
       include: {
         agency: { select: { id: true, code: true, name: true, slaHours: true } },
+        assignments: {
+          take: 1,
+          orderBy: { createdAt: "desc" },
+          include: { personnel: true },
+        },
         _count: { select: { reports: true, comments: true } },
         reports: {
           take: 1,
           orderBy: { createdAt: "desc" },
-          select: { id: true, photoUrl: true, createdAt: true },
+          select: {
+            id: true,
+            photoUrl: true,
+            photoSha256: true,
+            gpsAccuracyM: true,
+            capturedAt: true,
+            createdAt: true,
+          },
         },
       },
       orderBy: [{ priority: "desc" }, { createdAt: "desc" }],

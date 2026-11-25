@@ -13,7 +13,7 @@ interface GlobalHeaderProps {
 }
 
 export function GlobalHeader({ role = 'CITIZEN', className = '' }: GlobalHeaderProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() || '';
 
   // Determine current page badge or title for subtle breadcrumb
   const getPageContext = () => {

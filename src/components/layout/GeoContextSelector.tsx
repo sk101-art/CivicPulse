@@ -2,16 +2,23 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { MapPin, ChevronDown, Check, Building2, Shield, Loader2 } from 'lucide-react';
-import { useGeoContext, WardContextItem } from '@/context/GeoContext';
+import { useOptionalGeoContext, WardContextItem } from '@/context/GeoContext';
 
 interface GeoContextSelectorProps {
   className?: string;
 }
 
 export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) {
-  const { role, currentWard, availableWards, department, isLoading, selectWard } = useGeoContext();
+  const geo = useOptionalGeoContext();
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const role = geo?.role ?? null;
+  const currentWard = geo?.currentWard ?? null;
+  const availableWards = geo?.availableWards ?? [];
+  const department = geo?.department ?? null;
+  const isLoading = geo?.isLoading ?? false;
+  const selectWard = geo?.selectWard ?? (() => {});
 
   // Close dropdown when clicking outside
   useEffect(() => {

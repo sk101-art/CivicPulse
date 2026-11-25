@@ -31,6 +31,9 @@ export function PersonnelManager({ initialPersonnels }: PersonnelManagerProps) {
   const [selectedPersonnel, setSelectedPersonnel] = useState<Personnel | null>(null);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // New Personnel Form State
   const [formData, setFormData] = useState({
@@ -58,6 +61,8 @@ export function PersonnelManager({ initialPersonnels }: PersonnelManagerProps) {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
     try {
       const res = await fetch('/api/personnels', {
         method: 'POST',
@@ -70,52 +75,69 @@ export function PersonnelManager({ initialPersonnels }: PersonnelManagerProps) {
         }),
       });
 
-      if (res.ok) {
-        const created = await res.json();
-        setPersonnels((prev) => [created, ...prev]);
-        setIsAdding(false);
-        setFormData({ name: '', role: 'Field Officer', contact: '', dutyStatus: 'Active' });
-      } else {
-        const fallbackP: Personnel = {
-          id: `p-${Date.now()}`,
-          name: formData.name,
-          role: formData.role,
-          contact: formData.contact,
-          active: true,
-          dutyStatus: formData.dutyStatus,
-        };
-        setPersonnels((prev) => [fallbackP, ...prev]);
-        setIsAdding(false);
-        setFormData({ name: '', role: 'Field Officer', contact: '', dutyStatus: 'Active' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || data.message || 'Failed to add personnel');
       }
-    } catch {
-      const fallbackP: Personnel = {
-        id: `p-${Date.now()}`,
-        name: formData.name,
-        role: formData.role,
-        contact: formData.contact,
-        active: true,
-        dutyStatus: formData.dutyStatus,
-      };
-      setPersonnels((prev) => [fallbackP, ...prev]);
+
+      setPersonnels((prev) => [data, ...prev]);
       setIsAdding(false);
       setFormData({ name: '', role: 'Field Officer', contact: '', dutyStatus: 'Active' });
+      setSuccessMsg(`Added ${data.name} to field personnel roster.`);
+      router.refresh();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to create personnel record');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleToggleActive = async (p: Personnel) => {
+    setTogglingId(p.id);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch(`/api/personnels/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: !p.active }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update personnel status');
+      }
+      setPersonnels((prev) => prev.map((item) => (item.id === p.id ? data : item)));
+      if (selectedPersonnel?.id === p.id) {
+        setSelectedPersonnel(data);
+      }
+      setSuccessMsg(`${p.name} marked as ${data.active ? 'Active' : 'Inactive'}.`);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to update personnel status');
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     setDeletingId(id);
+    setErrorMsg(null);
+    setSuccessMsg(null);
     try {
       const res = await fetch(`/api/personnels/${id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setPersonnels((prev) => prev.filter((p) => p.id !== id));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to remove personnel');
+      }
+      if (data.deactivated) {
+        setPersonnels((prev) => prev.map((p) => (p.id === id ? { ...p, active: false } : p)));
+        setSuccessMsg('Personnel has historical assignments — deactivated instead of deleting.');
       } else {
         setPersonnels((prev) => prev.filter((p) => p.id !== id));
+        setSuccessMsg('Personnel record removed.');
       }
-    } catch {
-      setPersonnels((prev) => prev.filter((p) => p.id !== id));
+      router.refresh();
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to delete personnel');
     } finally {
       setDeletingId(null);
     }
@@ -146,6 +168,26 @@ export function PersonnelManager({ initialPersonnels }: PersonnelManagerProps) {
           <span>Add Personnel</span>
         </button>
       </div>
+
+      {/* Error / Success Banners */}
+      {errorMsg && (
+        <div className="p-3.5 rounded-xl bg-[#FCEBE6] border border-[#F5C7BD] text-xs text-[#B76F60] flex items-center justify-between gap-2 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+          <button type="button" onClick={() => setErrorMsg(null)} className="text-[#B76F60] hover:opacity-75"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
+      {successMsg && (
+        <div className="p-3.5 rounded-xl bg-[#EBF3ED] border border-[#CDE3D2] text-xs text-[#537C60] flex items-center justify-between gap-2 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            <span>{successMsg}</span>
+          </div>
+          <button type="button" onClick={() => setSuccessMsg(null)} className="text-[#537C60] hover:opacity-75"><X className="w-3.5 h-3.5" /></button>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-[#FFFFFF] rounded-2xl p-4 border border-[#DDDCD3] shadow-[0_2px_8px_rgba(41,55,50,0.04)] flex flex-wrap items-center justify-between gap-3">
@@ -241,11 +283,18 @@ export function PersonnelManager({ initialPersonnels }: PersonnelManagerProps) {
                         {p.contact}
                       </td>
 
-                      {/* Status Badge */}
+                      {/* Status Badge (Click to toggle active) */}
                       <td className="py-4 px-6">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${statusBadge}`}>
+                        <button
+                          type="button"
+                          disabled={togglingId === p.id}
+                          onClick={() => handleToggleActive(p)}
+                          title="Click to toggle active/inactive status"
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border transition-all cursor-pointer hover:opacity-80 disabled:opacity-50 ${statusBadge}`}
+                        >
+                          {togglingId === p.id && <Loader2 className="w-3 h-3 animate-spin" />}
                           {status}
-                        </span>
+                        </button>
                       </td>
 
                       {/* Action Icons */}
