@@ -7,6 +7,7 @@ import {
   Clock, Shield, ArrowRight, RefreshCw, Cpu
 } from 'lucide-react';
 import { useGeoContext } from '@/context/GeoContext';
+import { formatTimeIST } from '@/lib/time/ist';
 
 interface ChatMessage {
   id: string;
@@ -62,7 +63,7 @@ export function AreaBriefingView() {
         }
 
         if (!cancelled) {
-          setLastUpdated(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+          setLastUpdated(`${formatTimeIST(new Date())} IST`);
         }
       } catch (err) {
         console.error('Failed to load area briefing:', err);

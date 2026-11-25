@@ -81,7 +81,7 @@ export default async function PublicIssuePage({
           categoryLabel={categoryLabel(category)}
           location={location}
           coordinates={{ lat: issue.lat, lng: issue.lng }}
-          reportedAt={reportedDate}
+          reportedAt={details.reportedAtFormatted}
           status={status}
           statusLabel={statusLabelMap[status] || status.replace(/_/g, " ")}
           priority={priorityTier}

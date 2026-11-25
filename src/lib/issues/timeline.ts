@@ -48,6 +48,7 @@ interface BuildInputIssue {
     id: string;
     action: string;
     actorId: string;
+    toStatus?: string | null;
     note?: string | null;
     createdAt: Date | string;
   }>;
@@ -80,20 +81,25 @@ export function buildIssueTimelineAndDetails(
   const actions = issue.actions || [];
   const assignment = issue.assignments?.[0] ?? null;
 
-  const findAction = (names: string[]) =>
-    actions.find((a) => names.includes(a.action));
+  const findAction = (names: string[], targetStatus?: string) =>
+    actions.find(
+      (a) =>
+        names.includes(a.action) ||
+        (a.action === "DESK_STATUS_CHANGE" && targetStatus && a.toStatus === targetStatus)
+    );
 
-  const assignAction = findAction([
-    "ASSIGN_AGENCY",
-    "REASSIGN_AGENCY",
-    "ASSIGN_PERSONNEL",
-    "CONFIRM",
-  ]);
-  const startWorkAction = findAction(["START_WORK"]);
-  const claimAction = findAction(["CLAIM_FIX"]);
-  const verifyAction = findAction(["VERIFY_FIX", "AUDIT_VERIFIED"]);
-  const disputeAction = findAction(["DISPUTE", "AUDIT_DISPUTED", "REOPEN", "REOPEN_IN_WARRANTY"]);
-  const rejectAction = findAction(["REJECT"]);
+  const assignAction = findAction(
+    ["ASSIGN_AGENCY", "REASSIGN_AGENCY", "ASSIGN_PERSONNEL", "CONFIRM"],
+    "ASSIGNED"
+  );
+  const startWorkAction = findAction(["START_WORK"], "IN_PROGRESS");
+  const claimAction = findAction(["CLAIM_FIX"], "CLAIMED_FIXED");
+  const verifyAction = findAction(["VERIFY_FIX", "AUDIT_VERIFIED"], "VERIFIED_FIXED");
+  const disputeAction = findAction(
+    ["DISPUTE", "AUDIT_DISPUTED", "REOPEN", "REOPEN_IN_WARRANTY"],
+    "DISPUTED"
+  );
+  const rejectAction = findAction(["REJECT"], "REJECTED");
 
   const reportedTime = formatDateTimeIST(
     primaryReport?.capturedAt || issue.createdAt

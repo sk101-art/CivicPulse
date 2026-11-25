@@ -189,6 +189,8 @@ export function IssueDrawer({
   const [personnelNotice, setPersonnelNotice] = useState<string | null>(null);
 
   const [activeForm, setActiveForm] = useState<IssueAction | null>(null);
+  const [quickStatus, setQuickStatus] = useState<Status>(issue?.status || Status.OPEN);
+  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [note, setNote] = useState('');
   const [selectedAgencyId, setSelectedAgencyId] = useState('');
   const [selectedBand, setSelectedBand] = useState<Band>('MEDIUM');
@@ -209,6 +211,7 @@ export function IssueDrawer({
     setSelectedBand(issue.bandOverride || issue.band || 'MEDIUM');
     setSelectedAgencyId(issue.agencyId || (agencies[0]?.id ?? ''));
     setSelectedPersonnelId(issue.assignments?.[0]?.personnel?.id || '');
+    setQuickStatus(issue.status);
     setActionError(null);
     setActionSuccess(null);
     setPersonnelNotice(null);
@@ -336,6 +339,36 @@ export function IssueDrawer({
         setActionError(err instanceof Error ? err.message : 'Something went wrong');
       }
     });
+  };
+
+  const handleQuickStatusUpdate = async () => {
+    if (!quickStatus || quickStatus === issue.status) return;
+    setUpdatingStatus(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const res = await fetch(`/api/issues/${issue.id}/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'SET_STATUS',
+          targetStatus: quickStatus,
+          note: note.trim() || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Failed to update status');
+      }
+      setActionSuccess(`Status updated to ${quickStatus.replace(/_/g, ' ')}.`);
+      setNote('');
+      await refreshLogs();
+      onActionComplete(data.issue);
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to update status');
+    } finally {
+      setUpdatingStatus(false);
+    }
   };
 
   const handleAssignPersonnel = async (e?: React.FormEvent) => {
@@ -551,12 +584,37 @@ export function IssueDrawer({
                     </div>
                   </div>
 
+                  {/* Metadata key-value list */}
                   <div className="space-y-3 pt-1 text-xs">
-                    <div className="flex items-center justify-between py-1.5 border-b border-[#DDDCD3]/60">
+                    <div className="flex flex-wrap items-center justify-between gap-2 py-1.5 border-b border-[#DDDCD3]/60">
                       <span className="text-[#65736B] font-medium">Status</span>
-                      <span className="font-semibold px-2.5 py-0.5 rounded-md bg-[#D4E3DF] text-[#355858]">
-                        {issue.status.replace(/_/g, ' ')}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={quickStatus}
+                          onChange={(e) => setQuickStatus(e.target.value as Status)}
+                          data-testid="quick-status-select"
+                          aria-label="Change report status"
+                          className="bg-[#E9ECE6] border border-[#DDDCD3] rounded-lg px-2.5 py-1 text-xs font-semibold text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                        >
+                          {Object.values(Status).map((st) => (
+                            <option key={st} value={st}>
+                              {st.replace(/_/g, ' ')}
+                            </option>
+                          ))}
+                        </select>
+                        {quickStatus !== issue.status && (
+                          <button
+                            type="button"
+                            disabled={updatingStatus}
+                            onClick={handleQuickStatusUpdate}
+                            data-testid="quick-status-save"
+                            className="px-2.5 py-1 rounded-lg bg-[#355858] hover:bg-[#293732] text-white text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                          >
+                            {updatingStatus && <Loader2 className="w-3 h-3 animate-spin" />}
+                            Save
+                          </button>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex items-center justify-between py-1.5 border-b border-[#DDDCD3]/60">

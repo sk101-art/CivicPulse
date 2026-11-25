@@ -40,12 +40,14 @@ export function CaptureCamera({ role, onCapture, onCancel, overrideNonce }: Capt
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [, setCameraError] = useState<string | null>(null);
 
-  // Default simulated GPS fix for Bengaluru Ward 12
+  // Default GPS fix (updated immediately when browser Geolocation resolves)
   const [gpsFix, setGpsFix] = useState<{ lat: number; lng: number; accuracy: number }>({
     lat: 12.9347,
     lng: 77.6139,
     accuracy: 4.8,
   });
+  const [hasRealGpsFix, setHasRealGpsFix] = useState<boolean>(false);
+  const hasManualPinAdjustRef = useRef<boolean>(false);
 
   // Pin coordinates (fine-tunable within 50m)
   const [pinCoords, setPinCoords] = useState<{ lat: number; lng: number }>({
@@ -94,14 +96,27 @@ export function CaptureCamera({ role, onCapture, onCancel, overrideNonce }: Capt
 
     let watchId: number | null = null;
     if (navigator.geolocation) {
+      const handlePos = (pos: GeolocationPosition) => {
+        if (!isMounted) return;
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const accuracy = pos.coords.accuracy;
+        setGpsFix({ lat, lng, accuracy });
+        setHasRealGpsFix(true);
+        if (!hasManualPinAdjustRef.current) {
+          setPinCoords({ lat, lng });
+          setPinDistanceM(0);
+        }
+      };
+
+      navigator.geolocation.getCurrentPosition(
+        handlePos,
+        () => {},
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+
       watchId = navigator.geolocation.watchPosition(
-        (pos) => {
-          if (!isMounted) return;
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          const accuracy = pos.coords.accuracy;
-          setGpsFix({ lat, lng, accuracy });
-        },
+        handlePos,
         () => {},
         { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
@@ -117,7 +132,7 @@ export function CaptureCamera({ role, onCapture, onCancel, overrideNonce }: Capt
   }, [startCamera, stopCamera]);
 
   const copyCoordinates = () => {
-    const coordsStr = `${pinCoords.lat.toFixed(4)}° N, ${pinCoords.lng.toFixed(4)}° E`;
+    const coordsStr = `${pinCoords.lat.toFixed(6)}° N, ${pinCoords.lng.toFixed(6)}° E`;
     navigator.clipboard.writeText(coordsStr);
     setCopiedCoords(true);
     setTimeout(() => setCopiedCoords(false), 2000);
@@ -129,6 +144,7 @@ export function CaptureCamera({ role, onCapture, onCancel, overrideNonce }: Capt
     const dist = haversineDistanceM(gpsFix.lat, gpsFix.lng, newLat, newLng);
 
     if (dist <= 50) {
+      hasManualPinAdjustRef.current = true;
       setPinCoords({ lat: newLat, lng: newLng });
       setPinDistanceM(Math.round(dist));
     }

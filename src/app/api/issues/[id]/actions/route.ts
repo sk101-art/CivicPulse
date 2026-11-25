@@ -13,7 +13,7 @@ import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
 import { NextResponse } from "next/server";
-import { Role, EvidenceRole } from "@prisma/client";
+import { Role, EvidenceRole, Status } from "@prisma/client";
 import { assignBlindAuditTasks } from "@/lib/audit/blindAudit";
 import { TEXT_LIMITS } from "@/lib/validation/limits";
 import { z } from "zod";
@@ -30,7 +30,9 @@ const actionSchema = z.object({
     "OVERRIDE_BAND",
     "REOPEN",
     "REOPEN_IN_WARRANTY",
+    "SET_STATUS",
   ]),
+  targetStatus: z.nativeEnum(Status).optional(),
   note: z.string().max(TEXT_LIMITS.actionNote, `Notes must be ${TEXT_LIMITS.actionNote} characters or fewer`).optional(),
   agencyId: z.string().optional(),
   overrideBand: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
@@ -87,6 +89,61 @@ export async function POST(
     }
 
     const body = parsed.data;
+
+    // Direct authoritative desk status update (SET_STATUS) for operational convenience
+    if (body.action === "SET_STATUS") {
+      if (!body.targetStatus) {
+        return apiError(400, "TARGET_STATUS_REQUIRED", "targetStatus is required for SET_STATUS");
+      }
+
+      const nextStatus = body.targetStatus;
+      const now = new Date();
+      const updated = await prisma.$transaction(async (tx) => {
+        const updatedIssue = await tx.issue.update({
+          where: { id: issue.id },
+          data: {
+            status: nextStatus,
+            ...(nextStatus === Status.CLAIMED_FIXED ? { claimedFixedAt: now } : {}),
+            ...(nextStatus === Status.VERIFIED_FIXED ? { verifiedFixedAt: now } : {}),
+            ...(nextStatus === Status.DISPUTED ? { disputedAt: now } : {}),
+          },
+          include: {
+            agency: { select: { id: true, code: true, name: true, slaHours: true } },
+            assignments: {
+              take: 1,
+              orderBy: { createdAt: "desc" },
+              include: { personnel: true },
+            },
+            _count: { select: { reports: true, comments: true } },
+            reports: {
+              take: 1,
+              orderBy: { createdAt: "desc" },
+              select: { id: true, photoUrl: true, photoSha256: true, gpsAccuracyM: true, capturedAt: true, createdAt: true },
+            },
+          },
+        });
+
+        await tx.actionLog.create({
+          data: {
+            issueId: issue.id,
+            actorId: auth.user.id,
+            action: "DESK_STATUS_CHANGE",
+            fromStatus: issue.status,
+            toStatus: nextStatus,
+            note: body.note?.trim() || `Status updated from ${issue.status} to ${nextStatus} by Operations Desk`,
+          },
+        });
+
+        return updatedIssue;
+      });
+
+      return NextResponse.json({
+        success: true,
+        issue: updated,
+        fromStatus: issue.status,
+        toStatus: nextStatus,
+      });
+    }
 
     // Evidence context is NEVER taken from the client. Only CLAIM_FIX carries evidence, and it is
     // built server-side from a verified, signed on-site photo.

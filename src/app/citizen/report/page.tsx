@@ -21,6 +21,7 @@ import { signEvidencePayload, type EvidencePayload } from "@/lib/evidence/sign";
 import { getOrCreateDeviceKey } from "@/lib/evidence/deviceKey";
 import { TEXT_LIMITS } from "@/lib/validation/limits";
 import { CivicHallArt } from "@/components/ui/CivicHallArt";
+import { useOptionalGeoContext } from "@/context/GeoContext";
 
 const DRAFT_KEY = 'civicpulse:report-draft';
 
@@ -105,6 +106,8 @@ type Step = 'CATEGORY' | 'CAPTURE' | 'DETAILS' | 'REVIEW';
 function FileReportContent() {
   const router = useRouter();
   const { isOnline, queueReport } = useOfflineSync();
+  const geo = useOptionalGeoContext();
+  const currentWard = geo?.currentWard ?? null;
 
   const [step, setStep] = useState<Step>('CATEGORY');
   const [loading, setLoading] = useState(false);
@@ -113,7 +116,7 @@ function FileReportContent() {
   const [category, setCategory] = useState<Category>('POTHOLES');
   const [capturedEvidence, setCapturedEvidence] = useState<CapturedEvidence | null>(null);
 
-  const [note, setNote] = useState<string>('Large pothole causing vehicle slowdown.');
+  const [note, setNote] = useState<string>('');
   const [sizeClass, setSizeClass] = useState<SizeClass>('medium');
   const [blockedShare, setBlockedShare] = useState<BlockedShare>('none');
   const [clientReportId, setClientReportId] = useState<string>('');
@@ -678,10 +681,10 @@ function FileReportContent() {
                   </div>
                   <div>
                     <h3 className="font-display font-semibold text-base sm:text-lg text-[#293732] capitalize">
-                      {category.toLowerCase()}
+                      {category.replace(/_/g, ' ').toLowerCase()}
                     </h3>
                     <div className="text-xs text-[#65736B]">
-                      MG Road, Ward 12
+                      {currentWard?.fullName || currentWard?.wardLabel || 'Bengaluru Municipal Grid'}
                     </div>
                   </div>
                 </div>
@@ -690,7 +693,9 @@ function FileReportContent() {
                   <div className="flex items-center justify-between">
                     <span className="text-[#65736B]">Coordinates:</span>
                     <span className="font-mono font-semibold text-[#293732]">
-                      {capturedEvidence?.payload.lat.toFixed(4) || '12.9716'}° N, {capturedEvidence?.payload.lng.toFixed(4) || '77.5946'}° E
+                      {capturedEvidence
+                        ? `${capturedEvidence.payload.lat.toFixed(6)}° N, ${capturedEvidence.payload.lng.toFixed(6)}° E`
+                        : 'Pending GPS capture'}
                     </span>
                   </div>
 
@@ -698,10 +703,10 @@ function FileReportContent() {
                     <span className="text-[#65736B]">Accuracy:</span>
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono font-semibold text-[#293732]">
-                        ± {capturedEvidence?.payload.accuracy || '3.2'} m
+                        {capturedEvidence ? `± ${capturedEvidence.payload.accuracy.toFixed(1)} m` : '—'}
                       </span>
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#EFF6F1] text-[#537C60] border border-[#CFE4D4]">
-                        verified
+                        {capturedEvidence ? 'verified' : 'pending'}
                       </span>
                     </div>
                   </div>
