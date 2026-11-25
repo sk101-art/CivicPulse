@@ -9,16 +9,15 @@ import {
   Crosshair, 
   ShieldCheck, 
   CheckCircle2, 
-  Building2, 
-  AlertTriangle, 
-  FileText, 
   Check, 
-  ExternalLink,
   Copy,
-  Layers,
-  ChevronRight,
-  Sparkles
+  AlertTriangle,
 } from 'lucide-react';
+import type {
+  TimelineStepItem,
+  AuditLogItem,
+  VerificationItem,
+} from '@/lib/issues/timeline';
 
 export interface ReportDetailViewProps {
   id: string;
@@ -34,25 +33,34 @@ export interface ReportDetailViewProps {
   photoUrl?: string | null;
   reporterName?: string;
   agencyName?: string;
-  notes?: string;
+  notes?: string | null;
+  photoSha256?: string | null;
+  signature?: string | null;
+  gpsAccuracyM?: number | null;
+  timelineSteps?: TimelineStepItem[];
+  auditLogs?: AuditLogItem[];
+  verifications?: VerificationItem[];
   backHref?: string;
 }
 
 export function ReportDetailView({
   id = 'CP-2025-0184',
-  category = 'POTHOLES',
   categoryLabel = 'Pothole',
-  location = 'MG Road, Ward 12',
+  location = 'Bengaluru',
   coordinates = { lat: 12.9716, lng: 77.5946 },
-  reportedAt = 'Mar 10, 2025, 10:24 AM',
-  status = 'IN_PROGRESS',
-  statusLabel = 'In Progress',
-  priority = 'HIGH',
-  priorityLabel = 'High Priority',
+  reportedAt = '—',
+  statusLabel = 'Reported',
+  priorityLabel = 'Medium Priority',
   photoUrl,
   reporterName = 'Citizen Contributor',
-  agencyName = 'Municipal Depot • Ward 12 Team',
-  notes = 'Large pothole causing vehicle slowdown and hazard during evening rainfall.',
+  agencyName = 'Municipal Operations Desk',
+  notes = null,
+  photoSha256 = null,
+  signature = null,
+  gpsAccuracyM = null,
+  timelineSteps: propTimelineSteps,
+  auditLogs = [],
+  verifications = [],
   backHref = '/citizen/dashboard',
 }: ReportDetailViewProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'evidence' | 'verifications'>('overview');
@@ -62,37 +70,41 @@ export function ReportDetailView({
   const formattedId = id.startsWith('CP-') ? id : `CP-2025-${id.slice(-4).padStart(4, '0')}`;
 
   const copyHash = () => {
-    navigator.clipboard.writeText('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+    if (!photoSha256) return;
+    navigator.clipboard.writeText(photoSha256);
     setCopiedHash(true);
     setTimeout(() => setCopiedHash(false), 2000);
   };
 
-  const timelineSteps = [
-    {
-      title: 'Reported',
-      timestamp: reportedAt,
-      subtitle: `Citizen: ${reporterName} (Digitally signed ECDSA P-256)`,
-      status: 'completed',
-    },
-    {
-      title: 'Assigned to Agency',
-      timestamp: 'Mar 10, 2:15 PM',
-      subtitle: `Origin: ${agencyName}`,
-      status: 'completed',
-    },
-    {
-      title: 'Repair Claimed',
-      timestamp: 'Mar 12, 11:05 AM',
-      subtitle: 'Contractor: Apex Road Infrastructure',
-      status: 'completed',
-    },
-    {
-      title: 'Awaiting Verification',
-      timestamp: 'In progress',
-      subtitle: 'Awaiting community ground-truth confirmation',
-      status: 'current',
-    },
-  ];
+  const timelineSteps: TimelineStepItem[] =
+    propTimelineSteps && propTimelineSteps.length > 0
+      ? propTimelineSteps
+      : [
+          {
+            title: 'Reported',
+            timestamp: reportedAt,
+            subtitle: `Citizen: ${reporterName} (Digitally signed ECDSA P-256)`,
+            status: 'completed',
+          },
+          {
+            title: 'Assigned to Agency',
+            timestamp: 'Pending',
+            subtitle: `Target: ${agencyName}`,
+            status: 'current',
+          },
+          {
+            title: 'Field Repair',
+            timestamp: 'Pending',
+            subtitle: 'Awaiting field dispatch & repair photo',
+            status: 'pending',
+          },
+          {
+            title: 'Independent Verification',
+            timestamp: 'Pending',
+            subtitle: 'Blind citizen audit begins after repair is claimed',
+            status: 'pending',
+          },
+        ];
 
   return (
     <div className="flex-1 overflow-y-auto flex flex-col font-body bg-[#F3F2EB] text-[#293732] w-full pb-24 lg:pb-12">
@@ -248,6 +260,7 @@ export function ReportDetailView({
                     {timelineSteps.map((step, idx) => {
                       const isDone = step.status === 'completed';
                       const isCurrent = step.status === 'current';
+                      const isDisputed = step.status === 'disputed';
 
                       return (
                         <div key={idx} className="relative group">
@@ -255,12 +268,16 @@ export function ReportDetailView({
                           <div className={`absolute -left-6 top-0.5 w-5 h-5 rounded-full flex items-center justify-center ${
                             isDone 
                               ? 'bg-[#537C60] text-white shadow-sm'
+                              : isDisputed
+                              ? 'bg-[#B76F60] text-white shadow-sm'
                               : isCurrent
                               ? 'bg-[#B68B63] text-white animate-pulse shadow-sm'
                               : 'bg-[#DDDCD3] text-[#65736B]'
                           }`}>
                             {isDone ? (
                               <Check className="w-3 h-3 stroke-[3]" />
+                            ) : isDisputed ? (
+                              <AlertTriangle className="w-3 h-3" />
                             ) : (
                               <span className="w-2 h-2 rounded-full bg-white" />
                             )}
@@ -305,36 +322,42 @@ export function ReportDetailView({
 
         {/* ── TAB 2: DETAILED TIMELINE ── */}
         {activeTab === 'timeline' && (
-          <div className="bg-white rounded-[26px] p-6 sm:p-8 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06)] space-y-4">
+          <div className="bg-white rounded-[26px] p-6 sm:p-8 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06)] space-y-4 animate-in fade-in duration-150">
             <h3 className="font-display font-semibold text-base text-[#293732]">
               Cryptographic Audit Log
             </h3>
             <div className="space-y-3">
-              <div className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] flex items-center justify-between text-xs">
-                <div>
-                  <div className="font-semibold text-[#293732]">Status Changed to IN_PROGRESS</div>
-                  <div className="text-[#65736B]">By Municipal Field Unit #4</div>
+              {auditLogs.length === 0 ? (
+                <div className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] flex items-center justify-between text-xs">
+                  <div>
+                    <div className="font-semibold text-[#293732]">Report Ingested into Civic Ledger</div>
+                    <div className="text-[#65736B]">Verified with GPS Geofence &amp; Nonce</div>
+                  </div>
+                  <span className="font-mono text-[#929B92]">{reportedAt}</span>
                 </div>
-                <span className="font-mono text-[#929B92]">Mar 10, 2:15 PM</span>
-              </div>
-              <div className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] flex items-center justify-between text-xs">
-                <div>
-                  <div className="font-semibold text-[#293732]">Report Ingested into Civic Ledger</div>
-                  <div className="text-[#65736B]">Verified with GPS Geofence & Nonce</div>
-                </div>
-                <span className="font-mono text-[#929B92]">Mar 10, 10:24 AM</span>
-              </div>
+              ) : (
+                auditLogs.map((log) => (
+                  <div key={log.id} className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] flex items-center justify-between gap-3 text-xs">
+                    <div>
+                      <div className="font-semibold text-[#293732]">{log.action.replace(/_/g, ' ')}</div>
+                      <div className="text-[#65736B]">By {log.actorName}</div>
+                      {log.note && <p className="text-[#293732] italic mt-1">&ldquo;{log.note}&rdquo;</p>}
+                    </div>
+                    <span className="font-mono text-[#929B92] shrink-0">{log.createdAt}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         )}
 
         {/* ── TAB 3: EVIDENCE & CRYPTOGRAPHY ── */}
         {activeTab === 'evidence' && (
-          <div className="bg-white rounded-[26px] p-6 sm:p-8 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06)] space-y-5">
+          <div className="bg-white rounded-[26px] p-6 sm:p-8 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06)] space-y-5 animate-in fade-in duration-150">
             <div className="flex items-center gap-2 text-[#355858]">
               <ShieldCheck className="w-5 h-5 text-[#527B7A]" />
               <h3 className="font-display font-semibold text-base sm:text-lg text-[#293732]">
-                Evidence Security & Integrity
+                Evidence Security &amp; Integrity
               </h3>
             </div>
 
@@ -343,33 +366,42 @@ export function ReportDetailView({
                 <span className="text-[#65736B] block">SHA-256 Photo Hash</span>
                 <div className="flex items-center justify-between">
                   <span className="font-mono font-semibold text-[#293732] truncate pr-2">
-                    e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+                    {photoSha256 || '—'}
                   </span>
-                  <button
-                    type="button"
-                    onClick={copyHash}
-                    className="p-1 hover:bg-white rounded text-[#527B7A] transition-colors cursor-pointer"
-                  >
-                    {copiedHash ? <Check className="w-4 h-4 text-[#537C60]" /> : <Copy className="w-4 h-4" />}
-                  </button>
+                  {photoSha256 && (
+                    <button
+                      type="button"
+                      onClick={copyHash}
+                      className="p-1 hover:bg-white rounded text-[#527B7A] transition-colors cursor-pointer"
+                      aria-label="Copy SHA-256 hash"
+                    >
+                      {copiedHash ? <Check className="w-4 h-4 text-[#537C60]" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                  )}
                 </div>
               </div>
 
               <div className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] space-y-1">
                 <span className="text-[#65736B] block">Digital Signature (ECDSA P-256)</span>
                 <span className="font-mono font-semibold text-[#293732] break-all">
-                  MEQCIGw6N2b...verified_hardware_key_secp256r1
+                  {signature ? `${signature.slice(0, 48)}${signature.length > 48 ? '...' : ''}` : '—'}
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3.5 rounded-xl bg-[#EFF6F1] border border-[#CFE4D4] text-[#537C60] flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span className="font-semibold">GPS Accuracy: ± 3.2m</span>
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span className="font-semibold">
+                    {typeof gpsAccuracyM === 'number'
+                      ? `GPS Accuracy: ± ${gpsAccuracyM.toFixed(1)}m`
+                      : 'GPS Coordinates Logged'}
+                  </span>
                 </div>
                 <div className="p-3.5 rounded-xl bg-[#EFF6F1] border border-[#CFE4D4] text-[#537C60] flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span className="font-semibold">Nonce Authenticated</span>
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span className="font-semibold">
+                    {signature ? 'Nonce Authenticated' : 'Ledger Recorded'}
+                  </span>
                 </div>
               </div>
             </div>
@@ -378,27 +410,41 @@ export function ReportDetailView({
 
         {/* ── TAB 4: COMMUNITY VERIFICATIONS ── */}
         {activeTab === 'verifications' && (
-          <div className="bg-white rounded-[26px] p-6 sm:p-8 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06)] space-y-4">
+          <div className="bg-white rounded-[26px] p-6 sm:p-8 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06)] space-y-4 animate-in fade-in duration-150">
             <h3 className="font-display font-semibold text-base text-[#293732]">
               Community Ground-Truth Audits
             </h3>
             <p className="text-xs text-[#65736B]">
               Independent citizen confirmations for this repair report.
             </p>
-            <div className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-[#EAF2F0] text-[#355858] font-bold flex items-center justify-center">
-                  V1
-                </div>
-                <div>
-                  <div className="font-semibold text-[#293732]">Ground-Truth Verification Pending</div>
-                  <div className="text-[#65736B]">Assigned to nearby citizen in Ward 12</div>
-                </div>
+            {verifications.length === 0 ? (
+              <div className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] text-xs text-[#65736B]">
+                No community verifications submitted yet. Independent citizen audits open once the responsible agency claims a repair.
               </div>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-[#FDF6ED] text-[#B68B63] border border-[#F5E2CD]">
-                In Progress
-              </span>
-            </div>
+            ) : (
+              <div className="space-y-2.5">
+                {verifications.map((v, i) => (
+                  <div key={v.id} className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-[#EAF2F0] text-[#355858] font-bold flex items-center justify-center">
+                        V{i + 1}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-[#293732]">{v.verifierName || 'Citizen Auditor'}</div>
+                        <div className="text-[#65736B] font-mono text-[11px]">{v.createdAt}</div>
+                      </div>
+                    </div>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                      v.observed === 'INTACT'
+                        ? 'bg-[#EFF6F1] text-[#537C60] border-[#CFE4D4]'
+                        : 'bg-[#FBF1EF] text-[#B76F60] border-[#EAC8C1]'
+                    }`}>
+                      {v.observed}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -3,6 +3,8 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
+import { LogOut } from 'lucide-react';
 import { CivicLogo } from '@/components/ui/CivicLogo';
 import { GeoContextSelector } from '@/components/layout/GeoContextSelector';
 import { NotificationCenter } from '@/components/layout/NotificationCenter';
@@ -62,6 +64,19 @@ export function GlobalHeader({ role = 'CITIZEN', className = '' }: GlobalHeaderP
 
           {/* Notification Centre Bell */}
           <NotificationCenter />
+
+          {/* Sign Out Button (Accessible on both mobile & desktop) */}
+          <button
+            type="button"
+            onClick={() => signOut({ callbackUrl: role === 'AUTHORITY' ? '/login/staff' : '/login/citizen' })}
+            title="Sign Out"
+            aria-label="Sign Out"
+            data-testid="global-signout-btn"
+            className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white hover:bg-[#FCEBE6] border border-[#DDDCD3] hover:border-[#F5C7BD] text-xs font-medium text-[#65736B] hover:text-[#B76F60] transition-all cursor-pointer shadow-[0_1px_2px_rgba(41,55,50,0.04)]"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Sign Out</span>
+          </button>
         </div>
       </div>
     </header>
