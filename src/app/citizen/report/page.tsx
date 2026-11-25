@@ -22,6 +22,7 @@ import { getOrCreateDeviceKey } from "@/lib/evidence/deviceKey";
 import { TEXT_LIMITS } from "@/lib/validation/limits";
 import { CivicHallArt } from "@/components/ui/CivicHallArt";
 import { useOptionalGeoContext } from "@/context/GeoContext";
+import { formatDateTimeIST } from "@/lib/time/ist";
 
 const DRAFT_KEY = 'civicpulse:report-draft';
 
@@ -262,6 +263,7 @@ function FileReportContent() {
       const issueId = json.issue?.id;
 
       clearDraft();
+      void geo?.refreshWardData();
       router.refresh();
       if (issueId) {
         router.push(`/citizen/report/${issueId}${json.merged ? '?merged=1' : ''}`);
@@ -709,6 +711,13 @@ function FileReportContent() {
                         {capturedEvidence ? 'verified' : 'pending'}
                       </span>
                     </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#65736B]">Captured at:</span>
+                    <span className="font-mono font-semibold text-[#293732]">
+                      {capturedEvidence ? formatDateTimeIST(capturedEvidence.payload.capturedAt) : 'Pending capture'}
+                    </span>
                   </div>
                 </div>
 

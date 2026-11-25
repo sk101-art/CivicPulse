@@ -3,12 +3,24 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useTransition } from 'react';
 import { usePathname } from 'next/navigation';
 
+export interface CorporationItem {
+  id: string;
+  code: string;
+  officialId?: string | null;
+  name: string;
+  shortName: string;
+  nameKn?: string | null;
+  wardCount: number;
+}
+
 export interface WardContextItem {
   id: string;
   code: string;
+  officialId?: string | null;
   wardNumber: string | null;
   wardLabel: string;
   name: string;
+  nameKn?: string | null;
   fullName: string;
   lat: number;
   lng: number;
@@ -17,8 +29,14 @@ export interface WardContextItem {
   boundaryGeoJson?: GeoJSON.GeoJsonObject | null;
   issueCount?: number;
   isPilot?: boolean;
+  isOperationalArea?: boolean;
+  corporationId?: string | null;
+  corporationCode?: string | null;
+  corporationName?: string | null;
+  corporationShortName?: string | null;
   departmentCode?: string;
-  zoneName?: string;
+  zoneCode?: string | null;
+  zoneName?: string | null;
 }
 
 export interface DepartmentInfo {
@@ -80,10 +98,30 @@ export interface WardDataState {
   error: string | null;
 }
 
+export type GeoSelectionMode = 'AUTO' | 'MANUAL';
+
+export type GeoLocationStatus =
+  | 'idle'
+  | 'detecting'
+  | 'resolving'
+  | 'detected'
+  | 'unavailable'
+  | 'denied'
+  | 'unsupported'
+  | 'no_ward'
+  | 'error';
+
+export interface OperationalAreaInfo {
+  id: string;
+  code: string;
+  name: string;
+}
+
 interface GeoContextType {
   role: 'CITIZEN' | 'AUTHORITY' | null;
   currentWard: WardContextItem | null;
   availableWards: WardContextItem[];
+  corporations: CorporationItem[];
   department: DepartmentInfo | null;
   isLoading: boolean;
   error: string | null;
@@ -91,6 +129,13 @@ interface GeoContextType {
   selectedCategory: string;
   setSelectedCategory: (category: string) => void;
   selectWard: (ward: WardContextItem) => void;
+  selectionMode: GeoSelectionMode;
+  locationStatus: GeoLocationStatus;
+  locationMessage: string | null;
+  followLocation: boolean;
+  operationalArea: OperationalAreaInfo | null;
+  detectMyLocation: (options?: { userInitiated?: boolean }) => Promise<boolean>;
+  setFollowLocation: (enabled: boolean) => void;
   refresh: () => Promise<void>;
   refreshWardData: () => Promise<void>;
 }
@@ -99,6 +144,18 @@ const GeoContext = createContext<GeoContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEY = 'civicpulse_selected_geo_id';
 const LOCAL_STORAGE_WARD_CODE = 'civicpulse_selected_ward_code';
+const LOCAL_STORAGE_MODE = 'civicpulse_geo_mode';
+
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 const DEFAULT_STATS: WardStats = {
   totalReported: 0,
@@ -115,9 +172,22 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
   const [role, setRole] = useState<'CITIZEN' | 'AUTHORITY' | null>(null);
   const [currentWard, setCurrentWard] = useState<WardContextItem | null>(null);
   const [availableWards, setAvailableWards] = useState<WardContextItem[]>([]);
+  const [corporations, setCorporations] = useState<CorporationItem[]>([]);
   const [department, setDepartment] = useState<DepartmentInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState<GeoSelectionMode>('MANUAL');
+  const [locationStatus, setLocationStatus] = useState<GeoLocationStatus>('idle');
+  const [locationMessage, setLocationMessage] = useState<string | null>(null);
+  const [followLocation, setFollowLocationState] = useState(false);
+  const [operationalArea, setOperationalArea] = useState<OperationalAreaInfo | null>(null);
+
+  const selectionModeRef = React.useRef<GeoSelectionMode>('MANUAL');
+  selectionModeRef.current = selectionMode;
+  const roleRef = React.useRef<'CITIZEN' | 'AUTHORITY' | null>(null);
+  roleRef.current = role;
+  const lastResolvedCoordsRef = React.useRef<{ lat: number; lng: number; at: number } | null>(null);
+  const autoAttemptedRef = React.useRef(false);
 
   // Category filter for the ward
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
@@ -158,11 +228,14 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         setRole(data.role);
         const wards: WardContextItem[] = data.available || [];
         setAvailableWards(wards);
+        setCorporations(data.corporations || []);
         if (data.department) {
           setDepartment(data.department);
         }
 
         let resolvedWard: WardContextItem | null = null;
+        let initialMode: GeoSelectionMode = 'MANUAL';
+
         if (urlWard) {
           const lower = urlWard.toLowerCase();
           resolvedWard = wards.find(
@@ -172,11 +245,19 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
               w.code.toLowerCase() === `ward-${lower}` ||
               w.wardNumber?.toLowerCase() === lower
           ) || null;
+          initialMode = 'MANUAL';
         }
 
         if (!resolvedWard && typeof window !== 'undefined') {
-          const savedCode = localStorage.getItem(LOCAL_STORAGE_WARD_CODE);
-          const savedId = localStorage.getItem(LOCAL_STORAGE_KEY);
+          const roleSuffix = data.role ? `_${data.role}` : '';
+          const savedMode = localStorage.getItem(`${LOCAL_STORAGE_MODE}${roleSuffix}`);
+          const savedCode = localStorage.getItem(`${LOCAL_STORAGE_WARD_CODE}${roleSuffix}`);
+          const savedId = localStorage.getItem(`${LOCAL_STORAGE_KEY}${roleSuffix}`);
+
+          if (savedMode === 'AUTO') {
+            initialMode = 'AUTO';
+          }
+
           if (savedCode) {
             resolvedWard = wards.find((w) => w.code.toLowerCase() === savedCode.toLowerCase()) || null;
           }
@@ -185,7 +266,15 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
           }
         }
 
-        setCurrentWard(resolvedWard || data.current || wards[0] || null);
+        setSelectionMode(initialMode);
+        selectionModeRef.current = initialMode;
+        const nextWard = resolvedWard || data.current || wards[0] || null;
+        setCurrentWard(nextWard);
+        if (nextWard?.isPilot) {
+          setOperationalArea({ id: nextWard.id, code: nextWard.code, name: nextWard.name });
+        } else {
+          setOperationalArea(null);
+        }
       } catch (err: unknown) {
         if (!cancelled) {
           const msg = err instanceof Error ? err.message : 'Unable to load location context';
@@ -229,6 +318,15 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         isLoading: false,
         error: null,
       });
+
+      // Lazily hydrate selected ward boundaryGeoJson so we never load all 369 polygons upfront
+      if (data.ward?.id === targetWard.id && data.ward?.boundaryGeoJson && !targetWard.boundaryGeoJson) {
+        setCurrentWard((prev) =>
+          prev && prev.id === targetWard.id
+            ? { ...prev, boundaryGeoJson: data.ward.boundaryGeoJson, bbox: data.ward.bbox ?? prev.bbox }
+            : prev
+        );
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unable to retrieve ward records';
       console.warn('Error loading ward issues:', err);
@@ -253,27 +351,43 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
     fetchWardData(currentWard, selectedCategory);
   }, [currentWard, currentWardId, selectedCategory, fetchWardData]);
 
-  // 3. User selects a different ward
+  const persistGeoPreferences = useCallback(
+    (ward: WardContextItem, mode: GeoSelectionMode, targetRole?: 'CITIZEN' | 'AUTHORITY' | null) => {
+      if (typeof window === 'undefined') return;
+      try {
+        const effectiveRole = targetRole ?? roleRef.current;
+        const roleSuffix = effectiveRole ? `_${effectiveRole}` : '';
+        localStorage.setItem(`${LOCAL_STORAGE_KEY}${roleSuffix}`, ward.id);
+        localStorage.setItem(`${LOCAL_STORAGE_WARD_CODE}${roleSuffix}`, ward.code);
+        localStorage.setItem(`${LOCAL_STORAGE_MODE}${roleSuffix}`, mode);
+        document.cookie = `civicpulse_geo_id=${encodeURIComponent(ward.id)}; path=/; max-age=2592000; SameSite=Lax`;
+        document.cookie = `civicpulse_ward_code=${encodeURIComponent(ward.code)}; path=/; max-age=2592000; SameSite=Lax`;
+      } catch {
+        // ignore storage errors
+      }
+    },
+    []
+  );
+
+  // 3. User manually selects a ward (takes priority over automatic location updates)
   const selectWard = useCallback(
     (ward: WardContextItem) => {
-      // 1. Immediately update state
+      setSelectionMode('MANUAL');
+      selectionModeRef.current = 'MANUAL';
+      setFollowLocationState(false);
+      setLocationStatus('idle');
+      setLocationMessage(null);
+
       setCurrentWard(ward);
-      // Reset category filter when switching wards to show full overview
+      if (ward.isPilot) {
+        setOperationalArea({ id: ward.id, code: ward.code, name: ward.name });
+      } else {
+        setOperationalArea(null);
+      }
       setSelectedCategory('ALL');
 
-      // 2. Persist in localStorage and document cookie
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem(LOCAL_STORAGE_KEY, ward.id);
-          localStorage.setItem(LOCAL_STORAGE_WARD_CODE, ward.code);
-          document.cookie = `civicpulse_geo_id=${encodeURIComponent(ward.id)}; path=/; max-age=2592000; SameSite=Lax`;
-          document.cookie = `civicpulse_ward_code=${encodeURIComponent(ward.code)}; path=/; max-age=2592000; SameSite=Lax`;
-        } catch {
-          // ignore storage errors
-        }
-      }
+      persistGeoPreferences(ward, 'MANUAL');
 
-      // 3. Update URL query parameter without a full page reload
       startTransition(() => {
         if (typeof window !== 'undefined') {
           const currentParams = new URLSearchParams(window.location.search);
@@ -284,8 +398,193 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         }
       });
     },
-    [pathname]
+    [pathname, persistGeoPreferences]
   );
+
+  const resolveCoordinatesToWard = useCallback(
+    async (lat: number, lng: number, options?: { userInitiated?: boolean }): Promise<boolean> => {
+      const userInitiated = options?.userInitiated ?? false;
+      // Never override an active manual selection in the background
+      if (!userInitiated && selectionModeRef.current === 'MANUAL') {
+        return false;
+      }
+
+      setLocationStatus('resolving');
+      setLocationMessage('Finding your municipal ward...');
+
+      try {
+        const res = await fetch('/api/geo/resolve-ward', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ lat, lng }),
+          cache: 'no-store',
+        });
+
+        if (!res.ok) {
+          setLocationStatus('error');
+          setLocationMessage('Network request failed while identifying your ward.');
+          return false;
+        }
+
+        const data = await res.json();
+        lastResolvedCoordsRef.current = { lat, lng, at: Date.now() };
+        setOperationalArea(data.operationalArea || null);
+
+        if (!data.matched || !data.ward) {
+          setLocationStatus('no_ward');
+          setLocationMessage(
+            data.message || 'Unable to identify a ward for your location. Please choose one manually.'
+          );
+          return false;
+        }
+
+        // Re-check manual priority in case user selected a ward while request was in flight
+        if (!userInitiated && selectionModeRef.current === 'MANUAL') {
+          return false;
+        }
+
+        const resolvedWard: WardContextItem = data.ward;
+        setSelectionMode('AUTO');
+        selectionModeRef.current = 'AUTO';
+        setCurrentWard(resolvedWard);
+        setSelectedCategory('ALL');
+        setLocationStatus('detected');
+        setLocationMessage(
+          data.boundaryMatch
+            ? 'Location detected near ward boundary.'
+            : 'Location detected.'
+        );
+        persistGeoPreferences(resolvedWard, 'AUTO');
+        return true;
+      } catch {
+        setLocationStatus('error');
+        setLocationMessage('Network request failed while identifying your ward.');
+        return false;
+      }
+    },
+    [persistGeoPreferences]
+  );
+
+  const detectMyLocation = useCallback(
+    async (options?: { userInitiated?: boolean }): Promise<boolean> => {
+      const userInitiated = options?.userInitiated ?? true;
+
+      if (typeof navigator === 'undefined' || !navigator.geolocation) {
+        setLocationStatus('unsupported');
+        setLocationMessage('Browser does not support geolocation. Please choose a ward manually.');
+        return false;
+      }
+
+      if (userInitiated) {
+        setSelectionMode('AUTO');
+        selectionModeRef.current = 'AUTO';
+      }
+
+      setLocationStatus('detecting');
+      setLocationMessage('Detecting location...');
+
+      return new Promise<boolean>((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          async (pos) => {
+            const ok = await resolveCoordinatesToWard(
+              pos.coords.latitude,
+              pos.coords.longitude,
+              { userInitiated }
+            );
+            resolve(ok);
+          },
+          (geoErr) => {
+            if (geoErr.code === geoErr.PERMISSION_DENIED) {
+              setLocationStatus('denied');
+              setLocationMessage(
+                'Permission denied. You can still choose any ward manually.'
+              );
+              setFollowLocationState(false);
+            } else {
+              setLocationStatus('unavailable');
+              setLocationMessage(
+                'Location unavailable. Please check GPS/device settings or choose a ward manually.'
+              );
+            }
+            resolve(false);
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        );
+      });
+    },
+    [resolveCoordinatesToWard]
+  );
+
+  const setFollowLocation = useCallback(
+    (enabled: boolean) => {
+      if (enabled) {
+        setSelectionMode('AUTO');
+        selectionModeRef.current = 'AUTO';
+      }
+      setFollowLocationState(enabled);
+    },
+    []
+  );
+
+  // Respect previously granted geolocation permission without repeatedly prompting
+  useEffect(() => {
+    if (isLoading || autoAttemptedRef.current || role !== 'CITIZEN') return;
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('ward') || sp.get('wardId')) return;
+
+    const roleSuffix = `_${role}`;
+    const savedMode = localStorage.getItem(`${LOCAL_STORAGE_MODE}${roleSuffix}`);
+    if (savedMode === 'MANUAL') return;
+
+    autoAttemptedRef.current = true;
+    if (navigator.permissions?.query) {
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then((perm) => {
+          if (perm.state === 'granted') {
+            void detectMyLocation({ userInitiated: false });
+          }
+        })
+        .catch(() => {
+          // Permissions API unavailable; wait for explicit My Location click
+        });
+    }
+  }, [isLoading, role, detectMyLocation]);
+
+  // Continuous location following (ONLY when explicitly opted in and in AUTO mode)
+  useEffect(() => {
+    if (!followLocation || selectionMode !== 'AUTO') return;
+    if (typeof navigator === 'undefined' || !navigator.geolocation) return;
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (selectionModeRef.current !== 'AUTO') return;
+        const { latitude, longitude } = pos.coords;
+        const prev = lastResolvedCoordsRef.current;
+        if (prev) {
+          const movedM = haversineMeters(prev.lat, prev.lng, latitude, longitude);
+          const elapsedMs = Date.now() - prev.at;
+          if (movedM < 50 || elapsedMs < 15000) {
+            return;
+          }
+        }
+        void resolveCoordinatesToWard(latitude, longitude, { userInitiated: false });
+      },
+      (geoErr) => {
+        if (geoErr.code === geoErr.PERMISSION_DENIED) {
+          setLocationStatus('denied');
+          setLocationMessage('Permission denied. Continuous location following stopped.');
+          setFollowLocationState(false);
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 }
+    );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
+  }, [followLocation, selectionMode, resolveCoordinatesToWard]);
 
   return (
     <GeoContext.Provider
@@ -293,6 +592,7 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         role,
         currentWard,
         availableWards,
+        corporations,
         department,
         isLoading,
         error,
@@ -300,6 +600,13 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         selectedCategory,
         setSelectedCategory,
         selectWard,
+        selectionMode,
+        locationStatus,
+        locationMessage,
+        followLocation,
+        operationalArea,
+        detectMyLocation,
+        setFollowLocation,
         refresh: refreshGeoContext,
         refreshWardData: () => fetchWardData(currentWard, selectedCategory),
       }}

@@ -17,8 +17,8 @@ export async function GET(req: Request) {
     const wardParam = url.searchParams.get('ward') || url.searchParams.get('wardId');
     const categoryParam = url.searchParams.get('category'); // optional category filter
 
-    // 1. Resolve target ward from DB
-    type WardRecord = Awaited<ReturnType<typeof prisma.ward.findFirst>>;
+    // 1. Resolve target ward from DB (prefer exact id/code on active GBA wards)
+    type WardRecord = Awaited<ReturnType<typeof prisma.ward.findFirst<{ include: { corporation: true } }>>>;
     let targetWard: WardRecord = null;
 
     if (wardParam) {
@@ -27,20 +27,35 @@ export async function GET(req: Request) {
           OR: [
             { id: { equals: wardParam, mode: 'insensitive' } },
             { code: { equals: wardParam, mode: 'insensitive' } },
-            { code: { equals: `WARD-${wardParam}`, mode: 'insensitive' } },
-            { code: { equals: `WARD-${wardParam.replace(/^ward-?/i, '')}`, mode: 'insensitive' } },
+            { officialId: { equals: wardParam, mode: 'insensitive' } },
           ],
         },
+        include: { corporation: true },
       });
+
+      if (!targetWard) {
+        targetWard = await prisma.ward.findFirst({
+          where: {
+            OR: [
+              { code: { equals: `WARD-${wardParam}`, mode: 'insensitive' } },
+              { code: { equals: `WARD-${wardParam.replace(/^ward-?/i, '')}`, mode: 'insensitive' } },
+            ],
+          },
+          include: { corporation: true },
+        });
+      }
     }
 
-    // Default to WARD-12 if not found or not specified
+    // Default to first active GBA ward if not found or not specified
     if (!targetWard) {
       targetWard = await prisma.ward.findFirst({
-        where: { code: 'WARD-12' },
+        where: { isLegacy: false, isOperationalArea: false },
+        include: { corporation: true },
+        orderBy: [{ wardNumber: 'asc' }, { code: 'asc' }],
       });
       if (!targetWard) {
         targetWard = await prisma.ward.findFirst({
+          include: { corporation: true },
           orderBy: { code: 'asc' },
         });
       }
@@ -91,8 +106,10 @@ export async function GET(req: Request) {
         : null;
 
     const cleanName = targetWard.name.replace(/\s*\(Demo\)/i, '').trim();
-    const codeNumber = targetWard.code.replace(/^[A-Z]+-/, '');
-    const isPilot = targetWard.code.toUpperCase().includes('PILOT');
+    const isPilot = Boolean(targetWard.isOperationalArea || targetWard.code.toUpperCase().includes('PILOT'));
+    const codeNumber = targetWard.wardNumber != null
+      ? String(targetWard.wardNumber)
+      : targetWard.code.replace(/^[A-Z]+-/, '');
 
     // 2. Query Category Breakdown for this specific Ward
     const categoryCountsRaw = await prisma.issue.groupBy({

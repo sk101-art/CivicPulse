@@ -234,6 +234,71 @@ const ALL_PRISMA_CATEGORIES: Category[] = [
   Category.OTHER,
 ];
 
+const CLOSED_STATUSES = new Set<Status>([Status.VERIFIED_FIXED, Status.REJECTED]);
+
+const ACTIVE_UNRESOLVED_STATUSES = new Set<Status>([
+  Status.OPEN,
+  Status.CONFIRMED,
+  Status.ASSIGNED,
+  Status.IN_PROGRESS,
+  Status.REOPENED_IN_WARRANTY,
+  Status.DISPUTED,
+]);
+
+export function isUnresolvedIssueStatus(status: Status): boolean {
+  return !CLOSED_STATUSES.has(status);
+}
+
+export function isCriticalOrHighUnresolved(issue: {
+  band?: Band | null;
+  bandOverride?: Band | null;
+  status: Status;
+}): boolean {
+  if (!isUnresolvedIssueStatus(issue.status)) return false;
+  const effectiveBand = issue.bandOverride ?? issue.band;
+  return effectiveBand === Band.CRITICAL || effectiveBand === Band.HIGH;
+}
+
+export function isSlaBreachedUnresolved(
+  issue: {
+    status: Status;
+    slaBreached: boolean;
+    slaDueAt: Date;
+  },
+  now: Date = new Date()
+): boolean {
+  if (!isUnresolvedIssueStatus(issue.status)) return false;
+  return Boolean(issue.slaBreached || issue.slaDueAt < now);
+}
+
+export function computeWardOverviewMetrics<
+  T extends {
+    id: string;
+    status: Status;
+    band?: Band | null;
+    bandOverride?: Band | null;
+    slaBreached: boolean;
+    slaDueAt: Date;
+  }
+>(rawIssues: T[], now: Date = new Date()): WardOverviewMetrics {
+  const distinctMap = new Map<string, T>();
+  for (const item of rawIssues) {
+    if (!distinctMap.has(item.id)) {
+      distinctMap.set(item.id, item);
+    }
+  }
+  const issues = Array.from(distinctMap.values());
+
+  return {
+    totalIssues: issues.length,
+    activeIssues: issues.filter((i) => ACTIVE_UNRESOLVED_STATUSES.has(i.status)).length,
+    verifiedResolvedIssues: issues.filter((i) => i.status === Status.VERIFIED_FIXED).length,
+    awaitingVerificationIssues: issues.filter((i) => i.status === Status.CLAIMED_FIXED).length,
+    criticalHighIssues: issues.filter((i) => isCriticalOrHighUnresolved(i)).length,
+    slaBreachedIssues: issues.filter((i) => isSlaBreachedUnresolved(i, now)).length,
+  };
+}
+
 /**
  * Calculates start Date based on period selection
  */
@@ -262,21 +327,33 @@ export async function getWardIntelligence(
   period: TimePeriod = "30d",
   userRole: Role = Role.CITIZEN
 ): Promise<WardIntelligenceData | null> {
-  // 1. Resolve Target Ward from DB
+  // 1. Resolve Target Ward from DB (prefer exact id/code/officialId)
   const cleanId = wardIdentifier.trim();
   const lower = cleanId.toLowerCase();
   const numOnly = lower.replace(/^ward-?/i, "");
 
-  const targetWard = await prisma.ward.findFirst({
+  let targetWard = await prisma.ward.findFirst({
     where: {
       OR: [
         { id: { equals: cleanId, mode: "insensitive" } },
         { code: { equals: cleanId, mode: "insensitive" } },
-        { code: { equals: `WARD-${cleanId}`, mode: "insensitive" } },
-        { code: { equals: `WARD-${numOnly}`, mode: "insensitive" } },
+        { officialId: { equals: cleanId, mode: "insensitive" } },
       ],
     },
+    include: { corporation: true },
   });
+
+  if (!targetWard) {
+    targetWard = await prisma.ward.findFirst({
+      where: {
+        OR: [
+          { code: { equals: `WARD-${cleanId}`, mode: "insensitive" } },
+          { code: { equals: `WARD-${numOnly}`, mode: "insensitive" } },
+        ],
+      },
+      include: { corporation: true },
+    });
+  }
 
   if (!targetWard) {
     return null;
@@ -326,8 +403,10 @@ export async function getWardIntelligence(
       ? [[geomData.min_lat, geomData.min_lng], [geomData.max_lat, geomData.max_lng]]
       : null;
 
-  const isPilot = targetWard.code.toUpperCase().includes("PILOT");
-  const codeNumber = targetWard.code.replace(/^[A-Z]+-/, "");
+  const isPilot = Boolean(targetWard.isOperationalArea || targetWard.code.toUpperCase().includes("PILOT"));
+  const codeNumber = targetWard.wardNumber != null
+    ? String(targetWard.wardNumber)
+    : targetWard.code.replace(/^[A-Z]+-/, "");
   const cleanName = targetWard.name.replace(/\s*\(Demo\)/i, "").trim();
 
   // 2. Query Issues for this Ward with Time Period Filter
@@ -363,33 +442,13 @@ export async function getWardIntelligence(
   const latestIssueDate = issues.length > 0 ? issues[0].createdAt.toISOString() : null;
 
   // 3. Section A — Core Metrics Computation
-  // Active: not verified fixed, not rejected, not claimed fixed awaiting verification
+  const now = new Date();
+  const overview = computeWardOverviewMetrics(issues, now);
   const verifiedResolved = issues.filter((i) => i.status === Status.VERIFIED_FIXED);
   const awaitingVerification = issues.filter((i) => i.status === Status.CLAIMED_FIXED);
-  const activeIssues = issues.filter(
-    (i) =>
-      i.status === Status.OPEN ||
-      i.status === Status.CONFIRMED ||
-      i.status === Status.ASSIGNED ||
-      i.status === Status.IN_PROGRESS ||
-      i.status === Status.REOPENED_IN_WARRANTY ||
-      i.status === Status.DISPUTED
-  );
-  const criticalHighIssues = issues.filter(
-    (i) => i.band === Band.CRITICAL || i.band === Band.HIGH || i.priority >= 0.7
-  );
-  const slaBreachedIssues = issues.filter(
-    (i) => i.slaBreached || (i.slaDueAt < new Date() && i.status !== Status.VERIFIED_FIXED)
-  );
-
-  const overview: WardOverviewMetrics = {
-    totalIssues: totalDistinctIssues,
-    activeIssues: activeIssues.length,
-    verifiedResolvedIssues: verifiedResolved.length,
-    awaitingVerificationIssues: awaitingVerification.length,
-    criticalHighIssues: criticalHighIssues.length,
-    slaBreachedIssues: slaBreachedIssues.length,
-  };
+  const activeIssues = issues.filter((i) => ACTIVE_UNRESOLVED_STATUSES.has(i.status));
+  const criticalHighIssues = issues.filter((i) => isCriticalOrHighUnresolved(i));
+  const slaBreachedIssues = issues.filter((i) => isSlaBreachedUnresolved(i, now));
 
   // 4. Section B — Category Analysis Computation (all 12 Prisma categories)
   const categoryAnalysis: CategoryMetric[] = ALL_PRISMA_CATEGORIES.map((cat) => {
@@ -845,8 +904,9 @@ export async function getWardIntelligence(
 
     // Section I: Ward Comparison Breakdown
     const allWards = await prisma.ward.findMany({
+      where: { isLegacy: false, isOperationalArea: false },
       select: { id: true, code: true, name: true },
-      orderBy: { code: "asc" },
+      orderBy: [{ wardNumber: "asc" }, { code: "asc" }],
     });
 
     const allWardsIssues = await prisma.issue.findMany({
@@ -859,7 +919,9 @@ export async function getWardIntelligence(
         category: true,
         status: true,
         band: true,
+        bandOverride: true,
         slaBreached: true,
+        slaDueAt: true,
         createdAt: true,
         repairClaimedAt: true,
         updatedAt: true,
@@ -873,11 +935,9 @@ export async function getWardIntelligence(
       const verified = wIssues.filter((i) => i.status === Status.VERIFIED_FIXED).length;
       const active = total - verified;
       const resRate = total > 0 ? Number(((verified / total) * 100).toFixed(1)) : 0;
-      const breaches = wIssues.filter((i) => i.slaBreached).length;
+      const breaches = wIssues.filter((i) => isSlaBreachedUnresolved(i, now)).length;
       const breachRate = total > 0 ? Number(((breaches / total) * 100).toFixed(1)) : 0;
-      const criticalCount = wIssues.filter(
-        (i) => i.band === Band.CRITICAL || i.band === Band.HIGH
-      ).length;
+      const criticalCount = wIssues.filter((i) => isCriticalOrHighUnresolved(i)).length;
       const hotspotCount = wIssues.filter((i) => i.isHotspot).length;
 
       // Top category in that ward

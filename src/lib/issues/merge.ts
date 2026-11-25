@@ -178,16 +178,21 @@ export async function ingestReportWithSpatialMerge(
     const wardMatch = await prisma.$queryRaw<Array<{ id: string }>>`
       SELECT id FROM "Ward"
       WHERE geom IS NOT NULL
-        AND ST_Contains(geom::geometry, ST_SetSRID(ST_Point(${lng}, ${lat}), 4326))
+        AND "isLegacy" = false
+        AND "isOperationalArea" = false
+        AND ST_Covers(geom::geometry, ST_SetSRID(ST_Point(${lng}, ${lat}), 4326))
+      ORDER BY ST_Area(geom::geometry) ASC
       LIMIT 1;
     `;
     if (wardMatch && wardMatch.length > 0) {
       resolvedWardId = wardMatch[0].id;
     } else {
-      // Nearest ward fallback
+      // Nearest active GBA ward fallback
       const nearestMatch = await prisma.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM "Ward"
         WHERE geom IS NOT NULL
+          AND "isLegacy" = false
+          AND "isOperationalArea" = false
         ORDER BY ST_Distance(geom::geography, ST_SetSRID(ST_Point(${lng}, ${lat}), 4326)::geography) ASC
         LIMIT 1;
       `;

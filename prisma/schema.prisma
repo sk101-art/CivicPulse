@@ -157,11 +157,36 @@ model Agency {
   issues   Issue[]
 }
 
+model Corporation {
+  id         String @id @default(cuid())
+  code       String @unique
+  officialId String? @unique
+  name       String
+  shortName  String
+  nameKn     String?
+  wards      Ward[]
+}
+
 model Ward {
-  id   String                                      @id @default(cuid())
-  code String                                      @unique
-  name String
-  geom Unsupported("geography(MultiPolygon,4326)")?
+  id                String                                      @id @default(cuid())
+  code              String                                      @unique
+  officialId        String?                                     @unique
+  wardNumber        Int?
+  name              String
+  nameKn            String?
+  corporationId     String?
+  corporation       Corporation?                                @relation(fields: [corporationId], references: [id])
+  zoneCode          String?
+  zoneName          String?
+  assemblyName      String?
+  isLegacy          Boolean                                     @default(false)
+  isOperationalArea Boolean                                     @default(false)
+  geometrySource    String?
+  importedAt        DateTime?
+  geom              Unsupported("geography(MultiPolygon,4326)")?
+
+  @@index([corporationId])
+  @@index([wardNumber])
 }
 
 model RoadSegment {
@@ -193,6 +218,8 @@ model Issue {
   geom                 Unsupported("geography(Point,4326)")?
   address              String?
   wardId               String?
+  legacyWardId         String?
+  wardMappingStatus    String?
   segmentId            String?
   agencyId             String?
   handoffCount         Int                                 @default(0)

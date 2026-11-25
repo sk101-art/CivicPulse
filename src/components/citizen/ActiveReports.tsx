@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { ChevronRight, Clock, MapPin, ArrowRight, ShieldCheck, Inbox } from 'lucide-react';
 import { useReports } from '@/hooks/useReports';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
-import { formatDateIST } from '@/lib/time/ist';
+import { formatDateTimeIST } from '@/lib/time/ist';
 import { useGeoContext } from '@/context/GeoContext';
 
 interface ReportItem {
@@ -244,7 +244,7 @@ export function ActiveReports({ initialReports }: ActiveReportsProps) {
               <div className="divide-y divide-[#E9ECE6]">
                 {displayMyReports.map((report) => {
                   const imageSrc = categoryPlaceholders[String(report.category).toUpperCase()] || '/images/placeholders/demo-evidence-other.jpg';
-                  const dateStr = formatDateIST(report.createdAt);
+                  const dateStr = formatDateTimeIST(report.createdAt);
 
                   return (
                     <Link

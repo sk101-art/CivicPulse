@@ -54,8 +54,9 @@ export default async function DeskDashboardPage() {
         orderBy: { name: "asc" },
       }),
       prisma.ward.findMany({ 
+        where: { isLegacy: false },
         select: { id: true, code: true, name: true },
-        orderBy: { name: "asc" },
+        orderBy: [{ wardNumber: "asc" }, { code: "asc" }],
       }),
     ]);
   };

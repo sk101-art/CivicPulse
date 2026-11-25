@@ -634,7 +634,7 @@ export function IssueDrawer({
                     <div className="flex items-center justify-between py-1.5 border-b border-[#DDDCD3]/60">
                       <span className="text-[#65736B] font-medium">Reported on</span>
                       <span className="font-medium text-[#293732] font-mono">
-                        {formatDateIST(issue.createdAt)}
+                        {formatDateTimeIST(latestReport?.capturedAt || issue.createdAt)}
                       </span>
                     </div>
 

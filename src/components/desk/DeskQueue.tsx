@@ -83,7 +83,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
     if (searchQuery.trim()) params.set('search', searchQuery.trim());
 
     try {
-      const res = await fetch(`/api/desk/queue?${params.toString()}`);
+      const res = await fetch(`/api/desk/queue?${params.toString()}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setIssues(data.issues || []);
@@ -99,6 +99,23 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
       fetchFilteredIssues();
     });
   }, [currentWard, fetchFilteredIssues]);
+
+  // Keep Operations Queue synced with new citizen reports/updates across tabs and sessions
+  useEffect(() => {
+    const syncQueue = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchFilteredIssues();
+      }
+    };
+    window.addEventListener('focus', syncQueue);
+    document.addEventListener('visibilitychange', syncQueue);
+    const interval = window.setInterval(syncQueue, 15000);
+    return () => {
+      window.removeEventListener('focus', syncQueue);
+      document.removeEventListener('visibilitychange', syncQueue);
+      window.clearInterval(interval);
+    };
+  }, [fetchFilteredIssues]);
 
   const displayIssues = useMemo(() => {
     let list = [...issues];
