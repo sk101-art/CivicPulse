@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   MapPin,
   ChevronDown,
@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { useOptionalGeoContext, WardContextItem } from '@/context/GeoContext';
+import { matchesWardSearch, findTypeAheadWardIndex } from '@/lib/geo/wardSearch';
 
 interface GeoContextSelectorProps {
   className?: string;
@@ -29,8 +30,15 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCorpId, setSelectedCorpId] = useState<string>('ALL');
   const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const optionRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const typeAheadRef = useRef<{ text: string; timer: ReturnType<typeof setTimeout> | null; lastChar: string }>({
+    text: '',
+    timer: null,
+    lastChar: '',
+  });
 
   const role = geo?.role ?? null;
   const currentWard = geo?.currentWard ?? null;
@@ -90,7 +98,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
   };
 
   const filteredWards = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = searchQuery.trim();
     return availableWards.filter((w) => {
       const isSpecial = w.id === 'zone-all' || w.code === 'ALL' || w.isPilot;
       if (selectedCorpId !== 'ALL') {
@@ -98,8 +106,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
         if (w.corporationId !== selectedCorpId) return false;
       }
       if (!q) return true;
-      const hay = `${w.wardLabel} ${w.wardNumber ?? ''} ${w.code} ${w.name} ${w.nameKn ?? ''} ${w.corporationName ?? ''} ${w.zoneName ?? ''} ${w.fullName}`.toLowerCase();
-      return hay.includes(q);
+      return matchesWardSearch(w, q);
     });
   }, [availableWards, searchQuery, selectedCorpId]);
 
@@ -118,6 +125,115 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
     [municipalWards, visibleLimit]
   );
 
+  const flatSelectableWards = useMemo(
+    () => [...jurisdictionEntries, ...municipalWards],
+    [jurisdictionEntries, municipalWards]
+  );
+
+  // Auto-focus search input when popover opens
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => searchInputRef.current?.focus(), 20);
+      setHighlightedId(currentWard?.id ?? flatSelectableWards[0]?.id ?? null);
+    }
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll highlighted option into view
+  useEffect(() => {
+    if (!highlightedId) return;
+    const el = optionRefs.current.get(highlightedId);
+    if (el) {
+      el.scrollIntoView({ block: 'nearest' });
+    }
+  }, [highlightedId]);
+
+  const handleTypeAheadChar = useCallback(
+    (char: string) => {
+      const lower = char.toLowerCase();
+      const buf = typeAheadRef.current;
+      if (buf.timer) clearTimeout(buf.timer);
+
+      const isRepeated = buf.text.length === 1 && buf.lastChar === lower;
+      const nextText = isRepeated ? lower : buf.text + lower;
+      buf.text = nextText;
+      buf.lastChar = lower;
+      buf.timer = setTimeout(() => {
+        typeAheadRef.current.text = '';
+        typeAheadRef.current.lastChar = '';
+      }, 700);
+
+      const currentIdx = flatSelectableWards.findIndex((w) => w.id === highlightedId);
+      const matchIdx = findTypeAheadWardIndex(flatSelectableWards, nextText, currentIdx, isRepeated);
+      if (matchIdx >= 0) {
+        if (matchIdx >= jurisdictionEntries.length + visibleLimit) {
+          setVisibleLimit(matchIdx - jurisdictionEntries.length + PAGE_SIZE);
+        }
+        setHighlightedId(flatSelectableWards[matchIdx].id);
+      }
+    },
+    [flatSelectableWards, highlightedId, jurisdictionEntries.length, visibleLimit]
+  );
+
+  const handleSelectorKeyDown = (e: React.KeyboardEvent, fromInput = false) => {
+    if (!isOpen) return;
+
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsOpen(false);
+      return;
+    }
+
+    const currentIdx = flatSelectableWards.findIndex((w) => w.id === highlightedId);
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (flatSelectableWards.length > 0) {
+        const nextIdx = (currentIdx + 1) % flatSelectableWards.length;
+        if (nextIdx >= jurisdictionEntries.length + visibleLimit) {
+          setVisibleLimit(nextIdx - jurisdictionEntries.length + PAGE_SIZE);
+        }
+        setHighlightedId(flatSelectableWards[nextIdx].id);
+      }
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (flatSelectableWards.length > 0) {
+        const prevIdx = currentIdx <= 0 ? flatSelectableWards.length - 1 : currentIdx - 1;
+        if (prevIdx >= jurisdictionEntries.length + visibleLimit) {
+          setVisibleLimit(prevIdx - jurisdictionEntries.length + PAGE_SIZE);
+        }
+        setHighlightedId(flatSelectableWards[prevIdx].id);
+      }
+      return;
+    }
+    if (e.key === 'Home') {
+      e.preventDefault();
+      if (flatSelectableWards.length > 0) setHighlightedId(flatSelectableWards[0].id);
+      return;
+    }
+    if (e.key === 'End') {
+      e.preventDefault();
+      if (flatSelectableWards.length > 0) {
+        setVisibleLimit(municipalWards.length);
+        setHighlightedId(flatSelectableWards[flatSelectableWards.length - 1].id);
+      }
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const target =
+        flatSelectableWards.find((w) => w.id === highlightedId) ?? flatSelectableWards[0];
+      if (target) handleSelect(target);
+      return;
+    }
+
+    if (!fromInput && /^[a-zA-Z0-9]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      handleTypeAheadChar(e.key);
+    }
+  };
+
   // Group visible municipal wards hierarchically by City Corporation
   const groupedByCorporation = useMemo(() => {
     const groups = new Map<string, { title: string; wards: WardContextItem[] }>();
@@ -135,18 +251,26 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
 
   const renderWardOption = (ward: WardContextItem) => {
     const isSelected = currentWard?.id === ward.id;
+    const isHighlighted = highlightedId === ward.id;
     const isJurisdictionAll = ward.id === 'zone-all' || ward.code === 'ALL';
     return (
       <button
         key={ward.id}
+        ref={(el) => {
+          if (el) optionRefs.current.set(ward.id, el);
+          else optionRefs.current.delete(ward.id);
+        }}
         type="button"
         role="option"
         aria-selected={isSelected}
+        onMouseEnter={() => setHighlightedId(ward.id)}
         onClick={() => handleSelect(ward)}
         className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all cursor-pointer ${
-          isSelected
-            ? 'bg-[#E5E9E3] text-[#293732] font-semibold shadow-[inset_0_1px_2px_rgba(41,55,50,0.04)]'
-            : 'hover:bg-[#FAF9F5] text-[#293732]'
+          isHighlighted
+            ? 'bg-[#E5E9E3] text-[#293732] ring-1 ring-[#527B7A]/40'
+            : isSelected
+              ? 'bg-[#FAF9F5] text-[#293732] font-semibold shadow-[inset_0_1px_2px_rgba(41,55,50,0.04)]'
+              : 'hover:bg-[#FAF9F5] text-[#293732]'
         }`}
       >
         <div className="flex items-center gap-2.5 min-w-0">
@@ -281,6 +405,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
         <div
           role="dialog"
           aria-label="Geographical Context"
+          onKeyDown={(e) => handleSelectorKeyDown(e, false)}
           className="absolute right-0 mt-2 w-[22rem] sm:w-[26rem] bg-white border border-[#DDDCD3] rounded-2xl shadow-[0_16px_36px_rgba(41,55,50,0.18),0_4px_12px_rgba(41,55,50,0.08),inset_0_1px_0_rgba(255,255,255,1)] z-[1200] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
         >
           {/* Header & Current Selection */}
@@ -495,17 +620,34 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
               <input
                 ref={searchInputRef}
                 type="text"
+                role="combobox"
+                aria-expanded={isOpen}
+                aria-controls="geo-ward-listbox"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search 369 wards by number, name, or code..."
-                aria-label="Search wards"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setSearchQuery(val);
+                  if (!val.trim()) {
+                    setHighlightedId(currentWard?.id ?? null);
+                  } else {
+                    const first = availableWards.find((w) => matchesWardSearch(w, val));
+                    setHighlightedId(first?.id ?? null);
+                  }
+                }}
+                onKeyDown={(e) => handleSelectorKeyDown(e, true)}
+                placeholder="Search ward by name or number..."
+                aria-label="Search ward by name or number"
                 data-testid="geo-ward-search"
                 className="w-full pl-8 pr-7 py-1.5 text-xs bg-[#F3F2EB]/70 border border-[#DDDCD3] rounded-xl text-[#293732] placeholder:text-[#929B92] focus:outline-none focus:ring-2 focus:ring-[#527B7A]/30 focus:bg-white"
               />
               {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => {
+                    setSearchQuery('');
+                    setHighlightedId(currentWard?.id ?? null);
+                    searchInputRef.current?.focus();
+                  }}
                   aria-label="Clear search"
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-[#929B92] hover:text-[#293732] cursor-pointer"
                 >
@@ -514,7 +656,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
               )}
             </div>
 
-            <div role="listbox" aria-label="Available wards" className="max-h-60 overflow-y-auto space-y-2 pr-0.5">
+            <div id="geo-ward-listbox" role="listbox" aria-label="Available wards" className="max-h-60 overflow-y-auto space-y-2 pr-0.5">
               {isLoading && availableWards.length === 0 ? (
                 <div className="p-4 text-center text-xs text-[#65736B] flex items-center justify-center gap-2">
                   <Loader2 className="w-3.5 h-3.5 animate-spin text-[#527B7A]" />
@@ -530,7 +672,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
                 </div>
               ) : filteredWards.length === 0 ? (
                 <div className="p-4 text-center text-xs text-[#65736B]">
-                  No wards match &ldquo;{searchQuery}&rdquo;.
+                  No matching wards
                 </div>
               ) : (
                 <>

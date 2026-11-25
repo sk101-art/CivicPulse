@@ -85,7 +85,7 @@ export default async function DeskDashboardPage() {
   });
 
   return (
-    <main className="flex-1 overflow-y-auto w-full h-full pb-24 lg:pb-8 bg-[#F3F2EB]">
+    <main className="flex-1 w-full pb-24 lg:pb-8 bg-[#F3F2EB]">
       <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
         {/* Editorial Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-[#DDDCD3] pb-5">

@@ -9,7 +9,7 @@ import { ArrowLeft } from "lucide-react";
 export const revalidate = 0;
 
 export default async function ClaimGapPage() {
-  const { hasSeedData, byWard, byDesk, periodDays } = await loadClaimGapData(30);
+  const data = await loadClaimGapData(30);
   let session = null;
   try {
     session = await getServerSession(authOptions);
@@ -53,9 +53,12 @@ export default async function ClaimGapPage() {
 
           {/* Dashboard Component */}
           <ClaimGapDashboard
-            initialByWard={byWard}
-            initialByDesk={byDesk}
-            initialPeriod={periodDays}
+            initialByWard={data.byWard}
+            initialByDesk={data.byDesk}
+            initialRecords={data.records}
+            initialSummary={data.summary}
+            initialFilterOptions={data.filterOptions}
+            initialPeriod={data.periodDays}
           />
         </div>
       </div>

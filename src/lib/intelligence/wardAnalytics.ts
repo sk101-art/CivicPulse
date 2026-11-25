@@ -327,61 +327,68 @@ export async function getWardIntelligence(
   period: TimePeriod = "30d",
   userRole: Role = Role.CITIZEN
 ): Promise<WardIntelligenceData | null> {
-  // 1. Resolve Target Ward from DB (prefer exact id/code/officialId)
+  // 1. Resolve Target Ward from DB (or handle full-jurisdiction ALL view for Authority)
   const cleanId = wardIdentifier.trim();
   const lower = cleanId.toLowerCase();
   const numOnly = lower.replace(/^ward-?/i, "");
+  const isAllJurisdiction = lower === "all" || lower === "zone-all";
 
-  let targetWard = await prisma.ward.findFirst({
-    where: {
-      OR: [
-        { id: { equals: cleanId, mode: "insensitive" } },
-        { code: { equals: cleanId, mode: "insensitive" } },
-        { officialId: { equals: cleanId, mode: "insensitive" } },
-      ],
-    },
-    include: { corporation: true },
-  });
+  let targetWard: Awaited<ReturnType<typeof prisma.ward.findFirst<{ include: { corporation: true } }>>> = null;
 
-  if (!targetWard) {
+  if (!isAllJurisdiction) {
     targetWard = await prisma.ward.findFirst({
       where: {
         OR: [
-          { code: { equals: `WARD-${cleanId}`, mode: "insensitive" } },
-          { code: { equals: `WARD-${numOnly}`, mode: "insensitive" } },
+          { id: { equals: cleanId, mode: "insensitive" } },
+          { code: { equals: cleanId, mode: "insensitive" } },
+          { officialId: { equals: cleanId, mode: "insensitive" } },
         ],
       },
       include: { corporation: true },
     });
-  }
 
-  if (!targetWard) {
-    return null;
+    if (!targetWard) {
+      targetWard = await prisma.ward.findFirst({
+        where: {
+          OR: [
+            { code: { equals: `WARD-${cleanId}`, mode: "insensitive" } },
+            { code: { equals: `WARD-${numOnly}`, mode: "insensitive" } },
+          ],
+        },
+        include: { corporation: true },
+      });
+    }
+
+    if (!targetWard) {
+      return null;
+    }
   }
 
   // Query geometry details (Centroid, BBox, GeoJSON) via PostGIS
-  const wardGeomRes = await prisma.$queryRaw<Array<{
-    lat: number | null;
-    lng: number | null;
-    min_lat: number | null;
-    min_lng: number | null;
-    max_lat: number | null;
-    max_lng: number | null;
-    geom_json: string | null;
-    has_geom: boolean;
-  }>>`
-    SELECT ST_Y(ST_Centroid(geom::geometry)) as lat,
-           ST_X(ST_Centroid(geom::geometry)) as lng,
-           ST_YMin(ST_Envelope(geom::geometry)) as min_lat,
-           ST_XMin(ST_Envelope(geom::geometry)) as min_lng,
-           ST_YMax(ST_Envelope(geom::geometry)) as max_lat,
-           ST_XMax(ST_Envelope(geom::geometry)) as max_lng,
-           ST_AsGeoJSON(geom::geometry) as geom_json,
-           (geom IS NOT NULL) as has_geom
-    FROM "Ward"
-    WHERE id = ${targetWard.id}
-    LIMIT 1;
-  `;
+  const wardGeomRes = targetWard
+    ? await prisma.$queryRaw<Array<{
+        lat: number | null;
+        lng: number | null;
+        min_lat: number | null;
+        min_lng: number | null;
+        max_lat: number | null;
+        max_lng: number | null;
+        geom_json: string | null;
+        has_geom: boolean;
+      }>>`
+        SELECT ST_Y(ST_Centroid(geom::geometry)) as lat,
+               ST_X(ST_Centroid(geom::geometry)) as lng,
+               ST_YMin(ST_Envelope(geom::geometry)) as min_lat,
+               ST_XMin(ST_Envelope(geom::geometry)) as min_lng,
+               ST_YMax(ST_Envelope(geom::geometry)) as max_lat,
+               ST_XMax(ST_Envelope(geom::geometry)) as max_lng,
+               ST_AsGeoJSON(geom::geometry) as geom_json,
+               (geom IS NOT NULL) as has_geom
+        FROM "Ward"
+        WHERE id = ${targetWard.id}
+        LIMIT 1;
+      `
+    : [];
 
   const geomData = wardGeomRes[0] || null;
   let boundaryGeoJson = null;
@@ -403,17 +410,23 @@ export async function getWardIntelligence(
       ? [[geomData.min_lat, geomData.min_lng], [geomData.max_lat, geomData.max_lng]]
       : null;
 
-  const isPilot = Boolean(targetWard.isOperationalArea || targetWard.code.toUpperCase().includes("PILOT"));
-  const codeNumber = targetWard.wardNumber != null
-    ? String(targetWard.wardNumber)
-    : targetWard.code.replace(/^[A-Z]+-/, "");
-  const cleanName = targetWard.name.replace(/\s*\(Demo\)/i, "").trim();
+  const isPilot = targetWard
+    ? Boolean(targetWard.isOperationalArea || targetWard.code.toUpperCase().includes("PILOT"))
+    : false;
+  const codeNumber = targetWard
+    ? targetWard.wardNumber != null
+      ? String(targetWard.wardNumber)
+      : targetWard.code.replace(/^[A-Z]+-/, "")
+    : "ALL";
+  const cleanName = targetWard
+    ? targetWard.name.replace(/\s*\(Demo\)/i, "").trim()
+    : "All Assigned Wards";
 
-  // 2. Query Issues for this Ward with Time Period Filter
+  // 2. Query Issues for this Ward (or all wards for ALL) with Time Period Filter
   const startDate = getPeriodStartDate(period);
   const issues = await prisma.issue.findMany({
     where: {
-      wardId: targetWard.id,
+      ...(targetWard ? { wardId: targetWard.id } : {}),
       ...(startDate && { createdAt: { gte: startDate } }),
     },
     include: {
@@ -960,7 +973,7 @@ export async function getWardIntelligence(
         criticalCount,
         hotspotCount,
         topCategory,
-        isCurrentWard: w.id === targetWard.id,
+        isCurrentWard: targetWard ? w.id === targetWard.id : false,
       };
     });
 
@@ -972,17 +985,25 @@ export async function getWardIntelligence(
 
   return {
     ward: {
-      id: targetWard.id,
-      code: targetWard.code,
+      id: targetWard ? targetWard.id : "zone-all",
+      code: targetWard ? targetWard.code : "ALL",
       name: cleanName,
-      fullName: isPilot ? cleanName : `Ward ${codeNumber} • ${cleanName}`,
-      wardLabel: isPilot ? "ORR Corridor" : `Ward ${codeNumber}`,
+      fullName: targetWard
+        ? isPilot
+          ? cleanName
+          : `Ward ${codeNumber} • ${cleanName}`
+        : "Greater Bengaluru • All Wards",
+      wardLabel: targetWard
+        ? isPilot
+          ? "ORR Corridor"
+          : `Ward ${codeNumber}`
+        : "Greater Bengaluru",
       lat: geomData?.lat ?? (isPilot ? 12.95 : 12.9716),
       lng: geomData?.lng ?? (isPilot ? 77.65 : 77.5946),
       bbox,
       hasGeometry,
       boundaryGeoJson,
-      locality: cleanName,
+      locality: targetWard ? cleanName : "Bengaluru Urban Grid",
     },
     period,
     lastRefreshedAt: new Date().toISOString(),

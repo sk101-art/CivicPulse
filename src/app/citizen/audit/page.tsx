@@ -1,146 +1,143 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { 
-  ChevronRight, 
-  MapPin, 
-  Clock, 
-  Camera, 
-  CheckCircle2, 
-  AlertTriangle, 
-  Navigation, 
-  ArrowLeft, 
-  X, 
-  Check, 
-  Award,
+import {
+  MapPin,
+  Clock,
+  Camera,
+  CheckCircle2,
+  AlertTriangle,
+  Navigation,
+  ArrowLeft,
+  X,
+  Check,
   ShieldCheck,
+  LocateFixed,
+  RefreshCw,
+  Loader2,
+  ExternalLink,
+  Inbox,
   Compass,
-  Home
 } from 'lucide-react';
 import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/CaptureCamera';
+import { useOptionalGeoContext } from '@/context/GeoContext';
+import { formatDateIST, formatDateTimeIST } from '@/lib/time/ist';
+import { haversineDistanceM } from '@/lib/geo/distance';
 
-interface AuditTaskItem {
+interface NearbyAuditTask {
   id: string;
-  category: 'POTHOLES' | 'STREETLIGHTS' | 'DRAINAGE' | 'OTHER';
+  issueId: string;
+  category: string;
   title: string;
+  address: string;
   lat: number;
   lng: number;
-  address: string | null;
-  distance: string;
-  dueIn: string;
-  image: string;
+  hasValidCoordinates: boolean;
+  distanceM: number | null;
+  dueAt: string;
+  repairClaimedAt: string | null;
+  status: string;
   challengeBearingDeg: number;
   challengeNonce: string;
-  dueAt: string;
-  status: string;
+  originalPhotoUrl: string | null;
+  repairPhotoUrl: string | null;
+  ward: {
+    id: string;
+    code: string;
+    wardNumber: number | null;
+    name: string;
+    corporationName: string | null;
+  } | null;
 }
 
-interface UserSubmissionItem {
+interface AuditSubmissionItem {
   id: string;
+  taskId: string;
+  issueId: string;
+  category: string;
   title: string;
   location: string;
   submittedAt: string;
-  verdict: 'INTACT' | 'DAMAGED' | 'CANNOT_SEE';
-  verdictLabel: string;
-  image: string;
-  xpEarned: number;
+  observed: 'INTACT' | 'DAMAGED' | 'CANNOT_SEE';
+  taskStatus: 'OPEN' | 'COMPLETED' | 'EXPIRED';
+  issueStatus: string;
+  weight: number;
+  image: string | null;
 }
 
-const DEFAULT_AUDIT_TASKS: AuditTaskItem[] = [
-  {
-    id: 'TASK-2025-081',
-    category: 'POTHOLES',
-    title: 'Pothole Repair',
-    lat: 12.9716,
-    lng: 77.5946,
-    address: 'MG Road, Ward 12',
-    distance: '320 m away',
-    dueIn: 'Due in 2 days',
-    image: '/images/pothole-clean-evidence.jpg',
-    challengeBearingDeg: 184,
-    challengeNonce: 'nonce-audit-81',
-    dueAt: '2025-03-16T18:00:00Z',
-    status: 'PENDING_AUDIT',
-  },
-  {
-    id: 'TASK-2025-082',
-    category: 'STREETLIGHTS',
-    title: 'Streetlight Repair',
-    lat: 12.9750,
-    lng: 77.5990,
-    address: 'Lake View St, Ward 8',
-    distance: '610 m away',
-    dueIn: 'Due in 3 days',
-    image: '/images/evidence-streetlight-clean.jpg',
-    challengeBearingDeg: 72,
-    challengeNonce: 'nonce-audit-82',
-    dueAt: '2025-03-17T18:00:00Z',
-    status: 'PENDING_AUDIT',
-  },
-  {
-    id: 'TASK-2025-083',
-    category: 'DRAINAGE',
-    title: 'Drainage Cleanup',
-    lat: 12.9680,
-    lng: 77.5910,
-    address: 'East Park Rd, Ward 12',
-    distance: '1.2 km away',
-    dueIn: 'Due in 4 days',
-    image: '/images/evidence-drainage-clean.jpg',
-    challengeBearingDeg: 295,
-    challengeNonce: 'nonce-audit-83',
-    dueAt: '2025-03-18T18:00:00Z',
-    status: 'PENDING_AUDIT',
-  },
+const RADIUS_OPTIONS = [
+  { value: 500, label: 'Within 500 m' },
+  { value: 1000, label: 'Within 1 km' },
+  { value: 2000, label: 'Within 2 km' },
+  { value: 5000, label: 'Within 5 km' },
+  { value: 10000, label: 'Within 10 km' },
 ];
 
-const DEFAULT_SUBMISSIONS: UserSubmissionItem[] = [
-  {
-    id: 'SUB-2025-041',
-    title: 'Pothole Repair Verification',
-    location: 'MG Road, Ward 12',
-    submittedAt: 'Mar 10, 2025',
-    verdict: 'INTACT',
-    verdictLabel: 'Verified Fixed',
-    image: '/images/evidence-repair-clean.jpg',
-    xpEarned: 25,
-  },
-  {
-    id: 'SUB-2025-039',
-    title: 'Streetlight Inspection',
-    location: 'Lake View St, Ward 8',
-    submittedAt: 'Mar 8, 2025',
-    verdict: 'DAMAGED',
-    verdictLabel: 'Disputed (Unfixed)',
-    image: '/images/evidence-streetlight-clean.jpg',
-    xpEarned: 25,
-  },
-];
+function formatDistance(distanceM: number | null): string | null {
+  if (distanceM == null || !Number.isFinite(distanceM)) return null;
+  if (distanceM < 1000) return `${Math.round(distanceM)} m away`;
+  return `${(distanceM / 1000).toFixed(1)} km away`;
+}
+
+function formatSubmissionStatus(sub: AuditSubmissionItem): { label: string; tone: string } {
+  if (sub.issueStatus === 'VERIFIED_FIXED') {
+    return { label: 'Accepted · Verified Fixed', tone: 'bg-[#EFF6F1] text-[#537C60] border-[#CFE4D4]' };
+  }
+  if (sub.issueStatus === 'DISPUTED') {
+    return { label: 'Disputed · Returned to Desk', tone: 'bg-[#FBF1EF] text-[#B76F60] border-[#EAC8C1]' };
+  }
+  if (sub.taskStatus === 'EXPIRED') {
+    return { label: 'Window Closed', tone: 'bg-[#F3F2EB] text-[#65736B] border-[#DDDCD3]' };
+  }
+  return { label: 'Submitted · Awaiting Consensus', tone: 'bg-[#F0F5F8] text-[#718F9E] border-[#D4E2E9]' };
+}
 
 export default function CitizenAuditPage() {
-  const [activeTab, setActiveTab] = useState<'available' | 'submissions'>('available');
-  const [tasks, setTasks] = useState<AuditTaskItem[]>(DEFAULT_AUDIT_TASKS);
-  const [submissions] = useState<UserSubmissionItem[]>(DEFAULT_SUBMISSIONS);
-  const [activeTask, setActiveTask] = useState<AuditTaskItem | null>(null);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const geo = useOptionalGeoContext();
+  const currentWard = geo?.currentWard ?? null;
+  const corporations = geo?.corporations ?? [];
+  const geoSelectionMode = geo?.selectionMode ?? 'MANUAL';
 
-  // Capture flow states
+  const [activeTab, setActiveTab] = useState<'available' | 'submissions'>('available');
+  const [discoveryMode, setDiscoveryMode] = useState<'NEARBY' | 'WARD'>('NEARBY');
+  const [radiusM, setRadiusM] = useState<number>(2000);
+  const [selectedCorpId, setSelectedCorpId] = useState<string>('ALL');
+
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locStatus, setLocStatus] = useState<'idle' | 'detecting' | 'ready' | 'denied' | 'unavailable' | 'unsupported'>('idle');
+
+  const [tasks, setTasks] = useState<NearbyAuditTask[]>([]);
+  const [submissions, setSubmissions] = useState<AuditSubmissionItem[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [eligibilityNotice, setEligibilityNotice] = useState<string | null>(null);
+
+  // Selected task detail + verification workflow
+  const [activeTask, setActiveTask] = useState<NearbyAuditTask | null>(null);
+  const [showCaptureStep, setShowCaptureStep] = useState(false);
   const [capturedEvidence, setCapturedEvidence] = useState<CapturedEvidence | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [observedVerdict, setObservedVerdict] = useState<'INTACT' | 'DAMAGED' | 'CANNOT_SEE' | null>(null);
+  const [verdictComment, setVerdictComment] = useState('');
+  const [showConfirm, setShowConfirm] = useState(false);
   const [deviceHeading, setDeviceHeading] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
-  // Listen for device orientation
+  // Sync discoveryMode with GeoContext manual selection if user explicitly switched wards
+  useEffect(() => {
+    if (geoSelectionMode === 'MANUAL' && currentWard && discoveryMode === 'WARD') {
+      // Keep WARD mode active
+    }
+  }, [geoSelectionMode, currentWard, discoveryMode]);
+
   useEffect(() => {
     const handleOrientation = (e: DeviceOrientationEvent) => {
       if (e.alpha !== null) {
         setDeviceHeading(Math.round(e.alpha));
       }
     };
-
     if (typeof window !== 'undefined') {
       const eventName = 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
       window.addEventListener(eventName, handleOrientation as EventListener, true);
@@ -150,78 +147,112 @@ export default function CitizenAuditPage() {
     }
   }, []);
 
-  // Fetch user location
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-        },
-        () => console.warn('Geolocation unavailable, using default coordinates'),
-        { enableHighAccuracy: true }
-      );
+  const requestUserLocation = useCallback(() => {
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setLocStatus('unsupported');
+      return;
     }
+    setLocStatus('detecting');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocStatus('ready');
+      },
+      (err) => {
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocStatus('denied');
+        } else {
+          setLocStatus('unavailable');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    );
   }, []);
 
-  // Fetch live tasks if available from API
   useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        const query = userLocation ? `?lat=${userLocation.lat}&lng=${userLocation.lng}` : '';
-        const res = await fetch(`/api/audit/tasks${query}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.tasks && data.tasks.length > 0) {
-            const mapped = data.tasks.map((t: any, idx: number) => {
-              const fallback = DEFAULT_AUDIT_TASKS[idx % DEFAULT_AUDIT_TASKS.length];
-              return {
-                id: t.id,
-                category: fallback.category,
-                title: fallback.title,
-                lat: t.lat,
-                lng: t.lng,
-                address: t.address || fallback.address,
-                distance: t.distanceM ? `${t.distanceM} m away` : fallback.distance,
-                dueIn: fallback.dueIn,
-                image: fallback.image,
-                challengeBearingDeg: t.challengeBearingDeg || fallback.challengeBearingDeg,
-                challengeNonce: t.challengeNonce || fallback.challengeNonce,
-                dueAt: t.dueAt || fallback.dueAt,
-                status: t.status || fallback.status,
-              };
-            });
-            setTasks(mapped);
-          }
-        }
-      } catch (err) {
-        console.warn('API audit tasks fetch returned error, using default audit tasks:', err);
+    requestUserLocation();
+  }, [requestUserLocation]);
+
+  const fetchNearbyTasks = useCallback(async () => {
+    setLoadingTasks(true);
+    setLoadError(null);
+    setEligibilityNotice(null);
+
+    try {
+      const params = new URLSearchParams();
+      if (userLocation) {
+        params.set('lat', String(userLocation.lat));
+        params.set('lng', String(userLocation.lng));
       }
-    };
 
-    fetchTasks();
-  }, [userLocation]);
+      if (discoveryMode === 'NEARBY') {
+        params.set('radiusM', String(radiusM));
+      } else {
+        if (currentWard && currentWard.id !== 'zone-all' && currentWard.code !== 'ALL') {
+          params.set('wardId', currentWard.id);
+        }
+        if (selectedCorpId !== 'ALL') {
+          params.set('corporationId', selectedCorpId);
+        }
+      }
 
-  const handleCapture = async (evidence: CapturedEvidence) => {
+      const res = await fetch(`/api/audit/nearby?${params.toString()}`, { cache: 'no-store' });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData?.error?.message || 'Failed to load repair verification tasks.');
+      }
+
+      const data = await res.json();
+      setSubmissions(data.submissions || []);
+
+      if (data.eligible === false) {
+        setTasks([]);
+        setEligibilityNotice(data.message || 'You are not currently eligible to submit blind verifications.');
+      } else {
+        setTasks(data.tasks || []);
+      }
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : 'Network error loading verification tasks.');
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [userLocation, discoveryMode, radiusM, currentWard, selectedCorpId]);
+
+  useEffect(() => {
+    if (discoveryMode === 'NEARBY' && locStatus === 'detecting') return;
+    void fetchNearbyTasks();
+  }, [discoveryMode, locStatus, fetchNearbyTasks]);
+
+  const resetWorkflow = () => {
+    setActiveTask(null);
+    setShowCaptureStep(false);
+    setCapturedEvidence(null);
+    setPhotoBase64(null);
+    setObservedVerdict(null);
+    setVerdictComment('');
+    setShowConfirm(false);
+    setFeedback(null);
+  };
+
+  const handleCapture = (evidence: CapturedEvidence) => {
     setCapturedEvidence(evidence);
     const reader = new FileReader();
     reader.onloadend = () => {
-      const base64 = (reader.result as string).split(',')[1];
+      const result = reader.result as string;
+      const base64 = result.includes(',') ? result.split(',')[1] : result;
       setPhotoBase64(base64);
     };
     reader.readAsDataURL(evidence.blob);
   };
 
   const handleSubmitVote = async () => {
-    if (!activeTask || !capturedEvidence || !observedVerdict) return;
+    if (!activeTask || !capturedEvidence || !observedVerdict || !photoBase64) return;
 
     setIsSubmitting(true);
     setFeedback(null);
 
     try {
-      // If photo base64 not yet parsed, create demo string
-      const base64Payload = photoBase64 || 'demo-evidence-base64';
-
-      await fetch(`/api/audit/tasks/${activeTask.id}/vote`, {
+      const res = await fetch(`/api/audit/tasks/${activeTask.id}/vote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -230,358 +261,723 @@ export default function CitizenAuditPage() {
           evidence: {
             payload: capturedEvidence.payload,
             signature: capturedEvidence.signature,
-            photoBase64: base64Payload,
+            photoBase64,
             mimeType: 'image/jpeg',
           },
         }),
-      }).catch(() => null);
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error?.message || 'Verification submission failed.');
+      }
 
       setFeedback({
         success: true,
-        message: 'Repair verification submitted! +25 Citizen XP earned.',
+        message: 'Verification successfully submitted. Thank you for auditing this repair.',
       });
 
+      setTasks((prev) => prev.filter((t) => t.id !== activeTask.id));
+      await fetchNearbyTasks();
+
       setTimeout(() => {
-        setActiveTask(null);
-        setCapturedEvidence(null);
-        setPhotoBase64(null);
-        setObservedVerdict(null);
-        setFeedback(null);
-      }, 1800);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setFeedback({ success: false, message: msg });
+        resetWorkflow();
+        setActiveTab('submissions');
+      }, 1400);
+    } catch (err) {
+      setFeedback({
+        success: false,
+        message: err instanceof Error ? err.message : 'Verification submission failed.',
+      });
+      setShowConfirm(false);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const captureDistanceToIssueM =
+    activeTask && capturedEvidence && activeTask.hasValidCoordinates
+      ? Math.round(
+          haversineDistanceM(
+            capturedEvidence.payload.lat,
+            capturedEvidence.payload.lng,
+            activeTask.lat,
+            activeTask.lng
+          )
+        )
+      : null;
+
   return (
     <div className="flex-1 overflow-y-auto flex flex-col font-body bg-[#F3F2EB] text-[#293732] w-full pb-24 lg:pb-12">
-      <div className="p-6 md:p-8 lg:p-10 space-y-6 max-w-[1040px] mx-auto w-full">
-        
-        {/* Breadcrumb Navigation */}
-        <div className="flex items-center gap-2 text-xs text-[#65736B] font-medium">
-          <Link href="/citizen/dashboard" className="flex items-center gap-1 hover:text-[#293732] transition-colors">
-            <Home className="w-3.5 h-3.5 text-[#527B7A]" />
-            <span>Home</span>
+      <div className="max-w-6xl mx-auto w-full px-4 sm:px-8 pt-6 sm:pt-8 space-y-6">
+        {/* Top Breadcrumb */}
+        <div className="flex items-center justify-between gap-4">
+          <Link
+            href="/citizen/dashboard"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#65736B] hover:text-[#293732] transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Citizen Dashboard</span>
           </Link>
-          <ChevronRight className="w-3 h-3 text-[#929B92]" />
-          <span className="text-[#293732] font-semibold">Repair Verification</span>
         </div>
 
-        {/* Editorial Heading (Matching Image 1 Row 2 Col 3) */}
-        <div className="space-y-1">
-          <h1 className="font-display text-3xl sm:text-4xl text-[#293732] font-semibold tracking-tight">
-            Repair Verification
-          </h1>
-          <p className="text-sm sm:text-base text-[#65736B] font-body">
-            Help confirm if reported issues have been properly fixed.
-          </p>
-        </div>
-
-        {/* Feedback Alert if shown */}
-        {feedback && (
-          <div
-            className={`p-4 rounded-2xl border text-xs sm:text-sm flex items-center gap-3 transition-all ${
-              feedback.success
-                ? 'bg-[#EFF6F1] text-[#537C60] border-[#CFE4D4]'
-                : 'bg-[#FBECE8] text-[#B76F60] border-[#F2D2CC]'
-            }`}
-          >
-            {feedback.success ? (
-              <CheckCircle2 className="w-5 h-5 shrink-0" />
-            ) : (
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-            )}
-            <span className="font-medium">{feedback.message}</span>
+        {/* Page Header & Tab Bar */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-[#DDDCD3] pb-5">
+          <div>
+            <div className="text-[11px] font-mono font-bold text-[#527B7A] uppercase tracking-wider mb-1">
+              INDEPENDENT FIELD VERIFICATION
+            </div>
+            <h1 className="font-display font-bold text-2xl sm:text-3xl text-[#293732] tracking-tight">
+              Repair Verification
+            </h1>
+            <p className="text-sm text-[#65736B] mt-1">
+              Discover municipal repairs awaiting independent citizen confirmation near your location.
+            </p>
           </div>
-        )}
 
-        {/* Tabbed Switcher (Available Tasks vs My Submissions) */}
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => setActiveTab('available')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-              activeTab === 'available'
-                ? 'bg-[#355858] text-white shadow-sm'
-                : 'bg-white/80 hover:bg-white text-[#65736B] border border-[#DDDCD3]'
-            }`}
-          >
-            Available Tasks ({tasks.length})
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('submissions')}
-            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-              activeTab === 'submissions'
-                ? 'bg-[#355858] text-white shadow-sm'
-                : 'bg-white/80 hover:bg-white text-[#65736B] border border-[#DDDCD3]'
-            }`}
-          >
-            My Submissions ({submissions.length})
-          </button>
+          <div className="flex items-center p-1 bg-[#E5E9E3] rounded-xl border border-[#DDDCD3] self-start">
+            <button
+              type="button"
+              onClick={() => setActiveTab('available')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'available'
+                  ? 'bg-white text-[#293732] shadow-sm'
+                  : 'text-[#65736B] hover:text-[#293732]'
+              }`}
+            >
+              Available Tasks ({tasks.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('submissions')}
+              className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'submissions'
+                  ? 'bg-white text-[#293732] shadow-sm'
+                  : 'text-[#65736B] hover:text-[#293732]'
+              }`}
+            >
+              My Submissions ({submissions.length})
+            </button>
+          </div>
         </div>
 
-        {/* ── TAB 1: AVAILABLE TASKS LIST ── */}
-        {activeTab === 'available' && (
-          <div className="space-y-3.5">
-            {tasks.map((task) => (
-              <div
-                key={task.id}
-                onClick={() => setActiveTask(task)}
-                className="bg-white rounded-[22px] p-4 sm:p-5 border border-[#DDDCD3] shadow-[0_4px_14px_-2px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.03),inset_0_1px_0_rgba(255,255,255,1)] hover:border-[#527B7A]/60 hover:shadow-[0_6px_20px_rgba(41,55,50,0.08)] transition-all cursor-pointer flex items-center justify-between gap-4 group active:translate-y-px"
-              >
-                {/* Left: Thumbnail & Title & Metadata */}
-                <div className="flex items-center gap-3.5 sm:gap-4 flex-1 min-w-0">
-                  <div className="w-14 h-14 sm:w-18 sm:h-18 rounded-2xl overflow-hidden border border-[#DDDCD3] bg-[#F6F7F4] shrink-0 relative">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={task.image}
-                      alt={task.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                  </div>
+        {/* ── TAB 1: AVAILABLE TASKS ── */}
+        {activeTab === 'available' && !activeTask && (
+          <div className="space-y-5">
+            {/* Location & Discovery Filter Bar */}
+            <div className="bg-white rounded-2xl p-4 sm:p-5 border border-[#DDDCD3] shadow-[0_2px_10px_rgba(41,55,50,0.04)] space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDiscoveryMode('NEARBY');
+                      if (!userLocation) requestUserLocation();
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      discoveryMode === 'NEARBY'
+                        ? 'bg-[#355858] text-white border-[#355858]'
+                        : 'bg-[#FAF9F5] text-[#293732] border-[#DDDCD3] hover:bg-[#E5E9E3]'
+                    }`}
+                  >
+                    <LocateFixed className="w-3.5 h-3.5" />
+                    <span>Nearby (My Location)</span>
+                  </button>
 
-                  <div className="space-y-1 flex-1 min-w-0">
-                    <h3 className="font-semibold text-sm sm:text-base text-[#293732] group-hover:text-[#355858] transition-colors leading-snug">
-                      {task.title}
-                    </h3>
-                    <p className="text-xs text-[#65736B] flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono font-medium text-[#293732]">{task.distance}</span>
-                      <span>•</span>
-                      <span className="truncate">{task.address}</span>
-                    </p>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDiscoveryMode('WARD')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                      discoveryMode === 'WARD'
+                        ? 'bg-[#355858] text-white border-[#355858]'
+                        : 'bg-[#FAF9F5] text-[#293732] border-[#DDDCD3] hover:bg-[#E5E9E3]'
+                    }`}
+                  >
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>Explore by Ward</span>
+                  </button>
                 </div>
 
-                {/* Right: Due In Badge & Chevron */}
-                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                  <span className="px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-semibold bg-[#FDF6ED] text-[#B68B63] border border-[#F5E2CD] whitespace-nowrap">
-                    {task.dueIn}
-                  </span>
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl flex items-center justify-center text-[#929B92] group-hover:text-[#293732] group-hover:translate-x-0.5 transition-all">
-                    <ChevronRight className="w-4 h-4 sm:w-5 sm:h-5" />
-                  </div>
+                {/* Location Status Indicator + Refresh */}
+                <div className="flex items-center gap-2 text-xs">
+                  {locStatus === 'detecting' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#F0F5F8] text-[#527B7A] border border-[#D4E2E9]">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span>Detecting location...</span>
+                    </span>
+                  ) : locStatus === 'ready' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EFF6F1] text-[#537C60] border border-[#CFE4D4]">
+                      <LocateFixed className="w-3 h-3" />
+                      <span>Location active</span>
+                    </span>
+                  ) : locStatus === 'denied' ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#FBF1EF] text-[#B76F60] border border-[#EAC8C1]">
+                      <AlertTriangle className="w-3 h-3" />
+                      <span>Location permission denied</span>
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#F3F2EB] text-[#65736B] border border-[#DDDCD3]">
+                      <MapPin className="w-3 h-3" />
+                      <span>Location unavailable</span>
+                    </span>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={requestUserLocation}
+                    title="Refresh current location"
+                    className="p-1.5 rounded-lg bg-[#E9ECE6] hover:bg-[#D4E3DF] text-[#355858] transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${locStatus === 'detecting' ? 'animate-spin' : ''}`} />
+                  </button>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
 
-        {/* ── TAB 2: MY SUBMISSIONS LIST ── */}
-        {activeTab === 'submissions' && (
-          <div className="space-y-3.5">
-            {submissions.map((sub) => {
-              const statusStyles = {
-                INTACT: 'bg-[#EFF6F1] text-[#537C60] border-[#CFE4D4]',
-                DAMAGED: 'bg-[#FBECE8] text-[#B76F60] border-[#F2D2CC]',
-                CANNOT_SEE: 'bg-[#F3F2EB] text-[#65736B] border-[#DDDCD3]',
-              }[sub.verdict];
-
-              return (
-                <div
-                  key={sub.id}
-                  className="bg-white rounded-[22px] p-4 sm:p-5 border border-[#DDDCD3] shadow-[0_4px_14px_-2px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.03)] flex items-center justify-between gap-4"
-                >
-                  <div className="flex items-center gap-4 min-w-0">
-                    <div className="w-16 h-16 rounded-2xl overflow-hidden border border-[#DDDCD3] bg-[#F6F7F4] shrink-0">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={sub.image}
-                        alt={sub.title}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-
-                    <div className="space-y-1 min-w-0">
-                      <h3 className="font-semibold text-sm sm:text-base text-[#293732] truncate">
-                        {sub.title}
-                      </h3>
-                      <p className="text-xs text-[#65736B]">
-                        {sub.location} • <span className="font-mono">{sub.submittedAt}</span>
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${statusStyles}`}>
-                      {sub.verdictLabel}
-                    </span>
-                    <span className="px-2.5 py-1 rounded-full text-xs font-mono font-bold bg-[#EAF2F0] text-[#355858] border border-[#D0E2DF]">
-                      +{sub.xpEarned} pts
-                    </span>
-                  </div>
+              {/* Radius Filter (NEARBY mode) OR Ward/Corporation Filter (WARD mode) */}
+              {discoveryMode === 'NEARBY' ? (
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[#E9ECE6]">
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-[#65736B] mr-1">
+                    Search Radius:
+                  </span>
+                  {RADIUS_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setRadiusM(opt.value)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                        radiusM === opt.value
+                          ? 'bg-[#D4E3DF] text-[#293732] border-[#527B7A] font-semibold'
+                          : 'bg-[#FAF9F5] text-[#65736B] border-[#DDDCD3] hover:text-[#293732]'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* ── VERIFICATION MODAL FLOW ── */}
-        {activeTask && (
-          <div className="fixed inset-0 z-50 bg-[#293732]/60 backdrop-blur-sm p-4 flex flex-col justify-center items-center overflow-y-auto">
-            <div className="w-full max-w-xl bg-white border border-[#DDDCD3] rounded-[28px] p-6 sm:p-8 space-y-6 shadow-[0_24px_48px_-12px_rgba(41,55,50,0.25)] animate-in fade-in zoom-in-95 duration-200">
-              
-              {/* Modal Header */}
-              <div className="flex items-center justify-between border-b border-[#DDDCD3] pb-4">
-                <div className="flex items-center gap-2 text-[#355858]">
-                  <ShieldCheck className="w-5 h-5 text-[#527B7A]" />
-                  <h3 className="font-display font-semibold text-base sm:text-lg text-[#293732]">
-                    {activeTask.title} Verification
-                  </h3>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-[#E9ECE6] text-xs">
+                  <div className="text-[#65736B]">
+                    Active Ward:{' '}
+                    <span className="font-semibold text-[#293732]">
+                      {currentWard ? `${currentWard.wardLabel} · ${currentWard.name}` : 'All Wards'}
+                    </span>
+                    {currentWard?.corporationName && (
+                      <span className="ml-1 text-[#527B7A]">({currentWard.corporationName})</span>
+                    )}
+                  </div>
+                  {corporations.length > 0 && (
+                    <select
+                      value={selectedCorpId}
+                      onChange={(e) => setSelectedCorpId(e.target.value)}
+                      aria-label="Filter by corporation"
+                      className="px-2.5 py-1 rounded-lg bg-[#FAF9F5] border border-[#DDDCD3] text-xs text-[#293732]"
+                    >
+                      <option value="ALL">Selected Ward Only</option>
+                      {corporations.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          All in {c.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
+              )}
+
+              {/* Permission Denied Fallback Guidance */}
+              {(locStatus === 'denied' || locStatus === 'unavailable' || locStatus === 'unsupported') &&
+                discoveryMode === 'NEARBY' && (
+                  <div className="p-3 rounded-xl bg-[#FDF7F0] border border-[#F2DFCA] text-xs text-[#8A5A2B] flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      {locStatus === 'denied'
+                        ? 'Location permission was denied. Switch to Explore by Ward to find repairs in your ward, or check My Submissions.'
+                        : 'Unable to detect device GPS coordinates. You can still explore repairs by ward.'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setDiscoveryMode('WARD')}
+                      className="px-3 py-1 rounded-lg bg-white border border-[#DDDCD3] text-[#293732] font-semibold hover:bg-[#FAF9F5] cursor-pointer"
+                    >
+                      Explore by Ward
+                    </button>
+                  </div>
+                )}
+            </div>
+
+            {/* Task List States */}
+            {loadingTasks ? (
+              <div className="bg-white rounded-2xl p-12 border border-[#DDDCD3] flex flex-col items-center justify-center gap-3 text-sm text-[#65736B]">
+                <Loader2 className="w-6 h-6 animate-spin text-[#527B7A]" />
+                <span>Searching nearby repairs awaiting verification...</span>
+              </div>
+            ) : loadError ? (
+              <div className="bg-[#FBF1EF] rounded-2xl p-6 border border-[#EAC8C1] text-sm text-[#B76F60] flex items-center justify-between gap-4">
+                <span>{loadError}</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveTask(null);
-                    setCapturedEvidence(null);
-                    setObservedVerdict(null);
-                  }}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center text-[#65736B] hover:text-[#293732] hover:bg-[#F3F2EB] transition-colors cursor-pointer"
+                  onClick={() => void fetchNearbyTasks()}
+                  className="px-3 py-1.5 rounded-lg bg-white border border-[#EAC8C1] text-xs font-semibold cursor-pointer"
                 >
-                  <X className="w-5 h-5" />
+                  Retry
                 </button>
               </div>
-
-              {/* Location Target Badge */}
-              <div className="p-4 rounded-2xl bg-[#F6F7F4] border border-[#DDDCD3] space-y-2">
-                <div className="text-xs text-[#65736B] flex items-center justify-between">
-                  <span>Location Target:</span>
-                  <span className="font-mono font-semibold text-[#293732]">{activeTask.address}</span>
+            ) : eligibilityNotice ? (
+              <div className="bg-white rounded-2xl p-8 border border-[#DDDCD3] text-center space-y-2">
+                <ShieldCheck className="w-8 h-8 text-[#527B7A] mx-auto" />
+                <p className="text-sm font-semibold text-[#293732]">Verification Eligibility</p>
+                <p className="text-xs text-[#65736B] max-w-md mx-auto">{eligibilityNotice}</p>
+              </div>
+            ) : tasks.length === 0 ? (
+              <div className="bg-white rounded-2xl p-10 border border-[#DDDCD3] text-center space-y-3">
+                <Inbox className="w-9 h-9 text-[#929B92] mx-auto" />
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-[#293732]">
+                    {discoveryMode === 'NEARBY'
+                      ? `No eligible repairs awaiting verification within ${radiusM < 1000 ? `${radiusM} m` : `${radiusM / 1000} km`}`
+                      : 'No eligible repairs awaiting verification in this ward'}
+                  </p>
+                  <p className="text-xs text-[#65736B] max-w-md mx-auto">
+                    Try expanding your search radius or selecting another ward in the Geographical Context selector.
+                  </p>
                 </div>
-                <div className="flex items-center justify-between pt-1 text-xs">
-                  <div className="px-3 py-1 rounded-lg bg-[#EAF2F0] border border-[#D0E2DF] text-[#355858] font-mono font-semibold flex items-center gap-1.5">
-                    <Navigation className="w-3.5 h-3.5 rotate-45 text-[#527B7A]" />
-                    <span>Target Bearing: {activeTask.challengeBearingDeg}°</span>
-                  </div>
-                  {deviceHeading !== null && (
-                    <span className="font-mono text-[#65736B]">
-                      Heading: <strong className="text-[#293732]">{deviceHeading}°</strong>
-                    </span>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  {discoveryMode === 'NEARBY' && radiusM < 10000 && (
+                    <button
+                      type="button"
+                      onClick={() => setRadiusM(10000)}
+                      className="px-3.5 py-2 rounded-xl bg-[#355858] text-white text-xs font-semibold cursor-pointer"
+                    >
+                      Expand to 10 km
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDiscoveryMode(discoveryMode === 'NEARBY' ? 'WARD' : 'NEARBY')}
+                    className="px-3.5 py-2 rounded-xl bg-[#E9ECE6] text-[#293732] text-xs font-semibold cursor-pointer"
+                  >
+                    {discoveryMode === 'NEARBY' ? 'Explore by Ward' : 'Use My Location'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {tasks.map((task) => {
+                  const thumb = task.repairPhotoUrl || task.originalPhotoUrl;
+                  const distLabel = formatDistance(task.distanceM);
+                  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${task.lat},${task.lng}`;
+
+                  return (
+                    <div
+                      key={task.id}
+                      className="bg-white rounded-2xl border border-[#DDDCD3] shadow-[0_2px_10px_rgba(41,55,50,0.04)] overflow-hidden flex flex-col"
+                    >
+                      <div className="flex gap-4 p-4">
+                        <div className="w-24 h-24 rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] shrink-0 flex items-center justify-center">
+                          {thumb ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={thumb} alt={task.title} className="w-full h-full object-cover" />
+                          ) : (
+                            <Camera className="w-6 h-6 text-[#929B92]" />
+                          )}
+                        </div>
+
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#E5E9E3] text-[#355858]">
+                              {task.category.replace(/_/g, ' ')}
+                            </span>
+                            {distLabel && (
+                              <span className="text-[11px] font-mono font-semibold text-[#527B7A]">
+                                {distLabel}
+                              </span>
+                            )}
+                          </div>
+
+                          <h3 className="font-display font-semibold text-base text-[#293732] truncate">
+                            {task.title}
+                          </h3>
+
+                          <div className="text-xs text-[#65736B] truncate">
+                            {task.address}
+                            {task.ward
+                              ? ` · Ward ${task.ward.wardNumber ?? task.ward.code} (${task.ward.name})`
+                              : ''}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#65736B] pt-0.5">
+                            <span className="inline-flex items-center gap-1 text-[#537C60] font-medium">
+                              <Clock className="w-3 h-3" />
+                              Claimed fixed{' '}
+                              {task.repairClaimedAt ? formatDateIST(task.repairClaimedAt) : 'recently'}
+                            </span>
+                            <span>· Due {formatDateIST(task.dueAt)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="px-4 py-3 bg-[#FAF9F5] border-t border-[#E9ECE6] flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/citizen/report/${task.issueId}`}
+                            className="px-3 py-1.5 rounded-xl bg-white border border-[#DDDCD3] text-xs font-semibold text-[#293732] hover:bg-[#E5E9E3]/50 transition-colors"
+                          >
+                            View Details
+                          </Link>
+                          <a
+                            href={mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white border border-[#DDDCD3] text-xs font-medium text-[#527B7A] hover:bg-[#E5E9E3]/50 transition-colors"
+                          >
+                            <Navigation className="w-3 h-3" />
+                            <span>Directions</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetWorkflow();
+                            setActiveTask(task);
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-[#355858] hover:bg-[#293732] text-white text-xs font-semibold transition-colors cursor-pointer"
+                        >
+                          Visit and Verify
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── TASK DETAIL & ON-SITE VERIFICATION WORKFLOW ── */}
+        {activeTab === 'available' && activeTask && (
+          <div className="bg-white rounded-2xl border border-[#DDDCD3] shadow-sm p-5 sm:p-7 space-y-6">
+            <div className="flex items-start justify-between gap-4 border-b border-[#E9ECE6] pb-4">
+              <div>
+                <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#527B7A]">
+                  {activeTask.category.replace(/_/g, ' ')} · AWAITING VERIFICATION
+                </div>
+                <h2 className="font-display font-bold text-xl sm:text-2xl text-[#293732] mt-0.5">
+                  {activeTask.title}
+                </h2>
+                <p className="text-xs text-[#65736B] mt-1">
+                  {activeTask.address}
+                  {activeTask.ward
+                    ? ` · Ward ${activeTask.ward.wardNumber ?? activeTask.ward.code} (${activeTask.ward.name}${activeTask.ward.corporationName ? `, ${activeTask.ward.corporationName}` : ''})`
+                    : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={resetWorkflow}
+                className="p-2 rounded-xl bg-[#F3F2EB] hover:bg-[#E5E9E3] text-[#65736B] cursor-pointer"
+                aria-label="Close task"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Side-by-side Evidence Comparison */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-[#293732]">Original Reported Photograph</div>
+                <div className="aspect-[4/3] rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] flex items-center justify-center">
+                  {activeTask.originalPhotoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={activeTask.originalPhotoUrl}
+                      alt="Original issue evidence"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-xs text-[#65736B]">No original photograph available</span>
                   )}
                 </div>
               </div>
 
-              {/* Step 1: Capture Evidence */}
-              {!capturedEvidence ? (
-                <div className="space-y-3">
-                  <p className="text-xs text-[#65736B]">
-                    Take a clear, signed photograph facing <strong>{activeTask.challengeBearingDeg}°</strong>:
-                  </p>
-                  <div className="rounded-2xl overflow-hidden border border-[#DDDCD3]">
-                    <CaptureCamera
-                      role="AUDIT"
-                      overrideNonce={activeTask.challengeNonce}
-                      targetCoords={{ lat: activeTask.lat, lng: activeTask.lng }}
-                      onCapture={handleCapture}
-                      onCancel={() => setActiveTask(null)}
-                    />
-                  </div>
+              <div className="space-y-2">
+                <div className="text-xs font-semibold text-[#293732]">
+                  Municipality Repair-Completed Photograph
                 </div>
-              ) : (
-                /* Step 2: Observed Verdict */
-                <div className="space-y-4">
-                  <div className="p-3.5 rounded-xl bg-[#EFF6F1] border border-[#CFE4D4] text-[#537C60] text-xs font-semibold flex items-center gap-2">
-                    <CheckCircle2 className="w-4.5 h-4.5 shrink-0" />
-                    <span>Evidence photograph signed (ECDSA P-256) and verified on-site.</span>
-                  </div>
+                <div className="aspect-[4/3] rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] flex items-center justify-center">
+                  {activeTask.repairPhotoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={activeTask.repairPhotoUrl}
+                      alt="Municipal repair evidence"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-xs text-[#65736B]">No repair photograph uploaded</span>
+                  )}
+                </div>
+              </div>
+            </div>
 
-                  <div className="space-y-2.5">
-                    <label className="text-xs font-semibold text-[#293732] block">
-                      What is the current state of this repair?
-                    </label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-[#FAF9F5] p-3.5 rounded-xl border border-[#E9ECE6]">
+              <div>
+                <div className="text-[#65736B]">Repair Marked Completed</div>
+                <div className="font-mono font-semibold text-[#293732] mt-0.5">
+                  {activeTask.repairClaimedAt ? formatDateTimeIST(activeTask.repairClaimedAt) : '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[#65736B]">Distance from You</div>
+                <div className="font-mono font-semibold text-[#293732] mt-0.5">
+                  {formatDistance(activeTask.distanceM) || 'Distance unavailable'}
+                </div>
+              </div>
+              <div>
+                <div className="text-[#65736B]">Verification Due</div>
+                <div className="font-mono font-semibold text-[#293732] mt-0.5">
+                  {formatDateIST(activeTask.dueAt)}
+                </div>
+              </div>
+            </div>
 
-                    <div className="grid grid-cols-1 gap-2.5">
-                      {/* Option 1: Intact / Fixed */}
+            {!showCaptureStep ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${activeTask.lat},${activeTask.lng}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] text-xs font-semibold text-[#293732] hover:bg-[#E5E9E3]"
+                >
+                  <Navigation className="w-3.5 h-3.5 text-[#527B7A]" />
+                  <span>Navigate to Location</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCaptureStep(true)}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#355858] hover:bg-[#293732] text-white text-xs font-semibold cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>Verify Repair at Location</span>
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-5 pt-2 border-t border-[#E9ECE6]">
+                <div className="text-xs text-[#65736B]">
+                  Capture a live GPS-signed photograph at the repair site and record your inspection verdict.
+                </div>
+
+                {!capturedEvidence ? (
+                  <CaptureCamera
+                    role="AUDIT"
+                    overrideNonce={activeTask.challengeNonce}
+                    onCapture={handleCapture}
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    <div className="p-3.5 rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] flex flex-wrap items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-[#537C60]" />
+                        <span className="font-semibold text-[#293732]">
+                          Signed GPS evidence captured
+                        </span>
+                        {captureDistanceToIssueM != null && (
+                          <span
+                            className={`px-2 py-0.5 rounded-full font-mono text-[11px] border ${
+                              captureDistanceToIssueM <= 100
+                                ? 'bg-[#EFF6F1] text-[#537C60] border-[#CFE4D4]'
+                                : 'bg-[#FDF7F0] text-[#B68B63] border-[#F2DFCA]'
+                            }`}
+                          >
+                            {captureDistanceToIssueM <= 100
+                              ? `Captured near issue (${captureDistanceToIssueM} m away)`
+                              : `${captureDistanceToIssueM} m from reported coordinates`}
+                          </span>
+                        )}
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setObservedVerdict('INTACT')}
-                        className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                          observedVerdict === 'INTACT'
-                            ? 'bg-[#EFF6F1] border-[#537C60] shadow-sm'
-                            : 'bg-white hover:bg-[#F9FAF8] border-[#DDDCD3]'
-                        }`}
+                        onClick={() => {
+                          setCapturedEvidence(null);
+                          setPhotoBase64(null);
+                          setShowConfirm(false);
+                        }}
+                        className="text-xs font-semibold text-[#527B7A] underline cursor-pointer"
                       >
-                        <div>
-                          <div className="font-semibold text-xs sm:text-sm text-[#293732] flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-[#537C60]" />
-                            <span>Fixed Properly / Clear</span>
-                          </div>
-                          <p className="text-xs text-[#65736B] mt-0.5 pl-4">
-                            Surface is smooth and repair is complete.
-                          </p>
-                        </div>
-                        {observedVerdict === 'INTACT' && <Check className="w-5 h-5 text-[#537C60]" />}
-                      </button>
-
-                      {/* Option 2: Damaged / Unfixed */}
-                      <button
-                        type="button"
-                        onClick={() => setObservedVerdict('DAMAGED')}
-                        className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                          observedVerdict === 'DAMAGED'
-                            ? 'bg-[#FBECE8] border-[#B76F60] shadow-sm'
-                            : 'bg-white hover:bg-[#F9FAF8] border-[#DDDCD3]'
-                        }`}
-                      >
-                        <div>
-                          <div className="font-semibold text-xs sm:text-sm text-[#293732] flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-[#B76F60]" />
-                            <span>Still Broken / Incomplete</span>
-                          </div>
-                          <p className="text-xs text-[#65736B] mt-0.5 pl-4">
-                            Defect persists or repair was unsatisfactory.
-                          </p>
-                        </div>
-                        {observedVerdict === 'DAMAGED' && <Check className="w-5 h-5 text-[#B76F60]" />}
-                      </button>
-
-                      {/* Option 3: Cannot See */}
-                      <button
-                        type="button"
-                        onClick={() => setObservedVerdict('CANNOT_SEE')}
-                        className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between ${
-                          observedVerdict === 'CANNOT_SEE'
-                            ? 'bg-[#E9ECE6] border-[#65736B] shadow-sm'
-                            : 'bg-white hover:bg-[#F9FAF8] border-[#DDDCD3]'
-                        }`}
-                      >
-                        <div>
-                          <div className="font-semibold text-xs sm:text-sm text-[#293732] flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 rounded-full bg-[#65736B]" />
-                            <span>Cannot Verify / Inaccessible</span>
-                          </div>
-                          <p className="text-xs text-[#65736B] mt-0.5 pl-4">
-                            Site is blocked, dark, or unsafe to inspect.
-                          </p>
-                        </div>
-                        {observedVerdict === 'CANNOT_SEE' && <Check className="w-5 h-5 text-[#65736B]" />}
+                        Retake Photo
                       </button>
                     </div>
-                  </div>
 
-                  {/* Submit Button */}
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={handleSubmitVote}
-                      disabled={isSubmitting || !observedVerdict}
-                      className="w-full py-3.5 rounded-xl bg-[#355858] hover:bg-[#3E6966] text-white font-semibold text-sm shadow-[0_4px_14px_rgba(53,88,88,0.25)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition-all active:translate-y-px"
-                    >
-                      <Award className="w-4 h-4" />
-                      <span>{isSubmitting ? 'Recording Verification...' : 'Submit Verification (+25 pts)'}</span>
-                    </button>
-                  </div>
-                </div>
-              )}
+                    {/* Verdict Selection */}
+                    <div className="space-y-2">
+                      <label className="text-xs font-semibold text-[#293732] block">
+                        Inspection Verdict
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {[
+                          {
+                            id: 'INTACT' as const,
+                            label: 'Repair completed correctly',
+                            desc: 'Surface or infrastructure is properly restored.',
+                          },
+                          {
+                            id: 'DAMAGED' as const,
+                            label: 'Repair not completed / damaged',
+                            desc: 'Issue remains unfixed, partial, or has returned.',
+                          },
+                          {
+                            id: 'CANNOT_SEE' as const,
+                            label: 'Cannot verify clearly',
+                            desc: 'Site obstructed or visibility insufficient.',
+                          },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setObservedVerdict(opt.id)}
+                            className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                              observedVerdict === opt.id
+                                ? 'bg-[#E5E9E3] border-[#355858] text-[#293732]'
+                                : 'bg-white border-[#DDDCD3] hover:bg-[#FAF9F5]'
+                            }`}
+                          >
+                            <div className="text-xs font-semibold flex items-center justify-between">
+                              <span>{opt.label}</span>
+                              {observedVerdict === opt.id && (
+                                <Check className="w-3.5 h-3.5 text-[#355858]" />
+                              )}
+                            </div>
+                            <div className="text-[11px] text-[#65736B] mt-1">{opt.desc}</div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-            </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-[#293732] block">
+                        Field Notes (Optional)
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={verdictComment}
+                        onChange={(e) => setVerdictComment(e.target.value)}
+                        placeholder="Add observations about repair quality or site conditions..."
+                        className="w-full rounded-xl border border-[#DDDCD3] bg-[#FAF9F5] px-3 py-2 text-xs text-[#293732]"
+                      />
+                    </div>
+
+                    {feedback && (
+                      <div
+                        className={`p-3 rounded-xl text-xs border ${
+                          feedback.success
+                            ? 'bg-[#EFF6F1] border-[#CFE4D4] text-[#537C60]'
+                            : 'bg-[#FBF1EF] border-[#EAC8C1] text-[#B76F60]'
+                        }`}
+                      >
+                        {feedback.message}
+                      </div>
+                    )}
+
+                    {!showConfirm ? (
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          disabled={!observedVerdict}
+                          onClick={() => setShowConfirm(true)}
+                          className="px-5 py-2.5 rounded-xl bg-[#355858] hover:bg-[#293732] text-white text-xs font-semibold disabled:opacity-50 cursor-pointer"
+                        >
+                          Review &amp; Confirm Verification
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="p-4 rounded-xl bg-[#FAF9F5] border border-[#527B7A] space-y-3">
+                        <div className="text-xs font-semibold text-[#293732]">
+                          Confirm Verification Submission
+                        </div>
+                        <p className="text-xs text-[#65736B]">
+                          Your signed verdict ({observedVerdict?.replace(/_/g, ' ')}) will be recorded in the
+                          municipal audit ledger. Consensus rules determine final issue resolution.
+                        </p>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowConfirm(false)}
+                            disabled={isSubmitting}
+                            className="px-3.5 py-2 rounded-xl bg-white border border-[#DDDCD3] text-xs font-semibold text-[#293732] cursor-pointer"
+                          >
+                            Back
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSubmitVote}
+                            disabled={isSubmitting}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#355858] hover:bg-[#293732] text-white text-xs font-semibold cursor-pointer disabled:opacity-50"
+                          >
+                            {isSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                            <span>Submit Verification</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
+        {/* ── TAB 2: MY SUBMISSIONS ── */}
+        {activeTab === 'submissions' && (
+          <div className="space-y-4">
+            {submissions.length === 0 ? (
+              <div className="bg-white rounded-2xl p-10 border border-[#DDDCD3] text-center space-y-2">
+                <Inbox className="w-8 h-8 text-[#929B92] mx-auto" />
+                <p className="text-sm font-semibold text-[#293732]">No verification submissions yet</p>
+                <p className="text-xs text-[#65736B]">
+                  When you inspect a nearby municipal repair and submit evidence, your audit history will appear here.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {submissions.map((sub) => {
+                  const statusBadge = formatSubmissionStatus(sub);
+                  return (
+                    <Link
+                      key={sub.id}
+                      href={`/citizen/report/${sub.issueId}`}
+                      className="bg-white rounded-2xl p-4 border border-[#DDDCD3] shadow-[0_2px_8px_rgba(41,55,50,0.04)] hover:border-[#527B7A] transition-colors flex gap-4"
+                    >
+                      <div className="w-20 h-20 rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] shrink-0 flex items-center justify-center">
+                        {sub.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={sub.image} alt={sub.title} className="w-full h-full object-cover" />
+                        ) : (
+                          <ShieldCheck className="w-6 h-6 text-[#929B92]" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${statusBadge.tone}`}>
+                            {statusBadge.label}
+                          </span>
+                          <span className="text-[10px] font-mono text-[#65736B]">
+                            {formatDateTimeIST(sub.submittedAt)}
+                          </span>
+                        </div>
+                        <h3 className="font-display font-semibold text-sm text-[#293732] truncate">
+                          {sub.title}
+                        </h3>
+                        <div className="text-xs text-[#65736B] truncate">{sub.location}</div>
+                        <div className="text-[11px] font-mono text-[#355858]">
+                          Verdict: {sub.observed.replace(/_/g, ' ')}
+                        </div>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

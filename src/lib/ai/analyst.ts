@@ -622,89 +622,128 @@ export const briefJsonSchema: Record<string, unknown> = {
   },
 };
 
-export async function generateWardBrief(wardCode: string = "ALL"): Promise<WardBriefOutput> {
-  const [wards, issues] = await Promise.all([
-    prisma.ward.findMany({
-      select: { id: true, name: true, code: true },
-      orderBy: { code: "asc" },
-    }),
-    prisma.issue.findMany({
-      where: {
-        status: { in: [Status.OPEN, Status.IN_PROGRESS, Status.CONFIRMED, Status.ASSIGNED] },
-      },
-      select: {
-        id: true,
-        category: true,
-        priority: true,
-        deteriorationScore: true,
-        address: true,
-        wardId: true,
-      },
-    }),
-  ]);
+export async function generateWardBrief(
+  wardCode: string = "ALL",
+  telemetry?: import("@/lib/desk/areaBriefing").AreaBriefingTelemetry
+): Promise<WardBriefOutput> {
+  const { loadAreaBriefingTelemetry } = await import("@/lib/desk/areaBriefing");
+  const data = telemetry ?? (await loadAreaBriefingTelemetry({ wardCode, period: "30d" }));
 
-  const wardSummaries = wards.map((w) => {
-    const wardIssues = issues.filter((i) => i.wardId === w.id);
-    const total = wardIssues.length;
-    const highRisk = wardIssues.filter((i) => (i.deteriorationScore ?? 0) >= 70).length;
-    const topCategories = Array.from(new Set(wardIssues.map((i) => i.category))).slice(0, 2).join(", ");
+  const { kpis, scope, overview, hotspots } = data;
+  const deterministicSummary =
+    kpis.totalActiveIssues === 0
+      ? `No active defects are currently recorded in ${scope.wardName} for the selected ${scope.period} period (${kpis.recentlyResolved} verified fixed).`
+      : `${scope.wardName} currently has ${kpis.totalActiveIssues} active issue(s), including ${kpis.highCriticalPriority} high/critical priority and ${kpis.slaBreached} SLA-breached ticket(s). ${kpis.awaitingAssignment} issue(s) await assignment.`;
+
+  const deterministicActions =
+    data.dispatchSuggestions.length > 0
+      ? data.dispatchSuggestions.slice(0, 3).map(
+          (s) => `${s.wardLabel} (${s.category}): ${s.eligibleCount} active — ${s.reason}`
+        )
+      : ["Continue routine corridor patrols and monitor incoming citizen reports."];
+
+  if (kpis.totalActiveIssues === 0) {
     return {
-      wardCode: w.code,
-      wardName: w.name,
-      total,
-      highRisk,
-      topCategories: topCategories || "None",
+      wardCode: scope.wardCode,
+      wardName: scope.wardName,
+      headline: `${scope.wardName}: Zero Active Issues`,
+      brief: deterministicSummary,
+      recommendedActions: deterministicActions,
+      engine: RULES_ENGINE,
     };
-  });
-
-  const totalOpen = wardSummaries.reduce((acc, w) => acc + w.total, 0);
-  const totalHighRisk = wardSummaries.reduce((acc, w) => acc + w.highRisk, 0);
+  }
 
   const inputPayload = {
-    wardCode,
-    totalOpen,
-    totalHighRisk,
-    wards: wardSummaries,
-    rainPast24hMm: 12,
+    wardCode: scope.wardCode,
+    wardName: scope.wardName,
+    period: scope.period,
+    totalActiveIssues: kpis.totalActiveIssues,
+    highCriticalPriority: kpis.highCriticalPriority,
+    awaitingAssignment: kpis.awaitingAssignment,
+    slaAtRisk: kpis.slaAtRisk,
+    slaBreached: kpis.slaBreached,
+    recentlyResolved: kpis.recentlyResolved,
+    topCategories: overview.categoryDistribution.slice(0, 4),
+    topHotspots: hotspots.slice(0, 4).map((h) => ({
+      locality: h.locality,
+      wardLabel: h.wardLabel,
+      issueCount: h.issueCount,
+      dominantCategory: h.dominantCategory,
+    })),
   };
 
   const quotaOk = await tryIncrementAnalystQuota();
   if (!quotaOk) {
-    const fallback = getRulesFallback("G-BRIEF", inputPayload) as WardBriefOutput;
-    return { ...fallback, engine: RULES_ENGINE };
+    return {
+      wardCode: scope.wardCode,
+      wardName: scope.wardName,
+      headline: `${scope.wardName}: ${kpis.totalActiveIssues} Active Issues`,
+      brief: deterministicSummary,
+      recommendedActions: deterministicActions,
+      engine: RULES_ENGINE,
+    };
   }
 
-  const prompt = `Synthesize desk morning briefing across active BBMP wards:
-Wards Breakdown:
-${wardSummaries.map((w) => `- ${w.wardName} (${w.wardCode}): ${w.total} active issues, ${w.highRisk} high-risk deterioration (${w.topCategories})`).join("\n")}
-Total active defects: ${totalOpen}
-Total high-risk defects: ${totalHighRisk}
-Recent rainfall: 12 mm
+  const prompt = `Synthesize an executive municipal operations briefing for ${scope.wardName} (${scope.wardCode}, period: ${scope.period}).
 
-Instructions:
-Group defects by their real ward (e.g. Ward 150 Bellandur, Ward 85 Mahadevapura, Ward 84 Marathahalli).
-Do not put everything under Ward 150.
-Provide:
-- wardCode: "${wardCode}"
-- wardName: "${wardCode === "ALL" ? "Bengaluru Pilot Wards" : (wardSummaries.find(w => w.wardCode === wardCode)?.wardName || "Ward " + wardCode)}"
-- headline: High-level operations overview
-- brief: 2-3 sentence overview clearly mentioning the active wards and defect counts
-- recommendedActions: 2-3 specific ward-targeted operational actions.`;
+Authoritative Database Telemetry:
+- Total Active Issues: ${kpis.totalActiveIssues}
+- High / Critical Priority: ${kpis.highCriticalPriority}
+- Awaiting Assignment: ${kpis.awaitingAssignment}
+- SLA At Risk: ${kpis.slaAtRisk}
+- SLA Breached: ${kpis.slaBreached}
+- Recently Resolved: ${kpis.recentlyResolved}
+- Category Breakdown: ${overview.categoryDistribution.map((c) => `${c.label}: ${c.count}`).join(", ") || "None"}
+- Top Hotspots: ${hotspots.slice(0, 3).map((h) => `${h.locality} (${h.wardLabel}, ${h.issueCount} issues)`).join("; ") || "None"}
 
-  const aiResult = await runAi<WardBriefOutput>({
-    feature: "G-BRIEF",
-    promptVer: "v1.2",
-    userPrompt: prompt,
-    schema: WardBriefSchema,
-    jsonSchema: briefJsonSchema,
-    inputPayload,
-  });
+Strict Grounding Rules:
+Use only the supplied operational records. Do not invent totals, locations, rainfall readings, SLA figures, personnel or agency performance. If the provided dataset contains zero records or missing values, state that limitation explicitly. Do not contradict the supplied metrics.
 
-  const engine = formatAiEngineName(aiResult.provider, aiResult.model);
-  return {
-    ...aiResult.data,
-    engine,
-  };
+Provide JSON with:
+- wardCode: "${scope.wardCode}"
+- wardName: "${scope.wardName}"
+- headline: concise operational headline
+- brief: 2-3 sentence summary strictly matching the supplied numbers
+- recommendedActions: 2-3 actionable recommendations grounded in the supplied categories/hotspots.`;
+
+  try {
+    const aiResult = await runAi<WardBriefOutput>({
+      feature: "G-BRIEF",
+      promptVer: "v2.0",
+      userPrompt: prompt,
+      schema: WardBriefSchema,
+      jsonSchema: briefJsonSchema,
+      inputPayload,
+    });
+
+    const engine = formatAiEngineName(aiResult.provider, aiResult.model);
+    if (engine === RULES_ENGINE || !aiResult.data?.brief) {
+      return {
+        wardCode: scope.wardCode,
+        wardName: scope.wardName,
+        headline: `${scope.wardName}: ${kpis.totalActiveIssues} Active Issues`,
+        brief: deterministicSummary,
+        recommendedActions: deterministicActions,
+        engine: RULES_ENGINE,
+      };
+    }
+
+    return {
+      ...aiResult.data,
+      wardCode: scope.wardCode,
+      wardName: scope.wardName,
+      engine,
+    };
+  } catch {
+    return {
+      wardCode: scope.wardCode,
+      wardName: scope.wardName,
+      headline: `${scope.wardName}: ${kpis.totalActiveIssues} Active Issues`,
+      brief: deterministicSummary,
+      recommendedActions: deterministicActions,
+      engine: RULES_ENGINE,
+    };
+  }
 }
 
 // 3. G-AUDIT-ASSIST Schemas & Method

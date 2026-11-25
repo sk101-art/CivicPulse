@@ -44,15 +44,43 @@ function formatLocationLabel(address?: string | null, lat?: number, lng?: number
   return parts.slice(0, 2).join(', ').trim();
 }
 
-function calculateSlaRemaining(slaDueAt: string | Date, slaBreached: boolean): string {
-  if (slaBreached) return 'Breached';
-  const now = new Date().getTime();
+function getSlaStatusInfo(slaDueAt: string | Date, slaBreached: boolean): {
+  label: string;
+  remainingText: string;
+  colorClass: string;
+  dotClass: string;
+} {
+  const now = Date.now();
   const due = new Date(slaDueAt).getTime();
   const diffHours = Math.round((due - now) / (1000 * 60 * 60));
-  if (diffHours < 0) return 'Breached';
-  if (diffHours < 24) return `${Math.max(1, diffHours)}h`;
-  const days = Math.round(diffHours / 24);
-  return `${days}d`;
+
+  if (slaBreached || diffHours < 0) {
+    const overdueH = Math.abs(diffHours);
+    const detail = overdueH >= 24 ? `${Math.round(overdueH / 24)}d overdue` : `${Math.max(1, overdueH)}h overdue`;
+    return {
+      label: 'Breached',
+      remainingText: detail,
+      colorClass: 'text-[#B76F60]',
+      dotClass: 'bg-[#B76F60]',
+    };
+  }
+
+  if (diffHours <= 12) {
+    return {
+      label: 'At Risk',
+      remainingText: `${Math.max(1, diffHours)}h left`,
+      colorClass: 'text-[#B68B63]',
+      dotClass: 'bg-[#B68B63]',
+    };
+  }
+
+  const remainingText = diffHours < 24 ? `${diffHours}h left` : `${Math.round(diffHours / 24)}d left`;
+  return {
+    label: 'Within SLA',
+    remainingText,
+    colorClass: 'text-[#537C60]',
+    dotClass: 'bg-[#537C60]',
+  };
 }
 
 export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProps) {
@@ -303,17 +331,17 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
 
       {/* Swiss-Grid Operations Ledger Table */}
       <div className="bg-[#FFFFFF] rounded-2xl border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.04)] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full min-w-[980px] text-left text-xs border-collapse">
             <thead>
               <tr className="border-b border-[#DDDCD3] bg-[#FAF9F5] text-[#65736B] font-semibold select-none">
-                <th className="py-3 px-4 w-28">Issue ID</th>
-                <th className="py-3 px-4 w-24">Category</th>
-                <th className="py-3 px-4">Location</th>
-                <th className="py-3 px-4 w-28">Priority Index</th>
-                <th className="py-3 px-4 w-28">Status</th>
-                <th className="py-3 px-4 w-24">SLA Clock</th>
-                <th className="py-3 px-4 w-20 text-right">Action</th>
+                <th className="py-3 px-4 min-w-[85px] w-[105px] whitespace-nowrap">Issue ID</th>
+                <th className="py-3 px-4 min-w-[120px] w-[130px] whitespace-nowrap">Category</th>
+                <th className="py-3 px-4 min-w-[250px]">Location</th>
+                <th className="py-3 px-4 min-w-[125px] w-[140px] whitespace-nowrap">Priority Index</th>
+                <th className="py-3 px-4 min-w-[110px] w-[140px] whitespace-nowrap">Status</th>
+                <th className="py-3 px-4 min-w-[260px] w-[280px] whitespace-nowrap">SLA Clock</th>
+                <th className="py-3 px-4 w-[56px] text-right whitespace-nowrap">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#DDDCD3]/60 font-medium text-[#293732]">
@@ -350,28 +378,40 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                     LOW: "bg-[#FAF9F5] text-[#929B92] border-[#E5E9E3]",
                   };
 
+                  const displayIssueId = formatIssueId(issue.id);
+                  const locationText = formatLocationLabel(issue.address, issue.lat, issue.lng);
+                  const slaInfo = getSlaStatusInfo(issue.slaDueAt, issue.slaBreached);
+
                   return (
                     <tr
                       key={issue.id}
                       onClick={() => setSelectedIssue(issue)}
                       className="hover:bg-[#FAF9F5] transition-colors cursor-pointer group"
                     >
-                      <td className="py-3 px-4 font-mono font-bold text-[#355858]">
-                        {formatIssueId(issue.id)}
+                      <td className="py-3.5 px-4 align-middle font-mono font-bold text-[#355858]">
+                        <span
+                          title={issue.id}
+                          className={displayIssueId.length > 12 ? 'break-words leading-tight' : 'whitespace-nowrap'}
+                        >
+                          {displayIssueId}
+                        </span>
                       </td>
-                      <td className="py-3 px-4">
-                        <span className="font-medium text-[#293732]">
+                      <td className="py-3.5 px-4 align-middle">
+                        <span className="font-medium text-[#293732] whitespace-nowrap">
                           {(issue.category || 'OTHER').replace(/_/g, ' ')}
                         </span>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="truncate max-w-xs sm:max-w-md font-sans text-[#293732]">
-                          {formatLocationLabel(issue.address, issue.lat, issue.lng)}
+                      <td className="py-3.5 px-4 align-middle">
+                        <div
+                          title={issue.address || locationText}
+                          className="line-clamp-2 max-w-[300px] font-sans text-[#293732] leading-snug"
+                        >
+                          {locationText}
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${bandStyles[currentBand] || bandStyles.LOW}`}>
+                      <td className="py-3.5 px-4 align-middle">
+                        <div className="flex items-center gap-1.5 whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap ${bandStyles[currentBand] || bandStyles.LOW}`}>
                             {currentBand}
                           </span>
                           <span className="font-mono text-xs text-[#65736B]">
@@ -379,16 +419,22 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                           </span>
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${statusStyles[issue.status] || statusStyles.OPEN}`}>
+                      <td className="py-3.5 px-4 align-middle">
+                        <span className={`inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${statusStyles[issue.status] || statusStyles.OPEN}`}>
                           {issue.status.replace(/_/g, ' ')}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-mono text-xs">
-                        <div className="space-y-1">
-                          <span className={issue.slaBreached ? "text-[#B76F60] font-bold" : "text-[#65736B]"}>
-                            {calculateSlaRemaining(issue.slaDueAt, issue.slaBreached)}
-                          </span>
+                      <td className="py-3.5 px-4 align-middle">
+                        <div className="space-y-1.5 max-w-[260px]">
+                          <div className="flex items-center gap-1.5 text-xs whitespace-nowrap">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${slaInfo.dotClass}`} />
+                            <span className={`font-semibold ${slaInfo.colorClass}`}>
+                              {slaInfo.label}
+                            </span>
+                            <span className="font-mono text-[11px] text-[#65736B]">
+                              · {slaInfo.remainingText}
+                            </span>
+                          </div>
                           {issue.bestRepairWindow && (() => {
                             const rw = issue.bestRepairWindow as any;
                             const rwResult = rw.bestWindow
@@ -410,13 +456,15 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                           })()}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-3.5 px-4 align-middle text-right">
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedIssue(issue);
                           }}
-                          className="p-1 rounded-lg text-[#929B92] group-hover:text-[#527B7A] group-hover:bg-[#E5E9E3] transition-colors"
+                          aria-label={`Inspect ${displayIssueId}`}
+                          className="p-1.5 rounded-lg text-[#929B92] group-hover:text-[#527B7A] group-hover:bg-[#E5E9E3] transition-colors cursor-pointer"
                         >
                           <ChevronRight className="w-4 h-4" />
                         </button>

@@ -54,9 +54,9 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
         userSubtitle={userSubtitle} 
       />
       
-      <div className="flex-1 flex flex-col relative z-10 w-full min-h-screen lg:h-screen overflow-hidden bg-[#F3F2EB]">
-        <GlobalHeader role="AUTHORITY" />
-        <div className="flex-1 overflow-y-auto min-h-0 flex flex-col">
+      <div className="flex-1 flex flex-col relative z-10 w-full min-w-0 min-h-screen lg:h-screen overflow-hidden bg-[#F3F2EB]">
+        <GlobalHeader role="AUTHORITY" className="shrink-0" />
+        <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 flex flex-col">
           {children}
         </div>
       </div>

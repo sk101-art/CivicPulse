@@ -80,27 +80,41 @@ export function RepairWindowBadge({
   const isLive = basis === 'live' || (bestWindow as any)?.basis === 'live';
 
   if (variant === 'card') {
+    const conditionText = bestWindow.condition || (bestWindow as { reason?: string }).reason || '';
+    const basisLabel = isHistoric ? 'Historic' : isLive ? 'Live' : 'Estimated';
+
     return (
       <div
         data-testid="repair-window-card"
-        className={`flex items-center gap-2 text-[11px] font-mono text-cyan-300/90 bg-cyan-950/30 border border-cyan-800/40 px-2.5 py-1 rounded-lg ${className}`}
+        title={`Best repair window: ${bestWindow.display}${conditionText ? ` · ${conditionText}` : ''} (${sampleCount} samples)`}
+        className={`w-full max-w-[260px] rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] px-2.5 py-2 text-[11px] leading-snug text-[#293732] space-y-1 ${className}`}
       >
-        <CalendarClock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-        <span className="truncate">
-          Best repair window: <strong className="text-white font-semibold">{bestWindow.display}</strong> ({bestWindow.condition || (bestWindow as any).reason}) · based on {sampleCount} samples
-        </span>
-        <span
-          data-testid="repair-window-basis-chip"
-          className={`px-1.5 py-0.2 rounded text-[9px] uppercase font-bold shrink-0 border ${
-            isHistoric
-              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-              : isLive
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                : 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'
-          }`}
-        >
-          {isHistoric ? 'TomTom Historic' : isLive ? 'Live Samples' : 'Estimated'}
-        </span>
+        <div className="flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <CalendarClock className="w-3.5 h-3.5 text-[#527B7A] shrink-0" />
+            <span className="font-semibold text-[#355858] truncate">Best repair window</span>
+          </div>
+          <span
+            data-testid="repair-window-basis-chip"
+            className={`px-1.5 py-0.2 rounded text-[9px] font-mono uppercase font-semibold shrink-0 border ${
+              isHistoric
+                ? 'bg-[#D4E3DF]/60 text-[#355858] border-[#527B7A]/30'
+                : isLive
+                  ? 'bg-[#EFF6F1] text-[#537C60] border-[#CFE4D4]'
+                  : 'bg-[#E9ECE6] text-[#65736B] border-[#DDDCD3]'
+            }`}
+          >
+            {basisLabel}
+          </span>
+        </div>
+        <div className="font-mono font-semibold text-[#293732] break-words">
+          {bestWindow.display}
+        </div>
+        {conditionText && (
+          <div className="text-[10px] text-[#65736B] line-clamp-2 break-words">
+            {conditionText}
+          </div>
+        )}
       </div>
     );
   }
