@@ -9,7 +9,7 @@ import { TEXT_LIMITS } from "@/lib/validation/limits";
 
 export const dynamic = "force-dynamic";
 
-export const REASSIGNMENT_REASONS = [
+const REASSIGNMENT_REASONS = [
   "Repair quality unsatisfactory",
   "Contractor failed to meet requirements",
   "SLA breach",
