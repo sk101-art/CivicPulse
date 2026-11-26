@@ -44,10 +44,13 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
   const currentWard = geo?.currentWard ?? null;
   const availableWards = geo?.availableWards ?? [];
   const corporations = geo?.corporations ?? [];
+  const availableOperationalAreas = geo?.availableOperationalAreas ?? [];
   const department = geo?.department ?? null;
   const isLoading = geo?.isLoading ?? false;
   const contextError = geo?.error ?? null;
   const selectWard = geo?.selectWard ?? (() => {});
+  const selectOperationalArea = geo?.selectOperationalArea ?? (() => {});
+  const clearOperationalArea = geo?.clearOperationalArea ?? (() => {});
   const selectionMode = geo?.selectionMode ?? 'MANUAL';
   const locationStatus = geo?.locationStatus ?? 'idle';
   const locationMessage = geo?.locationMessage ?? null;
@@ -565,21 +568,69 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
             )}
           </div>
 
-          {/* Department summary card for Authority */}
-          {isAuthority && department && (
-            <div className="px-3.5 py-2 bg-[#F3F2EB]/60 border-b border-[#DDDCD3] flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-white border border-[#DDDCD3] flex items-center justify-center text-[#527B7A] shrink-0">
-                <Building2 className="w-3.5 h-3.5" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-semibold text-[#293732] truncate">
-                  {department.deskTitle}
+          {/* Department & Explicit Operational Area Selector for Authority */}
+          {isAuthority && (
+            <div className="px-3.5 py-2.5 bg-[#F3F2EB]/60 border-b border-[#DDDCD3] space-y-2">
+              {department && (
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-white border border-[#DDDCD3] flex items-center justify-center text-[#527B7A] shrink-0">
+                    <Building2 className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-semibold text-[#293732] truncate">
+                      {department.deskTitle}
+                    </div>
+                    <div className="text-[10px] text-[#65736B] truncate">
+                      Scope: {department.assignedZone}
+                    </div>
+                  </div>
+                  <Shield className="w-3.5 h-3.5 text-[#527B7A] shrink-0" />
                 </div>
-                <div className="text-[10px] text-[#65736B] truncate">
-                  Zone: {department.assignedZone}
+              )}
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#65736B]">
+                    OPERATIONAL AREA
+                  </span>
+                  {operationalArea && (
+                    <button
+                      type="button"
+                      onClick={clearOperationalArea}
+                      className="text-[10px] font-semibold text-[#527B7A] hover:text-[#355858] underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
+                <select
+                  value={operationalArea?.id ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) {
+                      clearOperationalArea();
+                    } else {
+                      const found = availableOperationalAreas.find((a) => a.id === val) ?? null;
+                      selectOperationalArea(found);
+                    }
+                  }}
+                  aria-label="Select an operational area"
+                  data-testid="operational-area-select"
+                  className="w-full px-2.5 py-1.5 rounded-lg bg-white border border-[#DDDCD3] text-xs text-[#293732] focus:outline-none focus:ring-2 focus:ring-[#527B7A]/30"
+                >
+                  <option value="">Select an operational area</option>
+                  {availableOperationalAreas.map((area) => (
+                    <option key={area.id} value={area.id}>
+                      {area.name} ({area.code})
+                    </option>
+                  ))}
+                </select>
+                {!operationalArea && (
+                  <div className="text-[10px] text-[#65736B]">
+                    No operational area selected
+                  </div>
+                )}
               </div>
-              <Shield className="w-3.5 h-3.5 text-[#527B7A] shrink-0" />
             </div>
           )}
 

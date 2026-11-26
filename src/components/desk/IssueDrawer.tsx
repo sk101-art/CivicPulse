@@ -11,6 +11,7 @@ import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/Capt
 import { formatPriority } from '@/lib/priority';
 import { formatDateTimeIST, formatDateIST } from '@/lib/time/ist';
 import type { RepairWindowResult } from '@/lib/traffic/repairWindow';
+import { notifyIssueUpdated } from '@/lib/map/statusPresentation';
 
 interface ActionLogEntry {
   id: string;
@@ -185,6 +186,8 @@ export function IssueDrawer({
   const [loadingAnalyst, setLoadingAnalyst] = useState(false);
   const [personnels, setPersonnels] = useState<PersonnelOption[]>([]);
   const [selectedPersonnelId, setSelectedPersonnelId] = useState('');
+  const [personnelSearch, setPersonnelSearch] = useState('');
+  const [personnelNote, setPersonnelNote] = useState('');
   const [assigningPersonnel, setAssigningPersonnel] = useState(false);
   const [personnelNotice, setPersonnelNotice] = useState<string | null>(null);
 
@@ -193,18 +196,26 @@ export function IssueDrawer({
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [note, setNote] = useState('');
   const [selectedAgencyId, setSelectedAgencyId] = useState('');
+  const [agencySearch, setAgencySearch] = useState('');
+  const [reassignReason, setReassignReason] = useState('Repair quality unsatisfactory');
+  const [reassignOtherReason, setReassignOtherReason] = useState('');
   const [selectedBand, setSelectedBand] = useState<Band>('MEDIUM');
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [capturedFixEvidence, setCapturedFixEvidence] = useState<CapturedEvidence | null>(null);
   const [showFixCamera, setShowFixCamera] = useState<boolean>(false);
+  const [claimConfirmStep, setClaimConfirmStep] = useState<boolean>(false);
   const [contractorName, setContractorName] = useState(issue?.contractorName || '');
   const [tenderId, setTenderId] = useState(issue?.tenderId || '');
   const [liabilityClauseRef, setLiabilityClauseRef] = useState(issue?.liabilityClauseRef || '');
   const [isPending, startTransition] = useTransition();
+  const prevIssueIdRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (!issue) return;
+    const isNewIssue = prevIssueIdRef.current !== issue.id;
+    prevIssueIdRef.current = issue.id;
+
     setContractorName(issue.contractorName || '');
     setTenderId(issue.tenderId || '');
     setLiabilityClauseRef(issue.liabilityClauseRef || '');
@@ -212,10 +223,19 @@ export function IssueDrawer({
     setSelectedAgencyId(issue.agencyId || (agencies[0]?.id ?? ''));
     setSelectedPersonnelId(issue.assignments?.[0]?.personnel?.id || '');
     setQuickStatus(issue.status);
-    setActionError(null);
-    setActionSuccess(null);
-    setPersonnelNotice(null);
-    setAnalystSummary(null);
+
+    if (isNewIssue) {
+      setActionError(null);
+      setActionSuccess(null);
+      setPersonnelNotice(null);
+      setAnalystSummary(null);
+      setActiveForm(null);
+      setClaimConfirmStep(false);
+      setCapturedFixEvidence(null);
+      setShowFixCamera(false);
+      setPersonnelSearch('');
+      setAgencySearch('');
+    }
 
     const fetchLogs = async () => {
       setLoadingLogs(true);
@@ -334,6 +354,7 @@ export function IssueDrawer({
         setCapturedFixEvidence(null);
         setActionSuccess(`Action ${ACTION_LABELS[action] || action} applied.`);
         await refreshLogs();
+        notifyIssueUpdated(issue.id);
         onActionComplete(data.issue);
       } catch (err: unknown) {
         setActionError(err instanceof Error ? err.message : 'Something went wrong');
@@ -363,6 +384,7 @@ export function IssueDrawer({
       setActionSuccess(`Status updated to ${quickStatus.replace(/_/g, ' ')}.`);
       setNote('');
       await refreshLogs();
+      notifyIssueUpdated(issue.id);
       onActionComplete(data.issue);
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Failed to update status');
@@ -374,11 +396,12 @@ export function IssueDrawer({
   const handleAssignPersonnel = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!selectedPersonnelId) {
-      setActionError('Please select a field personnel member.');
+      setActionError('Please select an active field personnel member.');
       return;
     }
     setAssigningPersonnel(true);
     setActionError(null);
+    setActionSuccess(null);
     setPersonnelNotice(null);
     try {
       const res = await fetch(`/api/issues/${issue.id}/assign`, {
@@ -386,7 +409,7 @@ export function IssueDrawer({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           personnelId: selectedPersonnelId,
-          note: note.trim() || undefined,
+          note: personnelNote.trim() || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -394,8 +417,9 @@ export function IssueDrawer({
         throw new Error(data.message || data.error || 'Failed to assign field personnel');
       }
       setPersonnelNotice(`Assigned to ${data.assignment?.personnel?.name || 'field personnel'}.`);
-      setNote('');
+      setPersonnelNote('');
       await refreshLogs();
+      notifyIssueUpdated(issue.id);
       onActionComplete(data.issue);
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Failed to assign personnel');
@@ -407,15 +431,24 @@ export function IssueDrawer({
   const handleActionClick = (action: IssueAction) => {
     setActionError(null);
     setActionSuccess(null);
+    setClaimConfirmStep(false);
     if (action === 'CONFIRM' || action === 'START_WORK') {
       executeAction(action);
       return;
     }
     if (action === 'ASSIGN_AGENCY' || action === 'REASSIGN_AGENCY') {
-      setSelectedAgencyId(issue.agencyId || (agencies[0]?.id ?? ''));
+      const fallbackAgency = agencies.find((a) => a.id !== issue.agencyId)?.id || agencies[0]?.id || '';
+      setSelectedAgencyId(action === 'REASSIGN_AGENCY' ? fallbackAgency : (issue.agencyId || fallbackAgency));
+      setAgencySearch('');
+      setReassignReason('Repair quality unsatisfactory');
+      setReassignOtherReason('');
     }
     if (action === 'OVERRIDE_BAND') {
       setSelectedBand(effectiveBand);
+    }
+    if (action === 'CLAIM_FIX') {
+      setContractorName(issue.contractorName || issue.agency?.name || '');
+      setTenderId(issue.tenderId || '');
     }
     setActiveTab('Overview');
     setActiveForm(action);
@@ -425,12 +458,53 @@ export function IssueDrawer({
     e.preventDefault();
     if (!activeForm) return;
 
-    if (activeForm === 'ASSIGN_AGENCY' || activeForm === 'REASSIGN_AGENCY') {
+    if (activeForm === 'ASSIGN_AGENCY') {
       if (!selectedAgencyId) {
         setActionError('Please select an agency');
         return;
       }
-      await executeAction(activeForm, { agencyId: selectedAgencyId });
+      await executeAction('ASSIGN_AGENCY', { agencyId: selectedAgencyId });
+      return;
+    }
+
+    if (activeForm === 'REASSIGN_AGENCY') {
+      if (!selectedAgencyId) {
+        setActionError('Please select a new agency or contractor.');
+        return;
+      }
+      if (!reassignReason.trim() || (reassignReason === 'Other' && !reassignOtherReason.trim())) {
+        setActionError('A reassignment reason is required.');
+        return;
+      }
+      setActionError(null);
+      setActionSuccess(null);
+      startTransition(async () => {
+        try {
+          const res = await fetch(`/api/issues/${issue.id}/reassign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              agencyId: selectedAgencyId,
+              reason: reassignReason,
+              otherReason: reassignReason === 'Other' ? reassignOtherReason.trim() : undefined,
+              note: note.trim() || undefined,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(data.message || data.error || 'Failed to reassign agency');
+          }
+          setActiveForm(null);
+          setNote('');
+          setReassignOtherReason('');
+          setActionSuccess(`Work order reassigned to ${data.issue?.agency?.name || 'selected agency'}.`);
+          await refreshLogs();
+          notifyIssueUpdated(issue.id);
+          onActionComplete(data.issue);
+        } catch (err: unknown) {
+          setActionError(err instanceof Error ? err.message : 'Failed to reassign agency');
+        }
+      });
       return;
     }
 
@@ -454,7 +528,12 @@ export function IssueDrawer({
 
     if (activeForm === 'CLAIM_FIX') {
       if (!capturedFixEvidence) {
-        setActionError('Claiming a repair requires capturing a signed on-site photo first.');
+        setActionError('Claiming a repair requires capturing or uploading a signed repair photograph first.');
+        return;
+      }
+      if (!claimConfirmStep) {
+        setActionError(null);
+        setClaimConfirmStep(true);
         return;
       }
       const photoBase64 = await new Promise<string>((resolve, reject) => {
@@ -466,6 +545,7 @@ export function IssueDrawer({
         };
         reader.onerror = reject;
       });
+      setClaimConfirmStep(false);
       await executeAction('CLAIM_FIX', {
         evidence: {
           photoBase64,
@@ -597,8 +677,17 @@ export function IssueDrawer({
                           className="bg-[#E9ECE6] border border-[#DDDCD3] rounded-lg px-2.5 py-1 text-xs font-semibold text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
                         >
                           {Object.values(Status).map((st) => (
-                            <option key={st} value={st}>
+                            <option
+                              key={st}
+                              value={st}
+                              disabled={st === Status.CLAIMED_FIXED || st === Status.VERIFIED_FIXED}
+                            >
                               {st.replace(/_/g, ' ')}
+                              {st === Status.CLAIMED_FIXED
+                                ? ' (Use Claim Repair)'
+                                : st === Status.VERIFIED_FIXED
+                                  ? ' (Citizen Audit Only)'
+                                  : ''}
                             </option>
                           ))}
                         </select>
@@ -666,7 +755,7 @@ export function IssueDrawer({
                       </button>
                     </div>
 
-                    {(activeForm === 'ASSIGN_AGENCY' || activeForm === 'REASSIGN_AGENCY') && (
+                    {activeForm === 'ASSIGN_AGENCY' && (
                       <div className="space-y-1.5">
                         <label className="text-xs font-medium text-[#293732] block">Select Agency</label>
                         {agencies.length === 0 ? (
@@ -688,8 +777,78 @@ export function IssueDrawer({
                       </div>
                     )}
 
+                    {activeForm === 'REASSIGN_AGENCY' && (
+                      <div className="space-y-3">
+                        <div className="p-2.5 rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] text-[11px] flex items-center justify-between">
+                          <span className="text-[#65736B]">Current Agency / Contractor</span>
+                          <span className="font-semibold text-[#293732]">
+                            {issue.agency ? `${issue.agency.name} (${issue.agency.code})` : 'Unassigned'}
+                          </span>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-[#293732] block">Search &amp; Select New Agency</label>
+                          <input
+                            type="text"
+                            value={agencySearch}
+                            onChange={(e) => setAgencySearch(e.target.value)}
+                            placeholder="Filter agencies by name or code..."
+                            className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-1.5 text-xs text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                          />
+                          <select
+                            value={selectedAgencyId}
+                            onChange={(e) => setSelectedAgencyId(e.target.value)}
+                            data-testid="reassign-agency-select"
+                            className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2 text-xs font-medium text-[#293732] shadow-inner focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                          >
+                            <option value="">-- Choose New Agency --</option>
+                            {agencies
+                              .filter((a) => {
+                                const q = agencySearch.trim().toLowerCase();
+                                return !q || a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q);
+                              })
+                              .map((a) => (
+                                <option key={a.id} value={a.id}>
+                                  {a.name} ({a.code})
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-[#293732] block">Reassignment Reason (Required)</label>
+                          <select
+                            value={reassignReason}
+                            onChange={(e) => setReassignReason(e.target.value)}
+                            data-testid="reassign-reason-select"
+                            className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2 text-xs font-medium text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                          >
+                            <option value="Repair quality unsatisfactory">Repair quality unsatisfactory</option>
+                            <option value="Contractor failed to meet requirements">Contractor failed to meet requirements</option>
+                            <option value="SLA breach">SLA breach</option>
+                            <option value="Insufficient repair evidence">Insufficient repair evidence</option>
+                            <option value="Original agency unavailable">Original agency unavailable</option>
+                            <option value="Repeated repair failure">Repeated repair failure</option>
+                            <option value="Incorrect original assignment">Incorrect original assignment</option>
+                            <option value="Other">Other</option>
+                          </select>
+                          {reassignReason === 'Other' && (
+                            <input
+                              type="text"
+                              value={reassignOtherReason}
+                              onChange={(e) => setReassignOtherReason(e.target.value)}
+                              placeholder="Specify reassignment reason..."
+                              className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2 text-xs text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                            />
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {activeForm === 'OVERRIDE_BAND' && (
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px] p-2 rounded-lg bg-[#FAF9F5] border border-[#DDDCD3]">
+                          <span className="text-[#65736B]">Current Effective Band</span>
+                          <span className="font-bold text-[#293732]">{effectiveBand}</span>
+                        </div>
                         <label className="text-xs font-medium text-[#293732] block">Target Priority Band</label>
                         <div className="grid grid-cols-4 gap-2">
                           {(['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as Band[]).map((b) => (
@@ -714,23 +873,33 @@ export function IssueDrawer({
                       <div className="space-y-3">
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                           <div>
-                            <label className="text-xs font-medium text-[#65736B] block mb-1">Contractor Name</label>
+                            <label className="text-xs font-medium text-[#65736B] block mb-1">
+                              Contractor / Agency {issue.contractorName ? '(Assigned)' : ''}
+                            </label>
                             <input
                               type="text"
                               value={contractorName}
+                              readOnly={Boolean(issue.contractorName)}
                               onChange={(e) => setContractorName(e.target.value)}
-                              placeholder="e.g. Cauvery Infrastructure"
-                              className="w-full px-3 py-2 rounded-xl bg-[#E9ECE6] border border-[#DDDCD3] text-[#293732] text-xs focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                              placeholder={issue.agency?.name || 'Assigned agency or contractor'}
+                              className={`w-full px-3 py-2 rounded-xl border border-[#DDDCD3] text-[#293732] text-xs focus:outline-none focus:ring-1 focus:ring-[#527B7A] ${
+                                issue.contractorName ? 'bg-[#FAF9F5] text-[#65736B]' : 'bg-[#E9ECE6]'
+                              }`}
                             />
                           </div>
                           <div>
-                            <label className="text-xs font-medium text-[#65736B] block mb-1">Tender ID</label>
+                            <label className="text-xs font-medium text-[#65736B] block mb-1">
+                              Work Order / Tender ID {issue.tenderId ? '(Assigned)' : ''}
+                            </label>
                             <input
                               type="text"
                               value={tenderId}
+                              readOnly={Boolean(issue.tenderId)}
                               onChange={(e) => setTenderId(e.target.value)}
-                              placeholder="e.g. BBMP/EE/2026/W-10"
-                              className="w-full px-3 py-2 rounded-xl bg-[#E9ECE6] border border-[#DDDCD3] text-[#293732] text-xs focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                              placeholder="Optional work order reference"
+                              className={`w-full px-3 py-2 rounded-xl border border-[#DDDCD3] text-[#293732] text-xs focus:outline-none focus:ring-1 focus:ring-[#527B7A] ${
+                                issue.tenderId ? 'bg-[#FAF9F5] text-[#65736B]' : 'bg-[#E9ECE6]'
+                              }`}
                             />
                           </div>
                         </div>
@@ -739,22 +908,72 @@ export function IssueDrawer({
                           <div className="border border-[#DDDCD3] rounded-xl overflow-hidden p-2 bg-[#E9ECE6]">
                             <CaptureCamera
                               role="CLAIM_FIX"
+                              targetCoords={{ lat: issue.lat, lng: issue.lng }}
                               onCapture={(ev) => {
                                 setCapturedFixEvidence(ev);
                                 setShowFixCamera(false);
+                                setClaimConfirmStep(false);
                               }}
                               onCancel={() => setShowFixCamera(false)}
                             />
+                          </div>
+                        ) : capturedFixEvidence ? (
+                          <div className="rounded-xl border border-[#527B7A]/40 bg-[#FAF9F5] p-3 space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                              <span className="font-semibold text-[#537C60] flex items-center gap-1.5">
+                                <CheckCircle2 className="w-4 h-4" />
+                                Repair Evidence Attached (ECDSA Signed)
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShowFixCamera(true);
+                                  setClaimConfirmStep(false);
+                                }}
+                                className="text-[11px] font-semibold text-[#527B7A] hover:underline cursor-pointer"
+                              >
+                                Retake / Replace
+                              </button>
+                            </div>
+                            <div className="relative w-full h-36 rounded-lg overflow-hidden border border-[#DDDCD3]">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={capturedFixEvidence.previewUrl}
+                                alt="Repair completion preview"
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
                           </div>
                         ) : (
                           <button
                             type="button"
                             onClick={() => setShowFixCamera(true)}
+                            data-testid="claim-fix-capture-btn"
                             className="w-full py-2.5 px-3 rounded-xl border border-dashed border-[#527B7A] bg-[#D4E3DF]/30 text-[#355858] text-xs font-medium flex items-center justify-center gap-2 hover:bg-[#D4E3DF]/50 transition-colors cursor-pointer"
                           >
                             <Camera className="w-4 h-4" />
-                            {capturedFixEvidence ? 'Photo Evidence Attached (Retake)' : 'Capture Repair Photo Proof (Required)'}
+                            <span>Capture or Upload Repair Photo Proof (Required)</span>
                           </button>
+                        )}
+
+                        {claimConfirmStep && capturedFixEvidence && (
+                          <div className="p-3.5 rounded-xl bg-[#FAF9F5] border border-[#527B7A] space-y-2 text-xs">
+                            <div className="font-bold text-[#355858] uppercase tracking-wider text-[10px]">
+                              Confirm Repair Claim Submission
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                              <span className="text-[#65736B]">Issue:</span>
+                              <span className="font-mono font-semibold text-[#293732]">{displayId}</span>
+                              <span className="text-[#65736B]">Location:</span>
+                              <span className="text-[#293732] truncate">{issue.address || `${issue.lat.toFixed(4)}, ${issue.lng.toFixed(4)}`}</span>
+                              <span className="text-[#65736B]">Agency / Contractor:</span>
+                              <span className="text-[#293732]">{contractorName || issue.agency?.name || 'Municipal Crew'}</span>
+                              <span className="text-[#65736B]">Work Order:</span>
+                              <span className="font-mono text-[#293732]">{tenderId || '—'}</span>
+                              <span className="text-[#65736B]">Next State:</span>
+                              <span className="font-semibold text-[#527B7A]">Awaiting Citizen Verification</span>
+                            </div>
+                          </div>
                         )}
                       </div>
                     )}
@@ -787,10 +1006,15 @@ export function IssueDrawer({
                       <button
                         type="submit"
                         disabled={isPending}
+                        data-testid="drawer-confirm-action-btn"
                         className="px-5 py-2 rounded-xl bg-[#355858] text-white font-medium text-xs shadow-md hover:bg-[#293732] transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
                         {isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                        Confirm Action
+                        {activeForm === 'CLAIM_FIX' && !claimConfirmStep
+                          ? 'Review & Confirm Claim'
+                          : activeForm === 'CLAIM_FIX' && claimConfirmStep
+                            ? 'Submit Repair Claim'
+                            : 'Confirm Action'}
                       </button>
                     </div>
                   </form>
@@ -905,6 +1129,19 @@ export function IssueDrawer({
                     </p>
                   ) : (
                     <>
+                      <div className="p-2.5 rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] text-[11px] flex items-center justify-between">
+                        <span className="text-[#65736B]">Scope</span>
+                        <span className="font-semibold text-[#293732]">
+                          {issue.ward ? `${issue.ward.name} (${issue.ward.code})` : 'Municipal Jurisdiction'}
+                        </span>
+                      </div>
+                      <input
+                        type="text"
+                        value={personnelSearch}
+                        onChange={(e) => setPersonnelSearch(e.target.value)}
+                        placeholder="Search personnel by name or role..."
+                        className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2 text-xs text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                      />
                       <select
                         value={selectedPersonnelId}
                         onChange={(e) => setSelectedPersonnelId(e.target.value)}
@@ -912,12 +1149,25 @@ export function IssueDrawer({
                         className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2.5 text-xs font-medium text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
                       >
                         <option value="">-- Select Field Officer --</option>
-                        {personnels.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} — {p.role} ({p.contact})
-                          </option>
-                        ))}
+                        {personnels
+                          .filter((p) => {
+                            const q = personnelSearch.trim().toLowerCase();
+                            return !q || p.name.toLowerCase().includes(q) || p.role.toLowerCase().includes(q);
+                          })
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} — {p.role} ({p.contact})
+                            </option>
+                          ))}
                       </select>
+
+                      <input
+                        type="text"
+                        value={personnelNote}
+                        onChange={(e) => setPersonnelNote(e.target.value)}
+                        placeholder="Assignment instructions (optional)..."
+                        className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2 text-xs text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                      />
 
                       <button
                         type="submit"
@@ -1072,7 +1322,12 @@ export function IssueDrawer({
           </button>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {allowedActions.map((action) => {
+            {(
+              allowedActions.includes('REASSIGN_AGENCY') ||
+              !(issue.status === Status.CLAIMED_FIXED || issue.status === Status.DISPUTED || issue.status === Status.REOPENED_IN_WARRANTY)
+                ? allowedActions
+                : [...allowedActions, 'REASSIGN_AGENCY' as IssueAction]
+            ).map((action) => {
               const isPrimary = action === 'CLAIM_FIX' || action === 'CONFIRM' || action === 'START_WORK';
               const isDanger = action === 'REJECT';
               return (

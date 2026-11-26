@@ -58,7 +58,7 @@ const QUICK_PROMPTS = [
 ];
 
 export function AreaBriefingView() {
-  const { currentWard, corporations } = useGeoContext();
+  const { currentWard, corporations, operationalArea } = useGeoContext();
 
   const [period, setPeriod] = useState<BriefingPeriod>('30d');
   const [selectedCorpId, setSelectedCorpId] = useState<string>('ALL');
@@ -73,8 +73,8 @@ export function AreaBriefingView() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const seqRef = useRef(0);
 
-  const wardCode = currentWard?.code || 'ALL';
-  const wardId = currentWard?.id || 'zone-all';
+  const wardCode = operationalArea?.code || currentWard?.code || 'ALL';
+  const wardId = operationalArea?.id || currentWard?.id || 'zone-all';
 
   const loadBriefing = useCallback(async () => {
     const seq = ++seqRef.current;
@@ -281,6 +281,11 @@ export function AreaBriefingView() {
             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E5E9E3] text-[#293732] font-semibold">
               <MapPin className="w-3.5 h-3.5 text-[#527B7A]" />
               <span>{scope?.wardName || currentWard?.fullName || 'All Assigned Wards'}</span>
+            </span>
+            <span className="px-2.5 py-1 rounded-lg bg-[#FAF9F5] border border-[#DDDCD3] text-[#65736B] font-medium">
+              {operationalArea
+                ? `Operational Area: ${operationalArea.name} (${operationalArea.code})`
+                : 'No operational area selected'}
             </span>
             {scope?.corporationName && (
               <span className="px-2.5 py-1 rounded-lg bg-[#FAF9F5] border border-[#DDDCD3] text-[#527B7A] font-medium">

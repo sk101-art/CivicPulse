@@ -153,14 +153,25 @@ export async function GET(req: Request) {
       }
     }
 
+    const isAuthority = session.user.role === 'AUTHORITY';
+
     const issues = await prisma.issue.findMany({
       where: issueWhere,
       include: {
         agency: { select: { id: true, code: true, name: true } },
+        ...(isAuthority
+          ? {
+              assignments: {
+                take: 1,
+                orderBy: { createdAt: 'desc' },
+                include: { personnel: { select: { id: true, name: true, role: true } } },
+              },
+            }
+          : {}),
         reports: {
-          take: 1,
+          take: 3,
           orderBy: { createdAt: 'desc' },
-          select: { id: true, photoUrl: true, createdAt: true, note: true },
+          select: { id: true, role: true, photoUrl: true, createdAt: true, note: true },
         },
         _count: { select: { reports: true, comments: true } },
       },
@@ -170,18 +181,18 @@ export async function GET(req: Request) {
 
     // Format issues for client maps and list components
     const statusLabelMap: Record<string, string> = {
-      OPEN: 'Reported',
+      OPEN: 'Open',
       CONFIRMED: 'Confirmed',
       ASSIGNED: 'Assigned',
       IN_PROGRESS: 'In Progress',
-      CLAIMED_FIXED: 'Repair Claimed',
+      CLAIMED_FIXED: 'Repair Claimed — Awaiting Verification',
       VERIFIED_FIXED: 'Verified Fixed',
       DISPUTED: 'Disputed',
       REJECTED: 'Rejected',
       REOPENED_IN_WARRANTY: 'Reopened',
     };
 
-    const formattedIssues = issues.map((iss) => {
+    const formattedIssues = issues.map((iss: any) => {
       const latestReport = iss.reports[0] || null;
       return {
         id: iss.id,
@@ -194,15 +205,25 @@ export async function GET(req: Request) {
         longitude: iss.lng,
         status: iss.status,
         statusLabel: statusLabelMap[iss.status] || iss.status,
-        priority: iss.band,
+        priority: iss.bandOverride || iss.band,
         priorityScore: iss.priority,
         slaBreached: iss.slaBreached,
         slaDueAt: iss.slaDueAt.toISOString(),
+        repairClaimedAt: iss.repairClaimedAt ? iss.repairClaimedAt.toISOString() : null,
         photoUrl: latestReport?.photoUrl || '/images/pothole-clean-evidence.jpg',
         note: latestReport?.note || null,
         reportCount: iss._count.reports,
         commentCount: iss._count.comments,
         createdAt: iss.createdAt.toISOString(),
+        ...(isAuthority
+          ? {
+              agencyName: iss.agency?.name || null,
+              contractorName: iss.contractorName || null,
+              assignedPersonnel: iss.assignments?.[0]?.personnel
+                ? `${iss.assignments[0].personnel.name} (${iss.assignments[0].personnel.role})`
+                : null,
+            }
+          : {}),
       };
     });
 
@@ -223,7 +244,7 @@ export async function GET(req: Request) {
       ['ASSIGNED', 'IN_PROGRESS', 'CONFIRMED'].includes(i.status)
     ).length;
     const resolvedCount = allWardIssues.filter((i) =>
-      ['CLAIMED_FIXED', 'VERIFIED_FIXED'].includes(i.status)
+      i.status === 'VERIFIED_FIXED'
     ).length;
     const criticalCount = allWardIssues.filter(
       (i) => i.band === 'CRITICAL' || i.band === 'HIGH'

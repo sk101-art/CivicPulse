@@ -2,6 +2,7 @@ import React from "react";
 import { CircleMarker, Popup } from "react-leaflet";
 import Link from "next/link";
 import { ReportPoint } from "./types";
+import { getMapStatusMeta } from "@/lib/map/statusPresentation";
 
 const CATEGORY_COLORS: Record<string, string> = {
   POTHOLES: "var(--cat-potholes)",
@@ -48,10 +49,8 @@ export function IssueMarkersLayer({
         }
 
         const isHz = hazards.some((h) => h.id === r.id);
-        const color =
-          r.status === "RESOLVED" || r.status === "VERIFIED_FIXED"
-            ? "var(--accent-lime)"
-            : getCategoryColor(r.category);
+        const statusMeta = getMapStatusMeta(r.status);
+        const color = statusMeta.color;
 
         const priorityScore = r.priorityScore ?? (r.priority ? r.priority / 100 : 0.5);
         const radius = 6 + priorityScore * 8;
@@ -66,20 +65,27 @@ export function IssueMarkersLayer({
             center={[lat, lng]}
             radius={effectiveRadius}
             pathOptions={{
-              color: r.status === "OPEN" ? color : "transparent",
+              color: "#FFFFFF",
               fillColor: isHz ? "var(--accent-magenta)" : color,
-              fillOpacity: isHz ? 0.85 : r.status === "OPEN" ? 0.2 : 0.7,
-              weight: r.status === "OPEN" ? 2 : 0,
+              fillOpacity: isHz ? 0.9 : 0.85,
+              weight: 2,
             }}
           >
             <Popup>
-              <div className="min-w-[160px] p-1 font-sans">
+              <div className="min-w-[180px] p-1 font-sans">
                 <b className="text-sm text-zinc-900 block font-semibold leading-snug">
                   {r.title || `${(r.category || "OTHER").replace(/_/g, " ")} at ${r.address || "Bengaluru"}`}
                 </b>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 uppercase font-bold">
-                    {r.status}
+                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                  <span
+                    className="text-[10px] font-mono px-1.5 py-0.5 rounded uppercase font-bold border"
+                    style={{
+                      backgroundColor: statusMeta.badgeBg,
+                      color: statusMeta.badgeText,
+                      borderColor: statusMeta.badgeBorder,
+                    }}
+                  >
+                    {statusMeta.label}
                   </span>
                   <span className="text-[10px] font-mono text-zinc-500 uppercase">
                     {(r.category || "OTHER").replace(/_/g, " ")}

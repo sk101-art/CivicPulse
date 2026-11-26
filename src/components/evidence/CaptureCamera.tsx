@@ -33,26 +33,29 @@ export interface CaptureCameraProps {
   overrideNonce?: string;
 }
 
-export function CaptureCamera({ role, onCapture, onCancel, overrideNonce }: CaptureCameraProps) {
+export function CaptureCamera({ role, onCapture, onCancel, targetCoords, overrideNonce }: CaptureCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [, setCameraError] = useState<string | null>(null);
 
+  const initialCoords = targetCoords ?? { lat: 12.9347, lng: 77.6139 };
+
   // Default GPS fix (updated immediately when browser Geolocation resolves)
   const [gpsFix, setGpsFix] = useState<{ lat: number; lng: number; accuracy: number }>({
-    lat: 12.9347,
-    lng: 77.6139,
+    lat: initialCoords.lat,
+    lng: initialCoords.lng,
     accuracy: 4.8,
   });
-  const [hasRealGpsFix, setHasRealGpsFix] = useState<boolean>(false);
+  const [hasRealGpsFix, setHasRealGpsFix] = useState<boolean>(Boolean(targetCoords));
   const hasManualPinAdjustRef = useRef<boolean>(false);
 
   // Pin coordinates (fine-tunable within 50m)
   const [pinCoords, setPinCoords] = useState<{ lat: number; lng: number }>({
-    lat: 12.9347,
-    lng: 77.6139,
+    lat: initialCoords.lat,
+    lng: initialCoords.lng,
   });
   const [pinDistanceM, setPinDistanceM] = useState<number>(0);
   const [isAdjustingPin, setIsAdjustingPin] = useState<boolean>(false);
@@ -101,6 +104,12 @@ export function CaptureCamera({ role, onCapture, onCancel, overrideNonce }: Capt
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         const accuracy = pos.coords.accuracy;
+        if (targetCoords) {
+          // When targetCoords is provided (e.g. desk CLAIM_FIX), keep pin locked to issue site unless user explicitly drags it
+          setGpsFix({ lat: targetCoords.lat, lng: targetCoords.lng, accuracy: Math.min(accuracy, 15) });
+          setHasRealGpsFix(true);
+          return;
+        }
         setGpsFix({ lat, lng, accuracy });
         setHasRealGpsFix(true);
         if (!hasManualPinAdjustRef.current) {
@@ -150,6 +159,60 @@ export function CaptureCamera({ role, onCapture, onCancel, overrideNonce }: Capt
     }
   };
 
+  const signAndEmitBlob = async (blob: Blob) => {
+    let nonce = overrideNonce || 'offline';
+    if (!overrideNonce) {
+      try {
+        const nonceRes = await fetch('/api/evidence/nonce', { method: 'POST' });
+        if (nonceRes.ok) {
+          const nonceData = await nonceRes.json();
+          nonce = nonceData.nonce || 'offline';
+        }
+      } catch {
+        nonce = 'offline';
+      }
+    }
+
+    const arrayBuffer = await blob.arrayBuffer();
+    const photoHash = await computePhotoHash(arrayBuffer);
+    const effectiveCoords = targetCoords ?? pinCoords ?? { lat: 12.9347, lng: 77.6139 };
+
+    const payload: EvidencePayload = {
+      accuracy: Math.round(gpsFix.accuracy * 10) / 10,
+      capturedAt: new Date().toISOString(),
+      lat: effectiveCoords.lat,
+      lng: effectiveCoords.lng,
+      nonce,
+      photoHash,
+      role,
+    };
+
+    const { keyPair } = await getOrCreateDeviceKey();
+    const signature = await signEvidencePayload(payload, keyPair.privateKey);
+
+    stopCamera();
+    const previewUrl = URL.createObjectURL(blob);
+    setCapturedPreview(previewUrl);
+
+    onCapture({
+      blob,
+      previewUrl,
+      payload,
+      signature,
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || isProcessing) return;
+    setIsProcessing(true);
+    try {
+      await signAndEmitBlob(file);
+    } catch {
+      setIsProcessing(false);
+    }
+  };
+
   const handleCapture = async () => {
     if (isProcessing) return;
     setIsProcessing(true);
@@ -174,46 +237,7 @@ export function CaptureCamera({ role, onCapture, onCancel, overrideNonce }: Capt
         blob = await sampleRes.blob();
       }
 
-      let nonce = overrideNonce || 'offline';
-      if (!overrideNonce) {
-        try {
-          const nonceRes = await fetch('/api/evidence/nonce', { method: 'POST' });
-          if (nonceRes.ok) {
-            const nonceData = await nonceRes.json();
-            nonce = nonceData.nonce || 'offline';
-          }
-        } catch {
-          nonce = 'offline';
-        }
-      }
-
-      const arrayBuffer = await blob.arrayBuffer();
-      const photoHash = await computePhotoHash(arrayBuffer);
-      const effectiveCoords = pinCoords || { lat: 12.9347, lng: 77.6139 };
-
-      const payload: EvidencePayload = {
-        accuracy: Math.round(gpsFix.accuracy * 10) / 10,
-        capturedAt: new Date().toISOString(),
-        lat: effectiveCoords.lat,
-        lng: effectiveCoords.lng,
-        nonce,
-        photoHash,
-        role,
-      };
-
-      const { keyPair } = await getOrCreateDeviceKey();
-      const signature = await signEvidencePayload(payload, keyPair.privateKey);
-
-      stopCamera();
-      const previewUrl = URL.createObjectURL(blob);
-      setCapturedPreview(previewUrl);
-
-      onCapture({
-        blob,
-        previewUrl,
-        payload,
-        signature,
-      });
+      await signAndEmitBlob(blob);
     } catch {
       setIsProcessing(false);
     }
@@ -308,12 +332,20 @@ export function CaptureCamera({ role, onCapture, onCancel, overrideNonce }: Capt
 
         {/* Bottom Shutter & Controls Dock */}
         <div className="absolute bottom-5 inset-x-6 z-20 flex items-center justify-between pointer-events-none">
-          {/* Gallery Button */}
+          {/* Gallery / Upload Photo Button */}
           <div className="pointer-events-auto">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileUpload}
+              className="hidden"
+              data-testid="camera-file-upload"
+            />
             <button
               type="button"
-              onClick={handleCapture}
-              title="Gallery"
+              onClick={() => fileInputRef.current?.click()}
+              title="Upload Photo"
               className="w-12 h-12 rounded-2xl bg-white/85 backdrop-blur-md border border-[#DDDCD3] flex items-center justify-center text-[#293732] hover:bg-white transition-all cursor-pointer shadow-sm active:translate-y-px"
             >
               <ImageIcon className="w-5 h-5 text-[#527B7A]" />

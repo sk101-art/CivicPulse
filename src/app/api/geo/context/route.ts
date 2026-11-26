@@ -133,6 +133,21 @@ export async function GET(req: Request) {
       };
     });
 
+    const formattedOperationalAreas = formattedWards
+      .filter((w) => w.isOperationalArea)
+      .map((w) => ({
+        id: w.id,
+        code: w.code,
+        name: w.wardLabel,
+        description: w.name,
+        lat: w.lat,
+        lng: w.lng,
+        bbox: w.bbox,
+        hasGeometry: w.hasGeometry,
+        issueCount: w.issueCount,
+      }));
+
+    const municipalWardsOnly = formattedWards.filter((w) => !w.isOperationalArea);
     const formattedCorporations = corporations.map((c) => ({
       id: c.id,
       code: c.code,
@@ -231,7 +246,7 @@ export async function GET(req: Request) {
             departmentCode: 'BTP',
             departmentName: 'Bengaluru Traffic Police',
             deskTitle: 'Traffic Transit & Safety Command',
-            assignedZone: 'ORR & South Traffic Division',
+            assignedZone: 'South & Traffic Division',
             defaultWardCode: 'ALL',
           }
         : {
@@ -278,6 +293,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       role: 'AUTHORITY',
+      userId,
       department: departmentInfo,
       current: currentWithGeom
         ? {
@@ -295,7 +311,7 @@ export async function GET(req: Request) {
           wardLabel: departmentInfo.assignedZone,
           name: 'All Assigned Wards',
           nameKn: null,
-          fullName: `${departmentInfo.assignedZone} (Full Jurisdiction)`,
+          fullName: `${departmentInfo.departmentCode} • All Wards`,
           isPilot: false,
           isOperationalArea: false,
           corporationId: null,
@@ -309,10 +325,11 @@ export async function GET(req: Request) {
           bbox: null,
           hasGeometry: false,
           boundaryGeoJson: null,
-          issueCount: formattedWards.reduce((acc, w) => acc + w.issueCount, 0),
+          issueCount: municipalWardsOnly.reduce((acc, w) => acc + w.issueCount, 0),
         },
-        ...formattedWards,
+        ...municipalWardsOnly,
       ],
+      operationalAreas: formattedOperationalAreas,
       corporations: formattedCorporations,
     });
   } catch (error) {

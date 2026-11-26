@@ -13,7 +13,7 @@ import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
 import { NextResponse } from "next/server";
-import { Role, EvidenceRole, Status } from "@prisma/client";
+import { Role, EvidenceRole, Status, AuditKind, AuditTaskStatus } from "@prisma/client";
 import { assignBlindAuditTasks } from "@/lib/audit/blindAudit";
 import { TEXT_LIMITS } from "@/lib/validation/limits";
 import { z } from "zod";
@@ -97,15 +97,26 @@ export async function POST(
       }
 
       const nextStatus = body.targetStatus;
-      const now = new Date();
+      if (nextStatus === Status.CLAIMED_FIXED) {
+        return apiError(
+          400,
+          "EVIDENCE_REQUIRED",
+          "Use Claim Repair with signed completion photo evidence to mark an issue as CLAIMED_FIXED."
+        );
+      }
+      if (nextStatus === Status.VERIFIED_FIXED) {
+        return apiError(
+          400,
+          "INDEPENDENT_VERIFICATION_REQUIRED",
+          "Issues can only be marked VERIFIED_FIXED through independent citizen verification."
+        );
+      }
+
       const updated = await prisma.$transaction(async (tx) => {
         const updatedIssue = await tx.issue.update({
           where: { id: issue.id },
           data: {
             status: nextStatus,
-            ...(nextStatus === Status.CLAIMED_FIXED ? { claimedFixedAt: now } : {}),
-            ...(nextStatus === Status.VERIFIED_FIXED ? { verifiedFixedAt: now } : {}),
-            ...(nextStatus === Status.DISPUTED ? { disputedAt: now } : {}),
           },
           include: {
             agency: { select: { id: true, code: true, name: true, slaHours: true } },
@@ -116,9 +127,9 @@ export async function POST(
             },
             _count: { select: { reports: true, comments: true } },
             reports: {
-              take: 1,
+              take: 5,
               orderBy: { createdAt: "desc" },
-              select: { id: true, photoUrl: true, photoSha256: true, gpsAccuracyM: true, capturedAt: true, createdAt: true },
+              select: { id: true, role: true, photoUrl: true, photoSha256: true, gpsAccuracyM: true, capturedAt: true, createdAt: true },
             },
           },
         });
@@ -296,6 +307,28 @@ export async function POST(
       const updated = await tx.issue.update({
         where: { id: issue.id },
         data: issueUpdateData,
+        include: {
+          agency: { select: { id: true, code: true, name: true, slaHours: true } },
+          assignments: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            include: { personnel: true },
+          },
+          _count: { select: { reports: true, comments: true } },
+          reports: {
+            take: 5,
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              role: true,
+              photoUrl: true,
+              photoSha256: true,
+              gpsAccuracyM: true,
+              capturedAt: true,
+              createdAt: true,
+            },
+          },
+        },
       });
 
       const log = await tx.actionLog.create({
@@ -306,10 +339,40 @@ export async function POST(
     });
 
     if (body.action === "CLAIM_FIX") {
-      // Assign 3 random eligible citizens to blind audit tasks
-      await assignBlindAuditTasks(issue.id).catch((err) =>
-        console.error("Failed to assign blind audit tasks:", err)
-      );
+      // Assign 3 random eligible citizens to blind audit tasks, and ALWAYS ensure
+      // one open public CLAIM_CHECK task exists so any nearby eligible citizen can verify.
+      try {
+        const assignedTasks = await assignBlindAuditTasks(issue.id);
+        const hasPublicTask = assignedTasks.some((t) => t.assigneeId === null);
+        if (!hasPublicTask) {
+          const existingPublic = await prisma.auditTask.findFirst({
+            where: {
+              issueId: issue.id,
+              kind: AuditKind.CLAIM_CHECK,
+              status: AuditTaskStatus.OPEN,
+              assigneeId: null,
+              dueAt: { gt: new Date() },
+            },
+            select: { id: true },
+          });
+          if (!existingPublic) {
+            await prisma.auditTask.create({
+              data: {
+                issueId: issue.id,
+                assigneeId: null,
+                kind: AuditKind.CLAIM_CHECK,
+                dueAt: new Date(Date.now() + 48 * 3600 * 1000),
+                challengeBearingDeg: Math.floor(Math.random() * 360),
+                challengeNonce: crypto.randomUUID(),
+                status: AuditTaskStatus.OPEN,
+                isSeed: issue.isSeed,
+              },
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to assign blind audit tasks:", err);
+      }
     }
 
     if (claimReportId) {

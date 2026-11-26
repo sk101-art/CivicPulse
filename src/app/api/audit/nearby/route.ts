@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { AuditTaskStatus, EvidenceRole, Status } from '@prisma/client';
+import { AuditKind, AuditTaskStatus, EvidenceRole, Status } from '@prisma/client';
+import crypto from 'crypto';
 import { withAuth } from '@/lib/api/auth';
 import { apiError } from '@/lib/api/errors';
 import { prisma } from '@/lib/db/prisma';
@@ -153,6 +154,43 @@ export async function GET(req: Request) {
     }
 
     const now = new Date();
+
+    // Ensure every CLAIMED_FIXED issue with actual CLAIM_FIX evidence has an open public AuditTask
+    // so eligible citizens can always discover and verify it in Nearby or Explore by Ward.
+    const unindexedClaimed = await prisma.issue.findMany({
+      where: {
+        status: Status.CLAIMED_FIXED,
+        reports: { some: { role: EvidenceRole.CLAIM_FIX } },
+        ...(targetWardIds ? { wardId: { in: targetWardIds } } : {}),
+        ...(postgisNearbyIssueIds ? { id: { in: postgisNearbyIssueIds } } : {}),
+        auditTasks: {
+          none: {
+            kind: AuditKind.CLAIM_CHECK,
+            status: AuditTaskStatus.OPEN,
+            assigneeId: null,
+            dueAt: { gt: now },
+          },
+        },
+      },
+      select: { id: true, isSeed: true },
+      take: 25,
+    });
+
+    if (unindexedClaimed.length > 0) {
+      await prisma.auditTask.createMany({
+        data: unindexedClaimed.map((iss) => ({
+          issueId: iss.id,
+          assigneeId: null,
+          kind: AuditKind.CLAIM_CHECK,
+          dueAt: new Date(now.getTime() + 48 * 3600 * 1000),
+          challengeBearingDeg: Math.floor(Math.random() * 360),
+          challengeNonce: crypto.randomUUID(),
+          status: AuditTaskStatus.OPEN,
+          isSeed: iss.isSeed,
+        })),
+      });
+    }
+
     const openTasks = await prisma.auditTask.findMany({
       where: {
         status: AuditTaskStatus.OPEN,
@@ -160,6 +198,7 @@ export async function GET(req: Request) {
         OR: [{ assigneeId: auth.user.id }, { assigneeId: null }],
         issue: {
           status: Status.CLAIMED_FIXED,
+          reports: { some: { role: EvidenceRole.CLAIM_FIX } },
           ...(targetWardIds ? { wardId: { in: targetWardIds } } : {}),
           ...(postgisNearbyIssueIds ? { id: { in: postgisNearbyIssueIds } } : {}),
         },
@@ -174,12 +213,15 @@ export async function GET(req: Request) {
             lng: true,
             address: true,
             wardId: true,
+            contractorName: true,
+            tenderId: true,
             repairClaimedAt: true,
             createdAt: true,
+            agency: { select: { name: true, code: true } },
             reports: {
               where: { role: { in: [EvidenceRole.REPORT, EvidenceRole.CLAIM_FIX] } },
               orderBy: { createdAt: 'desc' },
-              select: { userId: true, role: true, photoUrl: true, capturedAt: true },
+              select: { userId: true, role: true, photoUrl: true, capturedAt: true, note: true, createdAt: true },
             },
           },
         },
@@ -264,7 +306,13 @@ export async function GET(req: Request) {
         challengeBearingDeg: t.challengeBearingDeg,
         challengeNonce: t.challengeNonce,
         originalPhotoUrl: originalReport?.photoUrl ?? null,
+        originalNote: originalReport?.note ?? null,
+        originalReportedAt: (originalReport?.capturedAt ?? iss.createdAt).toISOString(),
         repairPhotoUrl: claimFixReport?.photoUrl ?? null,
+        repairNote: claimFixReport?.note ?? null,
+        agencyName: iss.agency?.name ?? null,
+        contractorName: iss.contractorName ?? null,
+        tenderId: iss.tenderId ?? null,
         ward: ward
           ? {
               id: ward.id,

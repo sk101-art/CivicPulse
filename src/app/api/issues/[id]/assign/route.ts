@@ -46,9 +46,13 @@ export async function POST(
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      // Replace any prior unstarted PENDING assignments on this issue
-      await tx.assignment.deleteMany({
-        where: { issueId: id, status: AssignmentStatus.PENDING },
+      // Preserve prior assignments by marking open PENDING/IN_PROGRESS ones as COMPLETED
+      await tx.assignment.updateMany({
+        where: {
+          issueId: id,
+          status: { in: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS] },
+        },
+        data: { status: AssignmentStatus.COMPLETED },
       });
 
       const assignment = await tx.assignment.create({
@@ -78,9 +82,9 @@ export async function POST(
           },
           _count: { select: { reports: true, comments: true } },
           reports: {
-            take: 1,
+            take: 5,
             orderBy: { createdAt: "desc" },
-            select: { id: true, photoUrl: true, createdAt: true },
+            select: { id: true, role: true, photoUrl: true, photoSha256: true, gpsAccuracyM: true, capturedAt: true, createdAt: true },
           },
         },
       });

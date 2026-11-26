@@ -20,6 +20,12 @@ import {
 import type { HotspotCluster } from '@/lib/intelligence/wardAnalytics';
 import 'leaflet/dist/leaflet.css';
 import { CartoTileLayer, CartoConfigNotice } from '@/components/map/CartoTileLayer';
+import {
+  buildStatusPinHtml,
+  getMapStatusMeta,
+  MAP_STATUS_FILTER_OPTIONS,
+  matchesStatusFilter,
+} from '@/lib/map/statusPresentation';
 
 // Dynamic Leaflet components
 const MapContainer = dynamic(
@@ -93,6 +99,7 @@ export function GeoIntelligenceMap({
   selectedCategory,
 }: Props) {
   const [viewMode, setViewMode] = useState<MapViewMode>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [selectedHotspot, setSelectedHotspot] = useState<HotspotCluster | null>(null);
   const [mapInstance, setMapInstance] = useState<LeafletType.Map | null>(null);
 
@@ -101,11 +108,16 @@ export function GeoIntelligenceMap({
     return [ward.lat || 12.9716, ward.lng || 77.5946];
   }, [ward.lat, ward.lng]);
 
-  // Filter issues according to ViewMode and SelectedCategory
+  // Filter issues according to ViewMode, StatusFilter, and SelectedCategory
   const filteredIssues = useMemo(() => {
     return issuesGeo.filter((i) => {
       // Category filter check
       if (selectedCategory !== 'ALL' && i.category.toUpperCase() !== selectedCategory.toUpperCase()) {
+        return false;
+      }
+
+      // Status filter check
+      if (!matchesStatusFilter(i.status, statusFilter)) {
         return false;
       }
 
@@ -123,7 +135,7 @@ export function GeoIntelligenceMap({
           return true;
       }
     });
-  }, [issuesGeo, viewMode, selectedCategory]);
+  }, [issuesGeo, viewMode, statusFilter, selectedCategory]);
 
   // Filter hotspots according to ViewMode
   const filteredHotspots = useMemo(() => {
@@ -143,24 +155,16 @@ export function GeoIntelligenceMap({
     });
   }, [hotspots, viewMode]);
 
-  // Custom marker pin generator
-  const getMarkerIcon = useCallback((category: string, isCritical: boolean) => {
+  // Custom marker pin generator (status-coded Civic Atlas color + shape)
+  const getMarkerIcon = useCallback((status: string) => {
     if (typeof window === 'undefined') return undefined;
     const leaflet = require('leaflet');
-    const color = isCritical ? '#B76F60' : '#527B7A';
 
     return leaflet.divIcon({
       className: 'geo-marker-pin',
-      html: `
-        <div style="width: 24px; height: 32px; transform: translate(-12px, -32px);" class="hover:scale-125 transition-transform cursor-pointer">
-          <svg width="24" height="32" viewBox="0 0 24 32" fill="none">
-            <path d="M12 30 C12 30 22 19 22 11.5 C22 6 17.5 1.5 12 1.5 C6.5 1.5 2 6 2 11.5 C2 19 12 30 12 30 Z" fill="${color}" stroke="#FFFFFF" stroke-width="2"/>
-            <circle cx="12" cy="11.5" r="4.5" fill="#FFFFFF"/>
-          </svg>
-        </div>
-      `,
-      iconSize: [24, 32],
-      iconAnchor: [12, 32],
+      html: buildStatusPinHtml(status, false),
+      iconSize: [32, 40],
+      iconAnchor: [16, 40],
     });
   }, []);
 
@@ -369,8 +373,8 @@ export function GeoIntelligenceMap({
 
           {/* Individual Issue Marker Pins */}
           {filteredIssues.map((issue) => {
-            const isCrit = issue.band === 'CRITICAL' || issue.priority >= 0.7;
-            const icon = getMarkerIcon(issue.category, isCrit);
+            const icon = getMarkerIcon(issue.status);
+            const statusMeta = getMapStatusMeta(issue.status);
 
             return (
               <Marker
@@ -379,9 +383,14 @@ export function GeoIntelligenceMap({
                 icon={icon}
               >
                 <Popup>
-                  <div className="p-3 space-y-2 min-w-[200px]">
-                    <div className="text-[10px] font-mono uppercase tracking-wider font-bold text-[#527B7A]">
-                      {issue.category}
+                  <div className="p-3 space-y-2 min-w-[210px]">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-mono uppercase tracking-wider font-bold text-[#527B7A]">
+                        {issue.category.replace(/_/g, ' ')}
+                      </span>
+                      <span className="font-mono text-[10px] text-[#65736B]">
+                        {issue.band}
+                      </span>
                     </div>
                     <h5 className="font-display font-semibold text-xs text-[#293732]">
                       {issue.title}
@@ -390,7 +399,16 @@ export function GeoIntelligenceMap({
                       {issue.address || 'Ward location'}
                     </p>
                     <div className="flex items-center justify-between text-xs pt-1 border-t border-[#DDDCD3]">
-                      <span className="font-medium text-[#293732]">{issue.status}</span>
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+                        style={{
+                          backgroundColor: statusMeta.badgeBg,
+                          color: statusMeta.badgeText,
+                          borderColor: statusMeta.badgeBorder,
+                        }}
+                      >
+                        {statusMeta.label}
+                      </span>
                       <Link
                         href={`/issue/${issue.id}`}
                         className="text-[#527B7A] hover:underline font-semibold flex items-center gap-0.5"
@@ -404,6 +422,31 @@ export function GeoIntelligenceMap({
             );
           })}
         </MapContainer>
+      </div>
+
+      {/* Status Legend & Filter Bar */}
+      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+        {MAP_STATUS_FILTER_OPTIONS.map((st) => {
+          const active = statusFilter === st.id;
+          return (
+            <button
+              key={st.id}
+              type="button"
+              onClick={() => setStatusFilter(st.id)}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer ${
+                active
+                  ? 'bg-[#293732] text-white border-[#293732]'
+                  : 'bg-[#FAF9F5] text-[#65736B] border-[#DDDCD3] hover:text-[#293732]'
+              }`}
+            >
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: active ? '#FFFFFF' : st.color }}
+              />
+              <span>{st.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

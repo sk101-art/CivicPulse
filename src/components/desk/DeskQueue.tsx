@@ -26,6 +26,25 @@ const BAND_PRIORITY: Record<Band, number> = {
   LOW: 1,
 };
 
+const QUEUE_GRID_COLUMNS =
+  'grid grid-cols-[150px_165px_minmax(260px,1.5fr)_190px_180px_minmax(300px,1.3fr)_48px] items-center';
+
+const STATUS_STYLES: Record<string, string> = {
+  OPEN: 'bg-[#EFF3F6] text-[#718F9E] border-[#D4E0E7]',
+  ASSIGNED: 'bg-[#F3F4F1] text-[#65736B] border-[#DDDCD3]',
+  IN_PROGRESS: 'bg-[#FBF5EB] text-[#B68B63] border-[#F2E2C9]',
+  CLAIMED_FIXED: 'bg-[#EAF2F0] text-[#527B7A] border-[#D0E2DF]',
+  VERIFIED_FIXED: 'bg-[#EBF3ED] text-[#537C60] border-[#CDE3D2]',
+  DISPUTED: 'bg-[#FBF1EF] text-[#B76F60] border-[#EAC8C1]',
+};
+
+const BAND_STYLES: Record<string, string> = {
+  CRITICAL: 'bg-[#FBF1EF] text-[#B76F60] border-[#EAC8C1]',
+  HIGH: 'bg-[#FDF6ED] text-[#B68B63] border-[#F4E3CB]',
+  MEDIUM: 'bg-[#F9FAF8] text-[#65736B] border-[#DDDCD3]',
+  LOW: 'bg-[#FAF9F5] text-[#929B92] border-[#E5E9E3]',
+};
+
 function formatIssueId(id: string): string {
   if (id.startsWith('CP-')) return id;
   const digits = id.replace(/\D/g, '');
@@ -331,101 +350,123 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
 
       {/* Swiss-Grid Operations Ledger Table */}
       <div className="bg-[#FFFFFF] rounded-2xl border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.04)] overflow-hidden">
-        <div className="overflow-x-auto w-full">
-          <table className="w-full min-w-[980px] text-left text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-[#DDDCD3] bg-[#FAF9F5] text-[#65736B] font-semibold select-none">
-                <th className="py-3 px-4 min-w-[85px] w-[105px] whitespace-nowrap">Issue ID</th>
-                <th className="py-3 px-4 min-w-[120px] w-[130px] whitespace-nowrap">Category</th>
-                <th className="py-3 px-4 min-w-[250px]">Location</th>
-                <th className="py-3 px-4 min-w-[125px] w-[140px] whitespace-nowrap">Priority Index</th>
-                <th className="py-3 px-4 min-w-[110px] w-[140px] whitespace-nowrap">Status</th>
-                <th className="py-3 px-4 min-w-[260px] w-[280px] whitespace-nowrap">SLA Clock</th>
-                <th className="py-3 px-4 w-[56px] text-right whitespace-nowrap">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#DDDCD3]/60 font-medium text-[#293732]">
+        {/* Desktop & Tablet Aligned Grid */}
+        <div className="hidden md:block overflow-x-auto w-full">
+          <div className="min-w-[1293px] w-full text-left text-xs">
+            {/* Table Header */}
+            <div
+              role="row"
+              className={`${QUEUE_GRID_COLUMNS} border-b border-[#DDDCD3] bg-[#FAF9F5] text-[#65736B] font-semibold select-none`}
+            >
+              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Issue ID</div>
+              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Category</div>
+              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Location</div>
+              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Priority Index</div>
+              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Status</div>
+              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">SLA Clock</div>
+              <div className="py-3 px-1.5 text-center whitespace-nowrap">Action</div>
+            </div>
+
+            {/* Table Rows */}
+            <div className="divide-y divide-[#DDDCD3]/60 font-medium text-[#293732]">
               {displayIssues.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="py-12 text-center text-[#65736B] bg-[#FAF9F5]/40">
-                    <div className="flex flex-col items-center justify-center space-y-2">
-                      <Inbox className="w-8 h-8 text-[#929B92]" />
-                      <div className="font-semibold text-[#293732]">
-                        No issues found in {currentWard?.wardLabel || 'selected ward'}
-                      </div>
-                      <p className="text-xs text-[#65736B] max-w-sm">
-                        There are no active municipal issues matching the current filters in this geographical scope.
-                      </p>
+                <div className="py-12 text-center text-[#65736B] bg-[#FAF9F5]/40">
+                  <div className="flex flex-col items-center justify-center space-y-2">
+                    <Inbox className="w-8 h-8 text-[#929B92]" />
+                    <div className="font-semibold text-[#293732]">
+                      No issues found in {currentWard?.wardLabel || 'selected ward'}
                     </div>
-                  </td>
-                </tr>
+                    <p className="text-xs text-[#65736B] max-w-sm">
+                      There are no active municipal issues matching the current filters in this geographical scope.
+                    </p>
+                  </div>
+                </div>
               ) : (
                 displayIssues.map((issue) => {
-                  const statusStyles: Record<string, string> = {
-                    OPEN: "bg-[#EFF3F6] text-[#718F9E] border-[#D4E0E7]",
-                    ASSIGNED: "bg-[#F3F4F1] text-[#65736B] border-[#DDDCD3]",
-                    IN_PROGRESS: "bg-[#FBF5EB] text-[#B68B63] border-[#F2E2C9]",
-                    CLAIMED_FIXED: "bg-[#EAF2F0] text-[#527B7A] border-[#D0E2DF]",
-                    VERIFIED_FIXED: "bg-[#EBF3ED] text-[#537C60] border-[#CDE3D2]",
-                    DISPUTED: "bg-[#FBF1EF] text-[#B76F60] border-[#EAC8C1]",
-                  };
-
                   const currentBand = issue.bandOverride || issue.band;
-                  const bandStyles: Record<string, string> = {
-                    CRITICAL: "bg-[#FBF1EF] text-[#B76F60] border-[#EAC8C1]",
-                    HIGH: "bg-[#FDF6ED] text-[#B68B63] border-[#F4E3CB]",
-                    MEDIUM: "bg-[#F9FAF8] text-[#65736B] border-[#DDDCD3]",
-                    LOW: "bg-[#FAF9F5] text-[#929B92] border-[#E5E9E3]",
-                  };
-
                   const displayIssueId = formatIssueId(issue.id);
                   const locationText = formatLocationLabel(issue.address, issue.lat, issue.lng);
                   const slaInfo = getSlaStatusInfo(issue.slaDueAt, issue.slaBreached);
+                  const rw = issue.bestRepairWindow as any;
+                  const rwResult = rw
+                    ? rw.bestWindow
+                      ? rw
+                      : {
+                          bestWindow: rw,
+                          basis: rw.basis || 'estimated',
+                          sampleCount: rw.sampleCount || 0,
+                          windows: [rw],
+                          allSlots: [rw],
+                        }
+                    : null;
 
                   return (
-                    <tr
+                    <div
                       key={issue.id}
+                      role="row"
                       onClick={() => setSelectedIssue(issue)}
-                      className="hover:bg-[#FAF9F5] transition-colors cursor-pointer group"
+                      className={`${QUEUE_GRID_COLUMNS} min-h-[84px] hover:bg-[#FAF9F5] transition-colors cursor-pointer group`}
                     >
-                      <td className="py-3.5 px-4 align-middle font-mono font-bold text-[#355858]">
+                      {/* 1. Issue ID */}
+                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0 font-mono font-bold text-[#355858]">
                         <span
                           title={issue.id}
-                          className={displayIssueId.length > 12 ? 'break-words leading-tight' : 'whitespace-nowrap'}
+                          className={displayIssueId.length > 16 ? 'break-words leading-tight' : 'whitespace-nowrap'}
                         >
                           {displayIssueId}
                         </span>
-                      </td>
-                      <td className="py-3.5 px-4 align-middle">
-                        <span className="font-medium text-[#293732] whitespace-nowrap">
+                      </div>
+
+                      {/* 2. Category */}
+                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
+                        <span
+                          title={(issue.category || 'OTHER').replace(/_/g, ' ')}
+                          className="font-medium text-[#293732] truncate"
+                        >
                           {(issue.category || 'OTHER').replace(/_/g, ' ')}
                         </span>
-                      </td>
-                      <td className="py-3.5 px-4 align-middle">
+                      </div>
+
+                      {/* 3. Location */}
+                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
                         <div
                           title={issue.address || locationText}
-                          className="line-clamp-2 max-w-[300px] font-sans text-[#293732] leading-snug"
+                          className="line-clamp-2 font-sans text-[#293732] leading-snug break-words"
                         >
                           {locationText}
                         </div>
-                      </td>
-                      <td className="py-3.5 px-4 align-middle">
-                        <div className="flex items-center gap-1.5 whitespace-nowrap">
-                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap ${bandStyles[currentBand] || bandStyles.LOW}`}>
+                      </div>
+
+                      {/* 4. Priority Index */}
+                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
+                        <div className="inline-flex items-center gap-2 whitespace-nowrap">
+                          <span
+                            className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap ${
+                              BAND_STYLES[currentBand] || BAND_STYLES.LOW
+                            }`}
+                          >
                             {currentBand}
                           </span>
-                          <span className="font-mono text-xs text-[#65736B]">
+                          <span className="font-mono text-xs font-medium text-[#65736B] tabular-nums">
                             {typeof issue.priority === 'number' ? issue.priority.toFixed(1) : issue.priority}
                           </span>
                         </div>
-                      </td>
-                      <td className="py-3.5 px-4 align-middle">
-                        <span className={`inline-block whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${statusStyles[issue.status] || statusStyles.OPEN}`}>
+                      </div>
+
+                      {/* 5. Status */}
+                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
+                        <span
+                          className={`inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                            STATUS_STYLES[issue.status] || STATUS_STYLES.OPEN
+                          }`}
+                        >
                           {issue.status.replace(/_/g, ' ')}
                         </span>
-                      </td>
-                      <td className="py-3.5 px-4 align-middle">
-                        <div className="space-y-1.5 max-w-[260px]">
+                      </div>
+
+                      {/* 6. SLA Clock */}
+                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
+                        <div className="w-full flex flex-col justify-center gap-1.5 min-w-0">
                           <div className="flex items-center gap-1.5 text-xs whitespace-nowrap">
                             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${slaInfo.dotClass}`} />
                             <span className={`font-semibold ${slaInfo.colorClass}`}>
@@ -435,28 +476,22 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                               · {slaInfo.remainingText}
                             </span>
                           </div>
-                          {issue.bestRepairWindow && (() => {
-                            const rw = issue.bestRepairWindow as any;
-                            const rwResult = rw.bestWindow
-                              ? rw
-                              : {
-                                  bestWindow: rw,
-                                  basis: rw.basis || 'estimated',
-                                  sampleCount: rw.sampleCount || 0,
-                                  windows: [rw],
-                                  allSlots: [rw],
-                                };
-                            return (
-                              <RepairWindowBadge
-                                issueId={issue.id}
-                                variant="card"
-                                initialResult={rwResult}
-                              />
-                            );
-                          })()}
+                          {rwResult ? (
+                            <RepairWindowBadge
+                              issueId={issue.id}
+                              variant="card"
+                              initialResult={rwResult}
+                            />
+                          ) : (
+                            <div className="w-full rounded-lg bg-[#FAF9F5] border border-[#E5E9E3] px-2.5 py-1.5 text-[11px] leading-tight text-[#65736B] font-sans">
+                              No repair window available
+                            </div>
+                          )}
                         </div>
-                      </td>
-                      <td className="py-3.5 px-4 align-middle text-right">
+                      </div>
+
+                      {/* 7. Action */}
+                      <div className="py-2.5 px-1.5 flex items-center justify-center">
                         <button
                           type="button"
                           onClick={(e) => {
@@ -464,17 +499,136 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                             setSelectedIssue(issue);
                           }}
                           aria-label={`Inspect ${displayIssueId}`}
-                          className="p-1.5 rounded-lg text-[#929B92] group-hover:text-[#527B7A] group-hover:bg-[#E5E9E3] transition-colors cursor-pointer"
+                          className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#929B92] group-hover:text-[#527B7A] group-hover:bg-[#E5E9E3] transition-colors cursor-pointer"
                         >
                           <ChevronRight className="w-4 h-4" />
                         </button>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   );
                 })
               )}
-            </tbody>
-          </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Compact Issue Cards */}
+        <div className="md:hidden divide-y divide-[#DDDCD3]/60 text-xs font-medium text-[#293732]">
+          {displayIssues.length === 0 ? (
+            <div className="py-12 px-4 text-center text-[#65736B] bg-[#FAF9F5]/40">
+              <div className="flex flex-col items-center justify-center space-y-2">
+                <Inbox className="w-8 h-8 text-[#929B92]" />
+                <div className="font-semibold text-[#293732]">
+                  No issues found in {currentWard?.wardLabel || 'selected ward'}
+                </div>
+                <p className="text-xs text-[#65736B] max-w-sm">
+                  There are no active municipal issues matching the current filters in this geographical scope.
+                </p>
+              </div>
+            </div>
+          ) : (
+            displayIssues.map((issue) => {
+              const currentBand = issue.bandOverride || issue.band;
+              const displayIssueId = formatIssueId(issue.id);
+              const locationText = formatLocationLabel(issue.address, issue.lat, issue.lng);
+              const slaInfo = getSlaStatusInfo(issue.slaDueAt, issue.slaBreached);
+              const rw = issue.bestRepairWindow as any;
+              const rwResult = rw
+                ? rw.bestWindow
+                  ? rw
+                  : {
+                      bestWindow: rw,
+                      basis: rw.basis || 'estimated',
+                      sampleCount: rw.sampleCount || 0,
+                      windows: [rw],
+                      allSlots: [rw],
+                    }
+                : null;
+
+              return (
+                <div
+                  key={issue.id}
+                  onClick={() => setSelectedIssue(issue)}
+                  className="p-4 space-y-3 hover:bg-[#FAF9F5] transition-colors cursor-pointer"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-bold text-[#355858]">
+                          {displayIssueId}
+                        </span>
+                        <span className="text-[#929B92]">·</span>
+                        <span className="font-medium text-[#293732] truncate">
+                          {(issue.category || 'OTHER').replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                      <div
+                        title={issue.address || locationText}
+                        className="text-xs text-[#65736B] line-clamp-2 leading-snug"
+                      >
+                        {locationText}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedIssue(issue);
+                      }}
+                      aria-label={`Inspect ${displayIssueId}`}
+                      className="w-8 h-8 shrink-0 inline-flex items-center justify-center rounded-lg text-[#929B92] bg-[#FAF9F5] border border-[#DDDCD3] hover:text-[#527B7A]"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="inline-flex items-center gap-2 whitespace-nowrap">
+                      <span
+                        className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-bold border ${
+                          BAND_STYLES[currentBand] || BAND_STYLES.LOW
+                        }`}
+                      >
+                        {currentBand}
+                      </span>
+                      <span className="font-mono text-xs font-medium text-[#65736B] tabular-nums">
+                        {typeof issue.priority === 'number' ? issue.priority.toFixed(1) : issue.priority}
+                      </span>
+                    </div>
+
+                    <span
+                      className={`inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                        STATUS_STYLES[issue.status] || STATUS_STYLES.OPEN
+                      }`}
+                    >
+                      {issue.status.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1 border-t border-[#DDDCD3]/50">
+                    <div className="flex items-center gap-1.5 text-xs whitespace-nowrap">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${slaInfo.dotClass}`} />
+                      <span className={`font-semibold ${slaInfo.colorClass}`}>{slaInfo.label}</span>
+                      <span className="font-mono text-[11px] text-[#65736B]">
+                        · {slaInfo.remainingText}
+                      </span>
+                    </div>
+                    {rwResult ? (
+                      <RepairWindowBadge
+                        issueId={issue.id}
+                        variant="card"
+                        initialResult={rwResult}
+                      />
+                    ) : (
+                      <div className="w-full rounded-lg bg-[#FAF9F5] border border-[#E5E9E3] px-2.5 py-1.5 text-[11px] leading-tight text-[#65736B] font-sans">
+                        No repair window available
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
       </div>
 

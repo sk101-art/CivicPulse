@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useTransition } from 'react';
 import { usePathname } from 'next/navigation';
+import { subscribeIssueUpdates } from '@/lib/map/statusPresentation';
 
 export interface CorporationItem {
   id: string;
@@ -67,6 +68,10 @@ export interface WardIssueItem {
   reportCount: number;
   commentCount: number;
   createdAt: string;
+  repairClaimedAt?: string | null;
+  agencyName?: string | null;
+  contractorName?: string | null;
+  assignedPersonnel?: string | null;
 }
 
 export interface WardStats {
@@ -115,6 +120,11 @@ export interface OperationalAreaInfo {
   id: string;
   code: string;
   name: string;
+  description?: string;
+  issueCount?: number;
+  lat?: number;
+  lng?: number;
+  bbox?: [[number, number], [number, number]] | null;
 }
 
 interface GeoContextType {
@@ -122,6 +132,8 @@ interface GeoContextType {
   currentWard: WardContextItem | null;
   availableWards: WardContextItem[];
   corporations: CorporationItem[];
+  availableOperationalAreas: OperationalAreaInfo[];
+  selectedOperationalAreaId: string | null;
   department: DepartmentInfo | null;
   isLoading: boolean;
   error: string | null;
@@ -129,6 +141,8 @@ interface GeoContextType {
   selectedCategory: string;
   setSelectedCategory: (category: string) => void;
   selectWard: (ward: WardContextItem) => void;
+  selectOperationalArea: (area: OperationalAreaInfo | null) => void;
+  clearOperationalArea: () => void;
   selectionMode: GeoSelectionMode;
   locationStatus: GeoLocationStatus;
   locationMessage: string | null;
@@ -145,6 +159,7 @@ const GeoContext = createContext<GeoContextType | undefined>(undefined);
 const LOCAL_STORAGE_KEY = 'civicpulse_selected_geo_id';
 const LOCAL_STORAGE_WARD_CODE = 'civicpulse_selected_ward_code';
 const LOCAL_STORAGE_MODE = 'civicpulse_geo_mode';
+const LOCAL_STORAGE_OP_AREA = 'civicpulse_op_area';
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -173,6 +188,7 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
   const [currentWard, setCurrentWard] = useState<WardContextItem | null>(null);
   const [availableWards, setAvailableWards] = useState<WardContextItem[]>([]);
   const [corporations, setCorporations] = useState<CorporationItem[]>([]);
+  const [availableOperationalAreas, setAvailableOperationalAreas] = useState<OperationalAreaInfo[]>([]);
   const [department, setDepartment] = useState<DepartmentInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -186,6 +202,7 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
   selectionModeRef.current = selectionMode;
   const roleRef = React.useRef<'CITIZEN' | 'AUTHORITY' | null>(null);
   roleRef.current = role;
+  const userIdRef = React.useRef<string | null>(null);
   const lastResolvedCoordsRef = React.useRef<{ lat: number; lng: number; at: number } | null>(null);
   const autoAttemptedRef = React.useRef(false);
 
@@ -226,9 +243,12 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         if (cancelled) return;
 
         setRole(data.role);
+        userIdRef.current = data.userId || null;
         const wards: WardContextItem[] = data.available || [];
+        const opAreas: OperationalAreaInfo[] = data.operationalAreas || [];
         setAvailableWards(wards);
         setCorporations(data.corporations || []);
+        setAvailableOperationalAreas(opAreas);
         if (data.department) {
           setDepartment(data.department);
         }
@@ -270,8 +290,24 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         selectionModeRef.current = initialMode;
         const nextWard = resolvedWard || data.current || wards[0] || null;
         setCurrentWard(nextWard);
-        if (nextWard?.isPilot) {
-          setOperationalArea({ id: nextWard.id, code: nextWard.code, name: nextWard.name });
+
+        // Restore ONLY an explicit, still-valid operational area saved for this authenticated user; never default to first/ORR
+        if (typeof window !== 'undefined' && data.role === 'AUTHORITY') {
+          const userKey = data.userId ? `_${data.userId}` : '';
+          const opKey = `${LOCAL_STORAGE_OP_AREA}_${data.role}${userKey}`;
+          const savedOpId = localStorage.getItem(opKey);
+          if (savedOpId) {
+            const matchedOp = opAreas.find((a) => a.id === savedOpId || a.code === savedOpId) || null;
+            if (matchedOp) {
+              setOperationalArea(matchedOp);
+            } else {
+              // Saved selection is no longer authorized or available -> clear it
+              localStorage.removeItem(opKey);
+              setOperationalArea(null);
+            }
+          } else {
+            setOperationalArea(null);
+          }
         } else {
           setOperationalArea(null);
         }
@@ -379,11 +415,6 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
       setLocationMessage(null);
 
       setCurrentWard(ward);
-      if (ward.isPilot) {
-        setOperationalArea({ id: ward.id, code: ward.code, name: ward.name });
-      } else {
-        setOperationalArea(null);
-      }
       setSelectedCategory('ALL');
 
       persistGeoPreferences(ward, 'MANUAL');
@@ -586,6 +617,50 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
     };
   }, [followLocation, selectionMode, resolveCoordinatesToWard]);
 
+  const selectOperationalArea = useCallback((area: OperationalAreaInfo | null) => {
+    setOperationalArea(area);
+    if (typeof window !== 'undefined') {
+      try {
+        const effectiveRole = roleRef.current || 'AUTHORITY';
+        const userKey = userIdRef.current ? `_${userIdRef.current}` : '';
+        const opKey = `${LOCAL_STORAGE_OP_AREA}_${effectiveRole}${userKey}`;
+        if (area) {
+          localStorage.setItem(opKey, area.id);
+        } else {
+          localStorage.removeItem(opKey);
+        }
+      } catch {
+        // ignore storage errors
+      }
+    }
+  }, []);
+
+  const clearOperationalArea = useCallback(() => {
+    selectOperationalArea(null);
+  }, [selectOperationalArea]);
+
+  // Automatically refresh ward map/issue data whenever an issue status changes in this tab or another tab
+  useEffect(() => {
+    const handleSync = () => {
+      if (currentWard) {
+        void fetchWardData(currentWard, selectedCategory);
+      }
+    };
+    const unsubscribe = subscribeIssueUpdates(handleSync);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    };
+    window.addEventListener('focus', handleSync);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [currentWard, selectedCategory, fetchWardData]);
+
   return (
     <GeoContext.Provider
       value={{
@@ -593,6 +668,8 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         currentWard,
         availableWards,
         corporations,
+        availableOperationalAreas,
+        selectedOperationalAreaId: operationalArea?.id ?? null,
         department,
         isLoading,
         error,
@@ -600,6 +677,8 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         selectedCategory,
         setSelectedCategory,
         selectWard,
+        selectOperationalArea,
+        clearOperationalArea,
         selectionMode,
         locationStatus,
         locationMessage,

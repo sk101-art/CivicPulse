@@ -24,6 +24,7 @@ import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/Capt
 import { useOptionalGeoContext } from '@/context/GeoContext';
 import { formatDateIST, formatDateTimeIST } from '@/lib/time/ist';
 import { haversineDistanceM } from '@/lib/geo/distance';
+import { notifyIssueUpdated } from '@/lib/map/statusPresentation';
 
 interface NearbyAuditTask {
   id: string;
@@ -41,7 +42,13 @@ interface NearbyAuditTask {
   challengeBearingDeg: number;
   challengeNonce: string;
   originalPhotoUrl: string | null;
+  originalNote?: string | null;
+  originalReportedAt?: string | null;
   repairPhotoUrl: string | null;
+  repairNote?: string | null;
+  agencyName?: string | null;
+  contractorName?: string | null;
+  tenderId?: string | null;
   ward: {
     id: string;
     code: string;
@@ -278,6 +285,7 @@ export default function CitizenAuditPage() {
       });
 
       setTasks((prev) => prev.filter((t) => t.id !== activeTask.id));
+      notifyIssueUpdated(activeTask.issueId);
       await fetchNearbyTasks();
 
       setTimeout(() => {
@@ -684,7 +692,14 @@ export default function CitizenAuditPage() {
             {/* Side-by-side Evidence Comparison */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <div className="text-xs font-semibold text-[#293732]">Original Reported Photograph</div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-[#293732]">Original Defect Photograph</span>
+                  {activeTask.originalReportedAt && (
+                    <span className="font-mono text-[11px] text-[#65736B]">
+                      {formatDateIST(activeTask.originalReportedAt)}
+                    </span>
+                  )}
+                </div>
                 <div className="aspect-[4/3] rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] flex items-center justify-center">
                   {activeTask.originalPhotoUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -697,11 +712,21 @@ export default function CitizenAuditPage() {
                     <span className="text-xs text-[#65736B]">No original photograph available</span>
                   )}
                 </div>
+                {activeTask.originalNote && (
+                  <p className="text-xs text-[#65736B] bg-[#FAF9F5] p-2.5 rounded-lg border border-[#E9ECE6]">
+                    {activeTask.originalNote}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <div className="text-xs font-semibold text-[#293732]">
-                  Municipality Repair-Completed Photograph
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-[#293732]">Agency Repair Claim Photograph</span>
+                  {activeTask.repairClaimedAt && (
+                    <span className="font-mono text-[11px] text-[#537C60]">
+                      {formatDateIST(activeTask.repairClaimedAt)}
+                    </span>
+                  )}
                 </div>
                 <div className="aspect-[4/3] rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] flex items-center justify-center">
                   {activeTask.repairPhotoUrl ? (
@@ -715,6 +740,25 @@ export default function CitizenAuditPage() {
                     <span className="text-xs text-[#65736B]">No repair photograph uploaded</span>
                   )}
                 </div>
+                {(activeTask.agencyName || activeTask.contractorName || activeTask.tenderId || activeTask.repairNote) && (
+                  <div className="text-xs text-[#293732] bg-[#FAF9F5] p-2.5 rounded-lg border border-[#E9ECE6] space-y-1">
+                    {(activeTask.contractorName || activeTask.agencyName) && (
+                      <div>
+                        <span className="text-[#65736B]">Agency / Contractor: </span>
+                        <span className="font-semibold">{activeTask.contractorName || activeTask.agencyName}</span>
+                      </div>
+                    )}
+                    {activeTask.tenderId && (
+                      <div>
+                        <span className="text-[#65736B]">Work Order: </span>
+                        <span className="font-mono">{activeTask.tenderId}</span>
+                      </div>
+                    )}
+                    {activeTask.repairNote && (
+                      <div className="text-[#65736B] italic">&ldquo;{activeTask.repairNote}&rdquo;</div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 

@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
+import { subscribeIssueUpdates } from '@/lib/map/statusPresentation';
 import { 
   Navigation, Users, MapPin, CheckCircle2, 
   Clock, AlertTriangle, ArrowRight, Play,
@@ -76,7 +78,14 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 }
 
 export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) {
+  const router = useRouter();
   const { currentWard } = useGeoContext();
+
+  useEffect(() => {
+    return subscribeIssueUpdates(() => {
+      router.refresh();
+    });
+  }, [router]);
 
   const [personnels, setPersonnels] = useState<Personnel[]>([]);
   const [selectedPersonnelId, setSelectedPersonnelId] = useState<string>('');

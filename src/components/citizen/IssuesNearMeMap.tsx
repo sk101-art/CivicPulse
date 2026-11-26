@@ -25,6 +25,13 @@ import type { Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { useGeoContext } from '@/context/GeoContext';
 import { CartoTileLayer, CartoConfigNotice } from '@/components/map/CartoTileLayer';
+import {
+  buildStatusPinHtml,
+  getMapStatusMeta,
+  MAP_STATUS_FILTER_OPTIONS,
+  matchesStatusFilter,
+} from '@/lib/map/statusPresentation';
+import { formatDateIST } from '@/lib/time/ist';
 
 // Dynamic Leaflet components to prevent SSR window issues
 const MapContainer = dynamic(
@@ -68,6 +75,9 @@ export interface IssueItem {
   statusLabel: string;
   priority: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | string;
   reportedAt?: string;
+  repairClaimedAt?: string | null;
+  agencyName?: string | null;
+  assignedPersonnel?: string | null;
   photoUrl?: string;
 }
 
@@ -84,6 +94,7 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
 
   const [mapInstance, setMapInstance] = useState<LeafletMap | null>(null);
   const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
+  const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -122,6 +133,9 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
           statusLabel: i.statusLabel,
           priority: i.priority,
           reportedAt: i.createdAt,
+          repairClaimedAt: i.repairClaimedAt ?? null,
+          agencyName: i.agencyName ?? null,
+          assignedPersonnel: i.assignedPersonnel ?? null,
           photoUrl: i.photoUrl,
         };
       });
@@ -156,49 +170,23 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
     ];
   }, [wardData.categoryBreakdown, wardData.stats, wardIssues.length]);
 
-  // Filtered issues based on selected category
+  // Filtered issues based on selected category and lifecycle status
   const filteredIssues = useMemo(() => {
-    if (selectedCategory === 'ALL') return wardIssues;
-    return wardIssues.filter((i) => i.category.toUpperCase() === selectedCategory.toUpperCase());
-  }, [wardIssues, selectedCategory]);
+    return wardIssues.filter((i) => {
+      const catOk = selectedCategory === 'ALL' || i.category.toUpperCase() === selectedCategory.toUpperCase();
+      const statusOk = matchesStatusFilter(i.status, selectedStatus);
+      return catOk && statusOk;
+    });
+  }, [wardIssues, selectedCategory, selectedStatus]);
 
-  // Pin icon generator
-  const getIssuePinIcon = useCallback((category: string, isSelected: boolean) => {
+  // Pin icon generator (distinct colour + shape per lifecycle status)
+  const getIssuePinIcon = useCallback((status: string, isSelected: boolean) => {
     if (typeof window === 'undefined') return undefined;
     const L = require('leaflet');
 
-    const colorMap: Record<string, string> = {
-      POTHOLES: '#527B7A',      // Teal
-      DRAINAGE: '#718F9E',      // Slate Cyan
-      WATERLOGGING: '#4A7C92',  // Deep Cyan
-      STREETLIGHTS: '#B68B63',  // Amber
-      SIDEWALKS: '#87917B',     // Olive
-      FOOTPATH: '#9AA88E',      // Sage
-      TRAFFIC_SIGNS: '#B76F60', // Coral
-      ROAD_CUT: '#7A6B88',      // Lavender Slate
-      TREE_FALL: '#5F8265',     // Moss
-      GRAFFITI: '#886B85',      // Mulberry
-      TRASH: '#537C60',         // Forest
-      OTHER: '#66766D',         // Mineral Gray
-    };
-    const color = colorMap[category.toUpperCase()] || '#527B7A';
-
     return L.divIcon({
       className: 'custom-pin-marker',
-      html: `
-        <div style="width: 32px; height: 40px; transform: translate(-16px, -40px); transition: transform 0.2s;" class="${isSelected ? 'scale-125 z-50' : 'hover:scale-110'}">
-          <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <filter id="pin-shadow-${category}" x="0" y="0" width="32" height="40" filterUnits="userSpaceOnUse">
-                <feDropShadow dx="0" dy="3" stdDeviation="2.5" flood-color="rgba(41,55,50,0.3)"/>
-              </filter>
-            </defs>
-            <path d="M16 38 C16 38 29 24.5 29 15 C29 7.8 23.2 2 16 2 C8.8 2 3 7.8 3 15 C3 24.5 16 38 16 38 Z" fill="${color}" stroke="#FFFFFF" stroke-width="2.5" filter="url(#pin-shadow-${category})"/>
-            <circle cx="16" cy="15" r="7.5" fill="#FFFFFF"/>
-            <circle cx="16" cy="15" r="4" fill="${color}"/>
-          </svg>
-        </div>
-      `,
+      html: buildStatusPinHtml(status, isSelected),
       iconSize: [32, 40],
       iconAnchor: [16, 40],
       popupAnchor: [0, -38],
@@ -504,8 +492,35 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
         </div>
       </div>
 
-      {/* ── BOTTOM FLOATING CATEGORY FILTER PILL BAR ── */}
-      <div className="absolute bottom-6 inset-x-0 z-[1000] flex justify-center pointer-events-none px-4">
+      {/* ── BOTTOM FLOATING STATUS LEGEND & CATEGORY FILTER BAR ── */}
+      <div className="absolute bottom-4 inset-x-0 z-[1000] flex flex-col items-center gap-2 pointer-events-none px-4">
+        <div
+          data-testid="map-status-filter-bar"
+          className="pointer-events-auto bg-white/95 backdrop-blur-md rounded-full px-3 py-1 border border-[#DDDCD3] shadow-[0_4px_14px_rgba(41,55,50,0.1)] flex items-center gap-1.5 overflow-x-auto max-w-full"
+        >
+          {MAP_STATUS_FILTER_OPTIONS.map((st) => {
+            const active = selectedStatus === st.id;
+            return (
+              <button
+                key={st.id}
+                type="button"
+                onClick={() => setSelectedStatus(st.id)}
+                className={`inline-flex items-center gap-1.5 py-0.5 px-2.5 rounded-full text-[11px] font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                  active
+                    ? 'bg-[#293732] text-white'
+                    : 'text-[#65736B] hover:text-[#293732] hover:bg-[#F3F2EB]'
+                }`}
+              >
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: active ? '#FFFFFF' : st.color }}
+                />
+                <span>{st.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
         <div className="pointer-events-auto bg-white/95 backdrop-blur-md rounded-full px-3 sm:px-5 py-1.5 sm:py-2 border border-[#DDDCD3] shadow-[0_8px_24px_rgba(41,55,50,0.12)] flex items-center gap-2 sm:gap-4 overflow-x-auto max-w-full">
           {categoryFilters.map((cat) => {
             const isActive = selectedCategory === cat.id;
@@ -572,7 +587,8 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
           {/* Filtered Issue Pins */}
           {filteredIssues.map((issue) => {
             const isSelected = selectedIssueId === issue.id;
-            const icon = getIssuePinIcon(issue.category, isSelected);
+            const icon = getIssuePinIcon(issue.status, isSelected);
+            const statusMeta = getMapStatusMeta(issue.status);
 
             return (
               <Marker
@@ -584,16 +600,14 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
                 }}
               >
                 <Popup>
-                  <div className="p-3.5 space-y-2.5 min-w-[220px]">
+                  <div className="p-3.5 space-y-2.5 min-w-[240px]">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#EAF2F0] text-[#355858] border border-[#D0E2DF] uppercase tracking-wider">
-                        {issue.category}
+                      <span className="font-mono text-[10px] font-bold text-[#355858]">
+                        {issue.id.startsWith('CP-') ? issue.id : `CP-${issue.id.slice(-4).toUpperCase()}`}
                       </span>
-                      {issue.distance && (
-                        <span className="text-[10px] font-mono text-[#65736B]">
-                          {issue.distance} away
-                        </span>
-                      )}
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#EAF2F0] text-[#355858] border border-[#D0E2DF] uppercase tracking-wider">
+                        {issue.category.replace(/_/g, ' ')}
+                      </span>
                     </div>
 
                     <div>
@@ -601,15 +615,66 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
                         {issue.title}
                       </h4>
                       <p className="text-xs text-[#65736B] flex items-center gap-1 mt-0.5">
-                        <MapPin className="w-3 h-3 text-[#527B7A]" />
-                        <span>{issue.location}</span>
+                        <MapPin className="w-3 h-3 text-[#527B7A] shrink-0" />
+                        <span>
+                          {issue.location}
+                          {currentWard?.wardLabel ? ` · ${currentWard.wardLabel}` : ''}
+                        </span>
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs pt-2 border-t border-[#DDDCD3]">
-                      <span className="font-semibold text-[#293732]">
-                        Status: <span className="font-normal text-[#65736B]">{issue.statusLabel}</span>
-                      </span>
+                    <div className="space-y-1 text-[11px] bg-[#FAF9F5] p-2 rounded-lg border border-[#E5E9E3]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[#65736B]">Status</span>
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+                          style={{
+                            backgroundColor: statusMeta.badgeBg,
+                            color: statusMeta.badgeText,
+                            borderColor: statusMeta.badgeBorder,
+                          }}
+                        >
+                          {statusMeta.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[#65736B]">Priority</span>
+                        <span className="font-semibold text-[#293732]">{issue.priority}</span>
+                      </div>
+                      {issue.reportedAt && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[#65736B]">Reported</span>
+                          <span className="font-mono text-[#293732]">{formatDateIST(issue.reportedAt)}</span>
+                        </div>
+                      )}
+                      {issue.repairClaimedAt && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[#65736B]">Repair Claimed</span>
+                          <span className="font-mono text-[#527B7A]">{formatDateIST(issue.repairClaimedAt)}</span>
+                        </div>
+                      )}
+                      {issue.agencyName && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[#65736B]">Agency</span>
+                          <span className="font-medium text-[#293732]">{issue.agencyName}</span>
+                        </div>
+                      )}
+                      {issue.assignedPersonnel && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[#65736B]">Personnel</span>
+                          <span className="font-medium text-[#293732]">{issue.assignedPersonnel}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-[#DDDCD3]">
+                      {issue.distance ? (
+                        <span className="text-[10px] font-mono text-[#65736B]">
+                          {issue.distance} away
+                        </span>
+                      ) : (
+                        <span />
+                      )}
                       <Link
                         href={`/issue/${issue.id}`}
                         className="font-semibold text-[#527B7A] hover:text-[#355858] flex items-center gap-0.5"

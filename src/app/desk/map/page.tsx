@@ -15,9 +15,20 @@ export default async function DeskMapPage() {
 
   const issues = await prisma.issue.findMany({
     where: {
-      status: { in: ['OPEN', 'IN_PROGRESS', 'CONFIRMED', 'ASSIGNED'] }
+      status: {
+        in: [
+          'OPEN',
+          'IN_PROGRESS',
+          'CONFIRMED',
+          'ASSIGNED',
+          'CLAIMED_FIXED',
+          'VERIFIED_FIXED',
+          'DISPUTED',
+          'REOPENED_IN_WARRANTY',
+        ],
+      },
     },
-    take: 100,
+    take: 150,
     orderBy: { priority: 'desc' },
   });
 

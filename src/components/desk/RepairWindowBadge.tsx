@@ -81,37 +81,33 @@ export function RepairWindowBadge({
 
   if (variant === 'card') {
     const conditionText = bestWindow.condition || (bestWindow as { reason?: string }).reason || '';
-    const basisLabel = isHistoric ? 'Historic' : isLive ? 'Live' : 'Estimated';
 
     return (
       <div
         data-testid="repair-window-card"
         title={`Best repair window: ${bestWindow.display}${conditionText ? ` · ${conditionText}` : ''} (${sampleCount} samples)`}
-        className={`w-full max-w-[260px] rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] px-2.5 py-2 text-[11px] leading-snug text-[#293732] space-y-1 ${className}`}
+        className={`w-full rounded-lg bg-[#FAF9F5] border border-[#DDDCD3] px-2.5 py-1.5 text-[11px] leading-tight text-[#293732] space-y-0.5 ${className}`}
       >
-        <div className="flex items-center justify-between gap-1.5">
+        <div className="flex items-center justify-between gap-1.5 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
             <CalendarClock className="w-3.5 h-3.5 text-[#527B7A] shrink-0" />
-            <span className="font-semibold text-[#355858] truncate">Best repair window</span>
+            <span className="font-semibold text-[#355858] shrink-0">Best repair window</span>
+            <span className="text-[#929B92] shrink-0">·</span>
+            <span className="font-mono font-semibold text-[#293732] truncate">
+              {bestWindow.display}
+            </span>
           </div>
-          <span
-            data-testid="repair-window-basis-chip"
-            className={`px-1.5 py-0.2 rounded text-[9px] font-mono uppercase font-semibold shrink-0 border ${
-              isHistoric
-                ? 'bg-[#D4E3DF]/60 text-[#355858] border-[#527B7A]/30'
-                : isLive
-                  ? 'bg-[#EFF6F1] text-[#537C60] border-[#CFE4D4]'
-                  : 'bg-[#E9ECE6] text-[#65736B] border-[#DDDCD3]'
-            }`}
-          >
-            {basisLabel}
-          </span>
-        </div>
-        <div className="font-mono font-semibold text-[#293732] break-words">
-          {bestWindow.display}
+          {isHistoric && (
+            <span
+              data-testid="repair-window-basis-chip"
+              className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-semibold shrink-0 border bg-[#D4E3DF]/60 text-[#355858] border-[#527B7A]/30"
+            >
+              Historic
+            </span>
+          )}
         </div>
         {conditionText && (
-          <div className="text-[10px] text-[#65736B] line-clamp-2 break-words">
+          <div className="text-[10px] text-[#65736B] truncate pl-5">
             {conditionText}
           </div>
         )}

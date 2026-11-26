@@ -62,11 +62,17 @@ export async function POST(
       prisma.issue.findUnique({
         where: { id },
         include: {
-          agency: { select: { id: true, code: true, name: true } },
+          agency: { select: { id: true, code: true, name: true, slaHours: true } },
           assignments: {
             take: 1,
             orderBy: { createdAt: "desc" },
-            include: { personnel: { select: { id: true, name: true, role: true } } },
+            include: { personnel: { select: { id: true, name: true, role: true, contact: true } } },
+          },
+          _count: { select: { reports: true, comments: true } },
+          reports: {
+            take: 5,
+            orderBy: { createdAt: "desc" },
+            select: { id: true, role: true, photoUrl: true, photoSha256: true, gpsAccuracyM: true, capturedAt: true, createdAt: true },
           },
         },
       }),
@@ -127,11 +133,17 @@ export async function POST(
           handoffCount: { increment: 1 },
         },
         include: {
-          agency: { select: { id: true, code: true, name: true } },
+          agency: { select: { id: true, code: true, name: true, slaHours: true } },
           assignments: {
             take: 1,
             orderBy: { createdAt: "desc" },
-            include: { personnel: { select: { id: true, name: true, role: true } } },
+            include: { personnel: { select: { id: true, name: true, role: true, contact: true } } },
+          },
+          _count: { select: { reports: true, comments: true } },
+          reports: {
+            take: 5,
+            orderBy: { createdAt: "desc" },
+            select: { id: true, role: true, photoUrl: true, photoSha256: true, gpsAccuracyM: true, capturedAt: true, createdAt: true },
           },
         },
       });
