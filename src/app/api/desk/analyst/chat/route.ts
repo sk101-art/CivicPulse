@@ -24,7 +24,13 @@ export async function POST(req: Request) {
       return apiError(400, "BAD_REQUEST", "Query string is required");
     }
 
-    const result = await askDeskAnalyst(query, { wardId: body.wardId });
+    const rawWardId = typeof body?.wardId === "string" ? body.wardId.trim() : "";
+    const normalizedWardId =
+      rawWardId && rawWardId.toLowerCase() !== "zone-all" && rawWardId.toLowerCase() !== "all"
+        ? rawWardId
+        : undefined;
+
+    const result = await askDeskAnalyst(query, { wardId: normalizedWardId });
 
     return NextResponse.json(result, { status: 200 });
   } catch (err: unknown) {

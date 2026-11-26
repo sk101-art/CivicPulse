@@ -471,10 +471,10 @@ export async function getWardIntelligence(
     const resolvedCount = matching.filter((i) => i.status === Status.VERIFIED_FIXED).length;
     const actCount = count - resolvedCount;
 
-    const critical = matching.filter((i) => i.band === Band.CRITICAL).length;
-    const high = matching.filter((i) => i.band === Band.HIGH).length;
-    const medium = matching.filter((i) => i.band === Band.MEDIUM).length;
-    const low = matching.filter((i) => i.band === Band.LOW).length;
+    const critical = matching.filter((i) => (i.bandOverride ?? i.band) === Band.CRITICAL).length;
+    const high = matching.filter((i) => (i.bandOverride ?? i.band) === Band.HIGH).length;
+    const medium = matching.filter((i) => (i.bandOverride ?? i.band) === Band.MEDIUM).length;
+    const low = matching.filter((i) => (i.bandOverride ?? i.band) === Band.LOW).length;
 
     return {
       category: cat,
@@ -548,10 +548,10 @@ export async function getWardIntelligence(
       (it) => it.isHotspot || Boolean(it.recurrenceOf) || it.handoffCount > 0
     ).length;
 
-    const critical = cl.items.filter((i) => i.band === Band.CRITICAL).length;
-    const high = cl.items.filter((i) => i.band === Band.HIGH).length;
-    const medium = cl.items.filter((i) => i.band === Band.MEDIUM).length;
-    const low = cl.items.filter((i) => i.band === Band.LOW).length;
+    const critical = cl.items.filter((i) => (i.bandOverride ?? i.band) === Band.CRITICAL).length;
+    const high = cl.items.filter((i) => (i.bandOverride ?? i.band) === Band.HIGH).length;
+    const medium = cl.items.filter((i) => (i.bandOverride ?? i.band) === Band.MEDIUM).length;
+    const low = cl.items.filter((i) => (i.bandOverride ?? i.band) === Band.LOW).length;
 
     return {
       id: `hotspot-${idx + 1}-${representative.id}`,
@@ -569,7 +569,7 @@ export async function getWardIntelligence(
         title: `${CATEGORY_LABELS[it.category] || it.category} at ${it.address || "Ward location"}`,
         category: it.category,
         status: it.status,
-        priority: it.band,
+        priority: it.bandOverride ?? it.band,
         address: it.address,
         createdAt: it.createdAt.toISOString(),
       })),
@@ -581,7 +581,7 @@ export async function getWardIntelligence(
     id: i.id,
     category: i.category,
     status: i.status,
-    band: i.band,
+    band: i.bandOverride ?? i.band,
     priority: i.priority,
     lat: i.lat,
     lng: i.lng,
@@ -593,17 +593,14 @@ export async function getWardIntelligence(
     createdAt: i.createdAt.toISOString(),
   }));
 
-  // 6. Section D — Resolution Performance
+  // 6. Section D — Resolution Performance (measured strictly from creation to independent VERIFIED_FIXED)
   let totalResolutionTimeHours = 0;
   let resolvedWithTimestampCount = 0;
 
   for (const item of issues) {
-    if (item.status === Status.VERIFIED_FIXED || item.status === Status.CLAIMED_FIXED) {
-      // Find timestamp from ActionLog when moved to fixed
-      const action = item.actions.find(
-        (a) => a.toStatus === Status.VERIFIED_FIXED || a.toStatus === Status.CLAIMED_FIXED
-      );
-      const resDate = action?.createdAt || item.repairClaimedAt || item.updatedAt;
+    if (item.status === Status.VERIFIED_FIXED) {
+      const action = item.actions.find((a) => a.toStatus === Status.VERIFIED_FIXED);
+      const resDate = action?.createdAt || item.updatedAt;
       if (resDate && resDate > item.createdAt) {
         const hours = (resDate.getTime() - item.createdAt.getTime()) / (1000 * 3600);
         totalResolutionTimeHours += hours;
@@ -631,7 +628,8 @@ export async function getWardIntelligence(
       ? Number(((slaBreachedIssues.length / totalDistinctIssues) * 100).toFixed(1))
       : 0;
 
-  const claimsTotal = verifiedResolved.length + awaitingVerification.length;
+  const disputedCount = issues.filter((i) => i.status === Status.DISPUTED).length;
+  const claimsTotal = verifiedResolved.length + awaitingVerification.length + disputedCount;
   const independentVerificationRate =
     claimsTotal > 0
       ? Number(((verifiedResolved.length / claimsTotal) * 100).toFixed(1))
@@ -652,7 +650,7 @@ export async function getWardIntelligence(
     independentVerificationRate,
     reopenedRepairsCount,
     claimedFixedCount: awaitingVerification.length,
-    disputedCount: issues.filter((i) => i.status === Status.DISPUTED).length,
+    disputedCount,
   };
 
   // 7. Section E — Recurring Infrastructure Problems & Hotspots

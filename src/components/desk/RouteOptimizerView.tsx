@@ -3,22 +3,28 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { subscribeIssueUpdates } from '@/lib/map/statusPresentation';
-import { 
-  Navigation, Users, MapPin, CheckCircle2, 
-  Clock, AlertTriangle, ArrowRight, Play,
-  Send, RefreshCw, Loader2, Sparkles, SlidersHorizontal
+import {
+  Navigation,
+  Users,
+  MapPin,
+  CheckCircle2,
+  AlertTriangle,
+  ArrowUp,
+  ArrowDown,
+  Send,
+  Loader2,
+  Search,
+  History,
+  X,
+  LocateFixed,
 } from 'lucide-react';
 import { useGeoContext } from '@/context/GeoContext';
 import { CartoTileLayer, CartoConfigNotice } from '@/components/map/CartoTileLayer';
+import { subscribeIssueUpdates, notifyIssueUpdated, getMapStatusMeta } from '@/lib/map/statusPresentation';
+import { formatDateTimeIST } from '@/lib/time/ist';
 
-// Dynamic Leaflet map container to avoid SSR window issues
 const MapContainer = dynamic(
   () => import('react-leaflet').then((mod) => mod.MapContainer),
-  { ssr: false }
-);
-const TileLayer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.TileLayer),
   { ssr: false }
 );
 const Marker = dynamic(
@@ -45,26 +51,51 @@ interface Personnel {
   contact: string;
   active: boolean;
   dutyStatus?: string;
+  workload?: {
+    activeCount: number;
+  };
 }
 
-interface IssueItem {
+export interface IssueItem {
   id: string;
   title: string;
   category: string;
   latitude: number;
   longitude: number;
+  band?: string;
   priorityScore: number;
   status: string;
   address?: string;
+  wardId?: string | null;
+  slaDueAt?: string;
+  slaBreached?: boolean;
+  agencyName?: string | null;
+  assignedPersonnel?: string | null;
+}
+
+interface SavedDispatchRoute {
+  id: string;
+  name: string;
+  vehicle: string;
+  createdAt: string;
+  geomJson: {
+    status?: string;
+    personnelName?: string;
+    personnelRole?: string;
+    stopIssueIds?: string[];
+    totalDistanceM?: number | null;
+    totalDurationS?: number | null;
+    routeSource?: string;
+    confirmedAt?: string;
+  };
 }
 
 interface RouteOptimizerViewProps {
   initialReports: IssueItem[];
 }
 
-// Haversine distance in kilometers
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371; // Earth radius in km
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -73,155 +104,367 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
       Math.cos((lat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function formatShortId(id: string): string {
+  if (id.startsWith('CP-')) return id;
+  return `CP-${id.slice(-4).toUpperCase()}`;
 }
 
 export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) {
   const router = useRouter();
   const { currentWard } = useGeoContext();
 
-  useEffect(() => {
-    return subscribeIssueUpdates(() => {
-      router.refresh();
-    });
-  }, [router]);
-
   const [personnels, setPersonnels] = useState<Personnel[]>([]);
   const [selectedPersonnelId, setSelectedPersonnelId] = useState<string>('');
   const [issues, setIssues] = useState<IssueItem[]>(initialReports);
+
+  // Work order filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [bandFilter, setBandFilter] = useState('ALL');
+
+  // Start location mode
+  const [startMode, setStartMode] = useState<'WARD_CENTER' | 'GPS' | 'FIRST_STOP'>('WARD_CENTER');
+  const [gpsStart, setGpsStart] = useState<{ lat: number; lng: number } | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null);
+
+  // Selection & Route state
   const [selectedIssueIds, setSelectedIssueIds] = useState<string[]>([]);
   const [optimizedRoute, setOptimizedRoute] = useState<IssueItem[]>([]);
+  const [roadCoords, setRoadCoords] = useState<[number, number][] | null>(null);
+  const [roadDistanceM, setRoadDistanceM] = useState<number | null>(null);
+  const [roadDurationS, setRoadDurationS] = useState<number | null>(null);
+  const [routeSource, setRouteSource] = useState<'TOMTOM_ROAD' | 'STRAIGHT_LINE_FALLBACK'>('STRAIGHT_LINE_FALLBACK');
+  const [routeNotice, setRouteNotice] = useState<string | null>(null);
+
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isDispatching, setIsDispatching] = useState(false);
   const [dispatchSuccess, setDispatchSuccess] = useState<string | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
 
-  // Load field personnels from /api/personnels
-  useEffect(() => {
-    let cancelled = false;
-    const fetchPersonnel = async () => {
-      try {
-        const res = await fetch('/api/personnels');
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled && Array.isArray(data) && data.length > 0) {
-            setPersonnels(data);
-            setSelectedPersonnelId(data[0].id);
-            return;
+  // Dispatch history
+  const [showHistory, setShowHistory] = useState(false);
+  const [dispatchHistory, setDispatchHistory] = useState<SavedDispatchRoute[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  const fetchPersonnel = useCallback(async () => {
+    try {
+      const res = await fetch('/api/personnels?status=ELIGIBLE', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          const activeOnly = data.filter((p: Personnel) => p.active !== false);
+          setPersonnels(activeOnly);
+          if (activeOnly.length > 0) {
+            setSelectedPersonnelId((prev) =>
+              activeOnly.some((p: Personnel) => p.id === prev) ? prev : activeOnly[0].id
+            );
+          } else {
+            setSelectedPersonnelId('');
           }
+          return;
         }
-      } catch (err) {
-        console.warn('Failed to load personnels from api:', err);
       }
-
-      // Fallback roster
-      if (!cancelled) {
-        const fallback = [
-          { id: 'p-1', name: 'Ravi Kumar', role: 'Senior Field Engineer', contact: '+91 98765 43021', active: true, dutyStatus: 'On Duty' },
-          { id: 'p-2', name: 'Meera Nair', role: 'Road Works Supervisor', contact: '+91 98456 76120', active: true, dutyStatus: 'Active' },
-          { id: 'p-3', name: 'Arjun Patel', role: 'Drainage Technician', contact: '+91 99879 22109', active: true, dutyStatus: 'On Duty' },
-        ];
-        setPersonnels(fallback);
-        setSelectedPersonnelId(fallback[0].id);
-      }
-    };
-
-    fetchPersonnel();
-    return () => {
-      cancelled = true;
-    };
+      setDispatchError('Unable to load active field personnel from directory.');
+    } catch (err) {
+      console.warn('Failed to load personnels:', err);
+      setDispatchError('Network error loading field personnel directory.');
+    }
   }, []);
 
-  // Update issues when initialReports changes and select top 5 by default
+  const fetchHistory = useCallback(async () => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetch('/api/desk/dispatch', { cache: 'no-store' });
+      if (res.ok) {
+        const data = await res.json();
+        setDispatchHistory(data.routes || []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchPersonnel();
+    const unsubscribe = subscribeIssueUpdates(() => {
+      void fetchPersonnel();
+      router.refresh();
+    });
+    return () => unsubscribe();
+  }, [fetchPersonnel, router]);
+
   useEffect(() => {
     setIssues(initialReports);
-    const validCoords = initialReports.filter(i => i.latitude && i.longitude);
-    setSelectedIssueIds(validCoords.slice(0, 5).map(i => i.id));
-    setOptimizedRoute([]);
-    setDispatchSuccess(null);
   }, [initialReports]);
 
-  // Selected personnel object
+  // Filter work orders by ward scope, category, status, band, and search
+  const filteredIssues = useMemo(() => {
+    return issues.filter((i) => {
+      if (!Number.isFinite(i.latitude) || !Number.isFinite(i.longitude)) return false;
+      if (
+        currentWard &&
+        currentWard.code !== 'ALL' &&
+        currentWard.id !== 'zone-all' &&
+        !currentWard.isOperationalArea &&
+        i.wardId &&
+        i.wardId !== currentWard.id
+      ) {
+        return false;
+      }
+      if (categoryFilter !== 'ALL' && i.category !== categoryFilter) return false;
+      if (statusFilter !== 'ALL' && i.status !== statusFilter) return false;
+      if (bandFilter !== 'ALL' && (i.band || 'MEDIUM') !== bandFilter) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const hay = `${i.id} ${formatShortId(i.id)} ${i.title} ${i.address || ''} ${i.category}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [issues, currentWard, categoryFilter, statusFilter, bandFilter, searchQuery]);
+
+  // Pre-select top 5 filtered work orders when scope changes and nothing is selected
+  useEffect(() => {
+    setSelectedIssueIds((prev) => {
+      const validSet = new Set(filteredIssues.map((i) => i.id));
+      const kept = prev.filter((id) => validSet.has(id));
+      if (kept.length > 0) return kept;
+      return filteredIssues.slice(0, 5).map((i) => i.id);
+    });
+    setOptimizedRoute([]);
+    setRoadCoords(null);
+    setRoadDistanceM(null);
+    setRoadDurationS(null);
+    setDispatchSuccess(null);
+  }, [filteredIssues]);
+
   const activePersonnel = useMemo(() => {
-    return personnels.find(p => p.id === selectedPersonnelId) || personnels[0];
+    return personnels.find((p) => p.id === selectedPersonnelId) || personnels[0];
   }, [personnels, selectedPersonnelId]);
 
-  // Toggle issue selection
+  const startLocation = useMemo(() => {
+    if (startMode === 'GPS' && gpsStart) {
+      return { label: 'Current GPS Location', lat: gpsStart.lat, lng: gpsStart.lng };
+    }
+    if (startMode === 'FIRST_STOP' && optimizedRoute.length > 0) {
+      return {
+        label: `First Stop (${formatShortId(optimizedRoute[0].id)})`,
+        lat: optimizedRoute[0].latitude,
+        lng: optimizedRoute[0].longitude,
+      };
+    }
+    if (currentWard?.lat && currentWard?.lng) {
+      return {
+        label: `${currentWard.wardLabel || 'Ward'} Base`,
+        lat: currentWard.lat,
+        lng: currentWard.lng,
+      };
+    }
+    return { label: 'Bengaluru Central Base', lat: 12.9716, lng: 77.5946 };
+  }, [startMode, gpsStart, optimizedRoute, currentWard]);
+
+  const requestGpsStart = () => {
+    setGpsError(null);
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGpsError('Browser geolocation is unavailable.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGpsStart({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setStartMode('GPS');
+      },
+      () => {
+        setGpsError('Unable to obtain GPS location. Using Ward Base.');
+        setStartMode('WARD_CENTER');
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
   const toggleIssueSelection = (id: string) => {
-    setSelectedIssueIds(prev => 
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    setSelectedIssueIds((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
     setOptimizedRoute([]);
+    setRoadCoords(null);
+    setRoadDistanceM(null);
+    setRoadDurationS(null);
     setDispatchSuccess(null);
   };
 
-  // Calculate practical visit sequence via nearest-neighbor TSP
-  const handleCalculateRoute = () => {
-    const selected = issues.filter(i => selectedIssueIds.includes(i.id) && i.latitude && i.longitude);
+  const fetchRoadGeometryForSequence = async (
+    sequence: IssueItem[],
+    originPoint: { lat: number; lng: number }
+  ) => {
+    if (sequence.length === 0) return;
+
+    const allPoints: [number, number][] =
+      startMode === 'FIRST_STOP'
+        ? sequence.map((s) => [s.latitude, s.longitude] as [number, number])
+        : [[originPoint.lat, originPoint.lng] as [number, number], ...sequence.map((s) => [s.latitude, s.longitude] as [number, number])];
+
+    if (allPoints.length < 2) {
+      setRoadCoords(null);
+      setRoadDistanceM(0);
+      setRoadDurationS(null);
+      setRouteSource('STRAIGHT_LINE_FALLBACK');
+      setRouteNotice('Single stop selected — add another stop or use Ward Base start for road routing.');
+      return;
+    }
+
+    try {
+      const origin = allPoints[0];
+      const destination = allPoints[allPoints.length - 1];
+      const waypoints = allPoints.slice(1, -1);
+
+      const res = await fetch('/api/routes/safe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          origin: { latitude: origin[0], longitude: origin[1] },
+          destination: { latitude: destination[0], longitude: destination[1] },
+          waypoints: waypoints.map(([lat, lon]) => ({ latitude: lat, longitude: lon })),
+          travelMode: 'car',
+          maxAlternatives: 0,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const primary = data?.routes?.[0];
+        if (primary && Array.isArray(primary.coords) && primary.coords.length > 1) {
+          setRoadCoords(primary.coords as [number, number][]);
+          setRoadDistanceM(primary.distance ?? null);
+          setRoadDurationS(primary.duration ?? null);
+          setRouteSource('TOMTOM_ROAD');
+          setRouteNotice(null);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Road routing provider unavailable:', err);
+    }
+
+    // Explicit fallback notice — never present straight-line distance as actual road driving distance
+    setRoadCoords(null);
+    setRoadDistanceM(null);
+    setRoadDurationS(null);
+    setRouteSource('STRAIGHT_LINE_FALLBACK');
+    setRouteNotice('Road routing provider unavailable — showing straight-line sequence (no road travel time fabricated).');
+  };
+
+  // Calculate practical visit sequence from startLocation
+  const handleCalculateRoute = async () => {
+    const selected = filteredIssues.filter((i) => selectedIssueIds.includes(i.id));
     if (selected.length === 0) return;
 
     setIsOptimizing(true);
     setDispatchSuccess(null);
+    setDispatchError(null);
+    setRouteNotice(null);
 
-    // Greedy nearest neighbor sequence starting from highest priority item
-    const unvisited = [...selected].sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0));
-    const sequence: IssueItem[] = [];
+    try {
+      const unvisited = [...selected].sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0));
+      const sequence: IssueItem[] = [];
 
-    let current = unvisited.shift()!;
-    sequence.push(current);
+      let curLat = startLocation.lat;
+      let curLng = startLocation.lng;
 
-    while (unvisited.length > 0) {
-      let nearestIdx = 0;
-      let minDistance = Infinity;
-
-      for (let i = 0; i < unvisited.length; i++) {
-        const dist = haversineKm(current.latitude, current.longitude, unvisited[i].latitude, unvisited[i].longitude);
-        if (dist < minDistance) {
-          minDistance = dist;
-          nearestIdx = i;
-        }
+      if (startMode === 'FIRST_STOP') {
+        const first = unvisited.shift()!;
+        sequence.push(first);
+        curLat = first.latitude;
+        curLng = first.longitude;
       }
 
-      current = unvisited.splice(nearestIdx, 1)[0];
-      sequence.push(current);
-    }
+      while (unvisited.length > 0) {
+        let nearestIdx = 0;
+        let minScore = Infinity;
 
-    setOptimizedRoute(sequence);
+        for (let i = 0; i < unvisited.length; i++) {
+          const distKm = haversineKm(curLat, curLng, unvisited[i].latitude, unvisited[i].longitude);
+          // Weight distance slightly by SLA breach / priority so urgent stops stay prioritized
+          const slaBoost = unvisited[i].slaBreached ? 0.75 : 1.0;
+          const score = distKm * slaBoost;
+          if (score < minScore) {
+            minScore = score;
+            nearestIdx = i;
+          }
+        }
+
+        const nextStop = unvisited.splice(nearestIdx, 1)[0];
+        sequence.push(nextStop);
+        curLat = nextStop.latitude;
+        curLng = nextStop.longitude;
+      }
+
+      setOptimizedRoute(sequence);
+      await fetchRoadGeometryForSequence(sequence, startLocation);
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  const moveStop = async (index: number, direction: -1 | 1) => {
+    const targetIdx = index + direction;
+    if (targetIdx < 0 || targetIdx >= optimizedRoute.length) return;
+    const nextSeq = [...optimizedRoute];
+    const [moved] = nextSeq.splice(index, 1);
+    nextSeq.splice(targetIdx, 0, moved);
+    setOptimizedRoute(nextSeq);
+    setIsOptimizing(true);
+    await fetchRoadGeometryForSequence(nextSeq, startLocation);
     setIsOptimizing(false);
   };
 
-  // Route statistics
-  const routeStats = useMemo(() => {
-    if (optimizedRoute.length < 2) {
-      return { totalKm: 0, estimatedMinutes: 0 };
+  const removeStop = async (issueId: string) => {
+    const nextSeq = optimizedRoute.filter((s) => s.id !== issueId);
+    setSelectedIssueIds((prev) => prev.filter((id) => id !== issueId));
+    setOptimizedRoute(nextSeq);
+    if (nextSeq.length > 0) {
+      setIsOptimizing(true);
+      await fetchRoadGeometryForSequence(nextSeq, startLocation);
+      setIsOptimizing(false);
+    } else {
+      setRoadCoords(null);
+      setRoadDistanceM(null);
+      setRoadDurationS(null);
     }
-    let totalKm = 0;
-    for (let i = 0; i < optimizedRoute.length - 1; i++) {
-      totalKm += haversineKm(
-        optimizedRoute[i].latitude,
-        optimizedRoute[i].longitude,
-        optimizedRoute[i + 1].latitude,
-        optimizedRoute[i + 1].longitude
-      );
-    }
-    // Urban driving estimate: ~25 km/h + 15 min per defect inspection
-    const travelTimeMin = Math.round((totalKm / 25) * 60);
-    const inspectionTimeMin = optimizedRoute.length * 15;
-    return {
-      totalKm: Number(totalKm.toFixed(2)),
-      estimatedMinutes: travelTimeMin + inspectionTimeMin,
-    };
-  }, [optimizedRoute]);
+  };
 
-  // Route Polyline coordinates
+  // Straight-line fallback distance when road provider is unavailable
+  const straightLineKm = useMemo(() => {
+    if (optimizedRoute.length === 0) return 0;
+    let total = 0;
+    let prevLat = startMode === 'FIRST_STOP' ? optimizedRoute[0].latitude : startLocation.lat;
+    let prevLng = startMode === 'FIRST_STOP' ? optimizedRoute[0].longitude : startLocation.lng;
+    for (const stop of optimizedRoute) {
+      total += haversineKm(prevLat, prevLng, stop.latitude, stop.longitude);
+      prevLat = stop.latitude;
+      prevLng = stop.longitude;
+    }
+    return Number(total.toFixed(2));
+  }, [optimizedRoute, startLocation, startMode]);
+
   const polylinePositions = useMemo(() => {
-    return optimizedRoute.map(item => [item.latitude, item.longitude] as [number, number]);
-  }, [optimizedRoute]);
+    if (roadCoords && roadCoords.length > 1) return roadCoords;
+    return optimizedRoute.map((item) => [item.latitude, item.longitude] as [number, number]);
+  }, [roadCoords, optimizedRoute]);
 
-  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const slaBreachedStops = useMemo(
+    () => optimizedRoute.filter((s) => s.slaBreached).length,
+    [optimizedRoute]
+  );
 
-  // Confirm & Dispatch Action
-  const handleDispatch = async () => {
+  const handleConfirmDispatch = async () => {
     if (!activePersonnel || optimizedRoute.length === 0) return;
     setIsDispatching(true);
     setDispatchError(null);
@@ -234,6 +477,11 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
         body: JSON.stringify({
           personnelId: activePersonnel.id,
           issueIds: optimizedRoute.map((stop) => stop.id),
+          vehicle: 'car',
+          startLocation,
+          totalDistanceM: roadDistanceM ?? Math.round(straightLineKm * 1000),
+          totalDurationS: roadDurationS,
+          routeSource,
         }),
       });
 
@@ -242,9 +490,14 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
         throw new Error(data.message || data.error || 'Failed to dispatch route');
       }
 
+      setShowConfirmModal(false);
       setDispatchSuccess(
-        `Dispatched ${data.dispatchedCount ?? optimizedRoute.length} work items to ${activePersonnel.name} (${routeStats.totalKm} km itinerary).`
+        `Confirmed dispatch of ${data.dispatchedCount ?? optimizedRoute.length} work orders to ${activePersonnel.name}.`
       );
+      notifyIssueUpdated();
+      void fetchPersonnel();
+      void fetchHistory();
+      router.refresh();
     } catch (err: unknown) {
       setDispatchError(err instanceof Error ? err.message : 'Failed to dispatch route');
     } finally {
@@ -262,7 +515,7 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
     return [12.9716, 77.5946];
   }, [optimizedRoute, currentWard]);
 
-  const getPinIcon = useCallback((index: number, category: string) => {
+  const getStopPinIcon = useCallback((index: number) => {
     if (typeof window === 'undefined') return undefined;
     const L = require('leaflet');
     return L.divIcon({
@@ -280,164 +533,392 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
     });
   }, []);
 
+  const getUnselectedPinIcon = useCallback((status: string) => {
+    if (typeof window === 'undefined') return undefined;
+    const L = require('leaflet');
+    const meta = getMapStatusMeta(status);
+    return L.divIcon({
+      className: 'route-candidate-marker',
+      html: `<div style="width: 14px; height: 14px; border-radius: 9999px; background: ${meta.color}; border: 2px solid #FFFFFF; box-shadow: 0 1px 4px rgba(0,0,0,0.3);"></div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    });
+  }, []);
+
+  const stopIdSet = useMemo(() => new Set(optimizedRoute.map((s) => s.id)), [optimizedRoute]);
+
   return (
     <div className="flex-1 flex flex-col lg:flex-row h-full overflow-hidden bg-[#F3F2EB]">
       {/* ── LEFT CONTROL PANEL ── */}
-      <div className="w-full lg:w-[420px] bg-[#FFFFFF] border-r border-[#DDDCD3] flex flex-col h-full overflow-y-auto shrink-0 shadow-sm">
-        {/* Header Section */}
-        <div className="p-5 border-b border-[#DDDCD3] space-y-2 bg-[#FAF9F5]">
-          <div className="text-[11px] font-mono font-bold text-[#527B7A] uppercase tracking-wider">
-            LOGISTICS & DISPATCH OPTIMIZER
-          </div>
-          <h2 className="text-xl font-display font-bold text-[#293732] tracking-tight">
-            Field Routing Engine
-          </h2>
-          <p className="text-xs text-[#65736B]">
-            Sequence work orders by geographic proximity to minimize crew travel latency and ensure timely SLA fulfillment.
-          </p>
-        </div>
-
-        <div className="p-5 space-y-5 flex-1">
-          {/* Personnel Selection */}
-          <div className="space-y-2">
-            <label className="text-xs font-semibold text-[#293732] flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-[#527B7A]" />
-              <span>Assign to Field Personnel</span>
-            </label>
-            <div className="relative">
-              <select
-                value={selectedPersonnelId}
-                onChange={(e) => setSelectedPersonnelId(e.target.value)}
-                className="w-full appearance-none bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3.5 py-2.5 pr-8 text-xs font-medium text-[#293732] shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)] focus:outline-none focus:ring-1 focus:ring-[#527B7A] cursor-pointer"
-              >
-                {personnels.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} — {p.role} ({p.dutyStatus || 'Active'})
-                  </option>
-                ))}
-              </select>
-              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#65736B] text-[10px]">▼</span>
+      <div className="w-full lg:w-[440px] bg-[#FFFFFF] border-r border-[#DDDCD3] flex flex-col h-full overflow-y-auto shrink-0 shadow-sm">
+        <div className="p-5 border-b border-[#DDDCD3] flex items-start justify-between gap-2 bg-[#FAF9F5]">
+          <div>
+            <div className="text-[11px] font-mono font-bold text-[#527B7A] uppercase tracking-wider">
+              LOGISTICS &amp; DISPATCH OPTIMIZER
             </div>
-            {activePersonnel && (
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#FAF9F5] border border-[#E5E9E3] text-xs text-[#65736B]">
-                <span>Contact: {activePersonnel.contact}</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#EBF3ED] text-[#537C60] border border-[#CDE3D2]">
-                  {activePersonnel.dutyStatus || 'On Duty'}
-                </span>
-              </div>
-            )}
+            <h2 className="text-xl font-display font-bold text-[#293732] tracking-tight">
+              Field Routing Engine
+            </h2>
           </div>
-
-          {/* Issue Selection List */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs font-semibold text-[#293732]">
-              <span className="flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-[#527B7A]" />
-                <span>Work Orders ({selectedIssueIds.length} Selected)</span>
-              </span>
-              <span className="text-[11px] font-mono text-[#527B7A]">
-                {currentWard?.wardLabel || 'Ward'} Grid
-              </span>
-            </div>
-
-            <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1 border border-[#DDDCD3] rounded-xl p-2 bg-[#FAF9F5]">
-              {issues.length === 0 ? (
-                <div className="py-6 text-center text-xs text-[#929B92]">
-                  No active work orders with coordinates in this scope.
-                </div>
-              ) : (
-                issues.map((issue) => {
-                  const isChecked = selectedIssueIds.includes(issue.id);
-                  return (
-                    <label
-                      key={issue.id}
-                      className={`flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors text-xs ${
-                        isChecked ? 'bg-white border border-[#527B7A]/40 shadow-sm' : 'hover:bg-white/60'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleIssueSelection(issue.id)}
-                        className="mt-0.5 rounded text-[#355858] focus:ring-[#527B7A]"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold text-[#293732] truncate">{issue.title}</div>
-                        <div className="text-[11px] text-[#65736B] truncate font-mono">
-                          {issue.latitude.toFixed(3)}, {issue.longitude.toFixed(3)}
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* Action Button: Optimize Sequence */}
           <button
             type="button"
-            onClick={handleCalculateRoute}
-            disabled={isOptimizing || selectedIssueIds.length === 0}
-            className="w-full py-2.5 px-4 rounded-xl bg-[#355858] hover:bg-[#293732] text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(53,88,88,0.25)] transition-all cursor-pointer disabled:opacity-40"
+            onClick={() => {
+              const next = !showHistory;
+              setShowHistory(next);
+              if (next) void fetchHistory();
+            }}
+            data-testid="toggle-dispatch-history-btn"
+            className="px-2.5 py-1.5 rounded-xl bg-white border border-[#DDDCD3] text-xs font-semibold text-[#355858] hover:bg-[#E9ECE6] flex items-center gap-1.5 cursor-pointer"
           >
-            {isOptimizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
-            <span>Calculate Practical Visit Sequence</span>
+            <History className="w-3.5 h-3.5" />
+            <span>History</span>
           </button>
+        </div>
 
-          {/* Optimized Route Sequence Card */}
-          {optimizedRoute.length > 0 && (
-            <div className="space-y-3 p-4 rounded-2xl bg-[#FAF9F5] border border-[#DDDCD3] shadow-sm animate-in fade-in duration-200">
+        <div className="p-5 space-y-4 flex-1">
+          {showHistory ? (
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[#293732]">Optimized Itinerary</span>
-                <span className="text-xs font-mono font-bold text-[#355858]">
-                  {routeStats.totalKm} km • ~{routeStats.estimatedMinutes} mins
-                </span>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-[#65736B]">
+                  Confirmed Dispatch Plans
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowHistory(false)}
+                  className="text-xs text-[#527B7A] font-semibold hover:underline cursor-pointer"
+                >
+                  Back to Planner
+                </button>
               </div>
-
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {optimizedRoute.map((stop, idx) => (
-                  <div key={stop.id} className="flex items-start gap-2.5 text-xs p-2 rounded-xl bg-white border border-[#E5E9E3]">
-                    <span className="w-5 h-5 rounded-full bg-[#355858] text-white font-mono font-bold text-[10px] flex items-center justify-center shrink-0">
-                      {idx + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-[#293732] truncate">{stop.title}</div>
-                      <div className="text-[11px] text-[#65736B] truncate">
-                        {stop.address || `Stop ${idx + 1} in route sequence`}
+              {loadingHistory ? (
+                <div className="py-8 text-center text-xs text-[#65736B] flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading dispatch history...
+                </div>
+              ) : dispatchHistory.length === 0 ? (
+                <div className="p-4 rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] text-xs text-[#65736B]">
+                  No confirmed dispatch routes recorded yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {dispatchHistory.map((r) => (
+                    <div
+                      key={r.id}
+                      className="p-3 rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] text-xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-[#293732]">{r.name}</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#EBF3ED] text-[#537C60] border border-[#CDE3D2]">
+                          {r.geomJson?.status || 'CONFIRMED'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-[#65736B]">
+                        {r.geomJson?.personnelName || 'Field Personnel'} ·{' '}
+                        {r.geomJson?.stopIssueIds?.length ?? 0} stops
+                        {r.geomJson?.totalDistanceM != null
+                          ? ` · ${(r.geomJson.totalDistanceM / 1000).toFixed(2)} km`
+                          : ''}
+                      </div>
+                      <div className="text-[10px] font-mono text-[#929B92]">
+                        {formatDateTimeIST(r.geomJson?.confirmedAt || r.createdAt)}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {/* Personnel Selection */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#293732] flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-[#527B7A]" />
+                  <span>Assign to Field Personnel</span>
+                </label>
+                <select
+                  value={selectedPersonnelId}
+                  onChange={(e) => setSelectedPersonnelId(e.target.value)}
+                  data-testid="route-personnel-select"
+                  className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2 text-xs font-medium text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A] cursor-pointer"
+                >
+                  {personnels.length === 0 ? (
+                    <option value="">No active field personnel available</option>
+                  ) : (
+                    personnels.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} — {p.role} ({p.dutyStatus || 'Active'}
+                        {p.workload ? ` · ${p.workload.activeCount} active` : ''})
+                      </option>
+                    ))
+                  )}
+                </select>
               </div>
 
-              {/* Confirm Dispatch Button */}
+              {/* Start Location Selector */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-[#293732] flex items-center justify-between">
+                  <span>Starting Location</span>
+                  <button
+                    type="button"
+                    onClick={requestGpsStart}
+                    className="text-[11px] text-[#527B7A] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <LocateFixed className="w-3 h-3" />
+                    <span>Use My GPS</span>
+                  </button>
+                </label>
+                <select
+                  value={startMode}
+                  onChange={(e) => setStartMode(e.target.value as 'WARD_CENTER' | 'GPS' | 'FIRST_STOP')}
+                  className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2 text-xs text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                >
+                  <option value="WARD_CENTER">
+                    {currentWard?.wardLabel || 'Ward'} Base ({startLocation.lat.toFixed(3)}, {startLocation.lng.toFixed(3)})
+                  </option>
+                  <option value="FIRST_STOP">First Highest-Priority Stop</option>
+                  {gpsStart && <option value="GPS">Current GPS Location</option>}
+                </select>
+                {gpsError && <p className="text-[11px] text-[#B76F60]">{gpsError}</p>}
+              </div>
+
+              {/* Work Orders Filter & Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-semibold text-[#293732]">
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5 text-[#527B7A]" />
+                    <span>Work Orders ({selectedIssueIds.length} / {filteredIssues.length} Selected)</span>
+                  </span>
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIssueIds(filteredIssues.slice(0, 5).map((i) => i.id))}
+                      className="text-[#527B7A] hover:underline cursor-pointer"
+                    >
+                      Top 5
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedIssueIds([]);
+                        setOptimizedRoute([]);
+                        setRoadCoords(null);
+                      }}
+                      className="text-[#65736B] hover:underline cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
+                  <div className="relative col-span-3">
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search issue ID or street..."
+                      className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-lg pl-7 pr-2.5 py-1.5 text-[11px] text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
+                    />
+                    <Search className="w-3 h-3 text-[#929B92] absolute left-2.5 top-1/2 -translate-y-1/2" />
+                  </div>
+                  <select
+                    value={categoryFilter}
+                    onChange={(e) => setCategoryFilter(e.target.value)}
+                    className="bg-[#E9ECE6] border border-[#DDDCD3] rounded-lg px-2 py-1 text-[11px] text-[#293732]"
+                  >
+                    <option value="ALL">All Categories</option>
+                    <option value="POTHOLES">Potholes</option>
+                    <option value="DRAINAGE">Drainage</option>
+                    <option value="WATERLOGGING">Waterlogging</option>
+                    <option value="STREETLIGHTS">Streetlights</option>
+                    <option value="SIDEWALKS">Sidewalks</option>
+                    <option value="TRAFFIC_SIGNS">Traffic Signs</option>
+                  </select>
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="bg-[#E9ECE6] border border-[#DDDCD3] rounded-lg px-2 py-1 text-[11px] text-[#293732]"
+                  >
+                    <option value="ALL">All Status</option>
+                    <option value="OPEN">Open</option>
+                    <option value="ASSIGNED">Assigned</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="DISPUTED">Disputed</option>
+                    <option value="REOPENED_IN_WARRANTY">Reopened</option>
+                  </select>
+                  <select
+                    value={bandFilter}
+                    onChange={(e) => setBandFilter(e.target.value)}
+                    className="bg-[#E9ECE6] border border-[#DDDCD3] rounded-lg px-2 py-1 text-[11px] text-[#293732]"
+                  >
+                    <option value="ALL">All Priority</option>
+                    <option value="CRITICAL">Critical</option>
+                    <option value="HIGH">High</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="LOW">Low</option>
+                  </select>
+                </div>
+
+                <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 border border-[#DDDCD3] rounded-xl p-2 bg-[#FAF9F5]">
+                  {filteredIssues.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-[#929B92]">
+                      No eligible work orders match current filters.
+                    </div>
+                  ) : (
+                    filteredIssues.map((issue) => {
+                      const isChecked = selectedIssueIds.includes(issue.id);
+                      return (
+                        <label
+                          key={issue.id}
+                          className={`flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-colors text-xs ${
+                            isChecked ? 'bg-white border border-[#527B7A]/40 shadow-sm' : 'hover:bg-white/60'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleIssueSelection(issue.id)}
+                            className="mt-0.5 rounded text-[#355858] focus:ring-[#527B7A]"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="font-mono text-[10px] font-bold text-[#355858]">
+                                {formatShortId(issue.id)}
+                              </span>
+                              <span className="text-[10px] font-semibold text-[#65736B]">
+                                {issue.band || 'MED'} · {issue.status.replace(/_/g, ' ')}
+                              </span>
+                            </div>
+                            <div className="font-semibold text-[#293732] truncate">{issue.title}</div>
+                            <div className="text-[10px] text-[#65736B] truncate">
+                              {issue.assignedPersonnel ? `Assigned: ${issue.assignedPersonnel}` : 'Unassigned'}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Calculate Practical Visit Sequence */}
               <button
                 type="button"
-                onClick={handleDispatch}
-                disabled={isDispatching}
-                className="w-full py-2 px-3 rounded-xl bg-[#537C60] hover:bg-[#43644E] text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                onClick={() => void handleCalculateRoute()}
+                disabled={isOptimizing || selectedIssueIds.length === 0}
+                data-testid="calculate-route-btn"
+                className="w-full py-2.5 px-4 rounded-xl bg-[#355858] hover:bg-[#293732] text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(53,88,88,0.25)] transition-all cursor-pointer disabled:opacity-40"
               >
-                {isDispatching ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                <span>Assign & Dispatch to {activePersonnel?.name || 'Personnel'}</span>
+                {isOptimizing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Navigation className="w-4 h-4" />}
+                <span>Calculate Practical Visit Sequence</span>
               </button>
-            </div>
-          )}
 
-          {/* Error Banner */}
-          {dispatchError && (
-            <div className="p-3.5 rounded-xl bg-[#FCEBE6] border border-[#F5C7BD] text-xs text-[#B76F60] flex items-center gap-2 shadow-sm animate-in fade-in duration-150">
-              <AlertTriangle className="w-4 h-4 shrink-0" />
-              <span>{dispatchError}</span>
-            </div>
-          )}
+              {routeNotice && (
+                <div className="p-2.5 rounded-xl bg-[#FDF7F0] border border-[#F2DFCA] text-[11px] text-[#8A5A2B]">
+                  {routeNotice}
+                </div>
+              )}
 
-          {/* Success Banner */}
-          {dispatchSuccess && (
-            <div className="p-3.5 rounded-xl bg-[#EBF3ED] border border-[#CDE3D2] text-xs text-[#537C60] flex items-center gap-2 shadow-sm animate-in fade-in duration-150">
-              <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>{dispatchSuccess}</span>
-            </div>
+              {/* Draft Optimized Route Summary & Editable Stop List */}
+              {optimizedRoute.length > 0 && (
+                <div className="space-y-3 p-4 rounded-2xl bg-[#FAF9F5] border border-[#DDDCD3] shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-xs font-bold text-[#293732] block">
+                        Draft Visit Sequence ({optimizedRoute.length} stops)
+                      </span>
+                      <span className="text-[10px] text-[#65736B]">
+                        {routeSource === 'TOMTOM_ROAD'
+                          ? 'Road-network distance & duration (TomTom)'
+                          : 'Straight-line distance (road provider fallback)'}
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-[#355858] text-right">
+                      {routeSource === 'TOMTOM_ROAD' && roadDistanceM != null
+                        ? `${(roadDistanceM / 1000).toFixed(2)} km${roadDurationS != null ? ` · ~${Math.max(1, Math.round(roadDurationS / 60))} mins` : ''}`
+                        : `${straightLineKm} km (straight-line)`}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {optimizedRoute.map((stop, idx) => (
+                      <div
+                        key={stop.id}
+                        className="flex items-center justify-between gap-2 text-xs p-2 rounded-xl bg-white border border-[#E5E9E3]"
+                      >
+                        <div className="flex items-start gap-2 min-w-0 flex-1">
+                          <span className="w-5 h-5 rounded-full bg-[#355858] text-white font-mono font-bold text-[10px] flex items-center justify-center shrink-0 mt-0.5">
+                            {idx + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-[#293732] truncate">
+                              {formatShortId(stop.id)} · {stop.category.replace(/_/g, ' ')}
+                            </div>
+                            <div className="text-[10px] text-[#65736B] truncate">
+                              {stop.address || `${stop.latitude.toFixed(4)}, ${stop.longitude.toFixed(4)}`}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            disabled={idx === 0 || isOptimizing}
+                            onClick={() => void moveStop(idx, -1)}
+                            title="Move stop up"
+                            className="p-1 rounded hover:bg-[#E9ECE6] text-[#65736B] disabled:opacity-30 cursor-pointer"
+                          >
+                            <ArrowUp className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={idx === optimizedRoute.length - 1 || isOptimizing}
+                            onClick={() => void moveStop(idx, 1)}
+                            title="Move stop down"
+                            className="p-1 rounded hover:bg-[#E9ECE6] text-[#65736B] disabled:opacity-30 cursor-pointer"
+                          >
+                            <ArrowDown className="w-3 h-3" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isOptimizing}
+                            onClick={() => void removeStop(stop.id)}
+                            title="Remove stop"
+                            className="p-1 rounded hover:bg-[#FBF1EF] text-[#B76F60] cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Open Confirm Dispatch Summary */}
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmModal(true)}
+                    disabled={isDispatching || !activePersonnel}
+                    data-testid="open-confirm-dispatch-btn"
+                    className="w-full py-2.5 px-3 rounded-xl bg-[#537C60] hover:bg-[#43644E] text-white font-semibold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Confirm Dispatch to {activePersonnel?.name || 'Personnel'}</span>
+                  </button>
+                </div>
+              )}
+
+              {dispatchError && (
+                <div className="p-3.5 rounded-xl bg-[#FCEBE6] border border-[#F5C7BD] text-xs text-[#B76F60] flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{dispatchError}</span>
+                </div>
+              )}
+
+              {dispatchSuccess && (
+                <div className="p-3.5 rounded-xl bg-[#EBF3ED] border border-[#CDE3D2] text-xs text-[#537C60] flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <span>{dispatchSuccess}</span>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -454,29 +935,52 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
           <CartoTileLayer style="voyager" />
           <WardViewportSync />
 
-          {/* Route Polyline connecting sequenced stops */}
+          {/* Road-network or fallback sequence polyline */}
           {polylinePositions.length > 1 && (
             <Polyline
               positions={polylinePositions}
               pathOptions={{
                 color: '#355858',
                 weight: 4,
-                opacity: 0.85,
-                dashArray: '6 8',
+                opacity: 0.9,
+                dashArray: routeSource === 'TOMTOM_ROAD' ? undefined : '6 8',
               }}
             />
           )}
 
-          {/* Stop Markers */}
+          {/* Unselected candidate work order pins */}
+          {filteredIssues
+            .filter((i) => !stopIdSet.has(i.id))
+            .map((issue) => (
+              <Marker
+                key={`cand-${issue.id}`}
+                position={[issue.latitude, issue.longitude]}
+                icon={getUnselectedPinIcon(issue.status)}
+              >
+                <Popup>
+                  <div className="p-2 space-y-1 font-body text-xs">
+                    <div className="font-mono font-bold text-[#355858]">
+                      {formatShortId(issue.id)} · {issue.status.replace(/_/g, ' ')}
+                    </div>
+                    <div className="font-semibold text-[#293732]">{issue.title}</div>
+                    <div className="text-[11px] text-[#65736B]">{issue.address}</div>
+                  </div>
+                </Popup>
+              </Marker>
+            ))}
+
+          {/* Ordered Route Stop Markers */}
           {optimizedRoute.map((stop, idx) => (
             <Marker
               key={stop.id}
               position={[stop.latitude, stop.longitude]}
-              icon={getPinIcon(idx, stop.category)}
+              icon={getStopPinIcon(idx)}
             >
               <Popup>
                 <div className="p-2 space-y-1 font-body text-xs">
-                  <div className="font-mono font-bold text-[#355858]">Stop #{idx + 1}</div>
+                  <div className="font-mono font-bold text-[#355858]">
+                    Stop #{idx + 1} · {formatShortId(stop.id)}
+                  </div>
                   <div className="font-semibold text-[#293732]">{stop.title}</div>
                   <div className="text-[11px] text-[#65736B]">{stop.address}</div>
                 </div>
@@ -492,6 +996,88 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
           </div>
         </div>
       </div>
+
+      {/* ── CONFIRM DISPATCH SUMMARY MODAL ── */}
+      {showConfirmModal && activePersonnel && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-[2px] flex items-center justify-center p-4">
+          <div className="bg-[#FFFFFF] border border-[#DDDCD3] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-[#DDDCD3] pb-3">
+              <h3 className="font-display font-bold text-lg text-[#293732]">
+                Confirm Field Dispatch
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="w-7 h-7 rounded-lg bg-[#E9ECE6] hover:bg-[#DDDCD3] text-[#65736B] flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs">
+              <div className="p-3 rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-[#65736B]">Assigned Employee:</span>
+                  <span className="font-semibold text-[#293732]">
+                    {activePersonnel.name} ({activePersonnel.role})
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#65736B]">Starting Location:</span>
+                  <span className="font-medium text-[#293732]">{startLocation.label}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#65736B]">Total Stops:</span>
+                  <span className="font-mono font-bold text-[#355858]">{optimizedRoute.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[#65736B]">Distance:</span>
+                  <span className="font-mono text-[#293732]">
+                    {routeSource === 'TOMTOM_ROAD' && roadDistanceM != null
+                      ? `${(roadDistanceM / 1000).toFixed(2)} km (Road)`
+                      : `${straightLineKm} km (Straight-line)`}
+                  </span>
+                </div>
+                {slaBreachedStops > 0 && (
+                  <div className="text-[#B76F60] font-semibold pt-1">
+                    Warning: {slaBreachedStops} stop(s) have breached SLA deadlines.
+                  </div>
+                )}
+              </div>
+
+              <div className="max-h-36 overflow-y-auto space-y-1 border border-[#E5E9E3] rounded-xl p-2 bg-[#FAF9F5]">
+                {optimizedRoute.map((s, idx) => (
+                  <div key={s.id} className="text-[11px] flex items-center gap-2">
+                    <span className="font-mono font-bold text-[#355858]">#{idx + 1}</span>
+                    <span className="font-mono">{formatShortId(s.id)}</span>
+                    <span className="truncate text-[#65736B]">{s.address || s.category}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[#DDDCD3]">
+              <button
+                type="button"
+                onClick={() => setShowConfirmModal(false)}
+                className="px-4 py-2 rounded-xl border border-[#DDDCD3] text-[#65736B] hover:bg-[#E9ECE6] text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDispatching}
+                onClick={() => void handleConfirmDispatch()}
+                data-testid="confirm-dispatch-submit-btn"
+                className="px-4 py-2 rounded-xl bg-[#537C60] hover:bg-[#43644E] text-white text-xs font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isDispatching && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Confirm &amp; Dispatch</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

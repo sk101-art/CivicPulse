@@ -61,10 +61,15 @@ export async function GET(req: Request) {
     }
 
     if (searchParam && searchParam.trim()) {
+      const rawSearch = searchParam.trim();
+      const strippedCp = rawSearch.replace(/^CP-/i, "");
       where.OR = [
-        { id: { contains: searchParam.trim(), mode: "insensitive" } },
-        { address: { contains: searchParam.trim(), mode: "insensitive" } },
-        { piText: { contains: searchParam.trim(), mode: "insensitive" } },
+        { id: { contains: rawSearch, mode: "insensitive" } },
+        ...(strippedCp && strippedCp !== rawSearch
+          ? [{ id: { contains: strippedCp, mode: "insensitive" as const } }]
+          : []),
+        { address: { contains: rawSearch, mode: "insensitive" } },
+        { piText: { contains: rawSearch, mode: "insensitive" } },
       ];
     }
 

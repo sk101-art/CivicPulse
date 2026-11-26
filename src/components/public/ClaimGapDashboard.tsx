@@ -26,6 +26,7 @@ import type { ClaimGapGroupStats } from '@/lib/issues/claimGap';
 import type { ClaimGapSummary, ClaimIssueItem } from '@/lib/issues/claimGapData';
 import { formatDateIST, formatDateTimeIST } from '@/lib/time/ist';
 import { SearchableWardSelect } from '@/components/layout/SearchableWardSelect';
+import { notifyIssueUpdated, subscribeIssueUpdates } from '@/lib/map/statusPresentation';
 
 interface FilterOptions {
   corporations: Array<{ id: string; code: string; name: string; shortName: string }>;
@@ -161,7 +162,7 @@ export function ClaimGapDashboard({
 
   useEffect(() => {
     if (!isStaffView || !selectedRecord) return;
-    fetch('/api/personnels')
+    fetch('/api/personnels?status=ELIGIBLE', { cache: 'no-store' })
       .then((res) => (res.ok ? res.json() : []))
       .then((list) => {
         if (Array.isArray(list)) {
@@ -170,6 +171,15 @@ export function ClaimGapDashboard({
       })
       .catch(() => {});
   }, [isStaffView, selectedRecord]);
+
+  // Keep open detail modal synchronized with refreshed Claim Gap records
+  useEffect(() => {
+    if (!selectedRecord) return;
+    const fresh = records.find((r) => r.id === selectedRecord.id);
+    if (fresh) {
+      setSelectedRecord(fresh);
+    }
+  }, [records, selectedRecord?.id]);
 
   const openRecordDetail = (rec: ClaimIssueItem) => {
     setSelectedRecord(rec);
@@ -256,6 +266,23 @@ export function ClaimGapDashboard({
     [period, corpFilter, wardFilter, agencyFilter, categoryFilter, searchQuery]
   );
 
+  // Auto-refresh Claim Gap when an issue is claimed, verified, disputed, reassigned, or reopened
+  useEffect(() => {
+    const unsubscribe = subscribeIssueUpdates(() => {
+      fetchClaimGap();
+    });
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        fetchClaimGap();
+      }
+    };
+    window.addEventListener('focus', handleVisibility);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', handleVisibility);
+    };
+  }, [fetchClaimGap]);
+
   const disputedRecords = records.filter((r) => r.outcome === 'NOT_FIXED');
   const reopenedRecords = records.filter((r) => r.outcome === 'REOPENED');
   const verifiedRecords = records.filter((r) => r.outcome === 'FIXED');
@@ -302,6 +329,7 @@ export function ClaimGapDashboard({
       setActionNotice({ ok: true, text: 'Work order reopened and logged to audit trail.' });
       setActionNote('');
       setReviewMode(null);
+      notifyIssueUpdated(issueId);
       fetchClaimGap();
     } catch (err) {
       setActionNotice({ ok: false, text: err instanceof Error ? err.message : 'Unable to reopen work order.' });
@@ -342,6 +370,7 @@ export function ClaimGapDashboard({
       setActionNotice({ ok: true, text: 'Work order reassigned and audit trail updated.' });
       setReassignConfirming(false);
       setReviewMode(null);
+      notifyIssueUpdated(selectedRecord.id);
       fetchClaimGap();
     } catch (err) {
       setActionNotice({ ok: false, text: err instanceof Error ? err.message : 'Reassignment failed.' });
@@ -375,6 +404,7 @@ export function ClaimGapDashboard({
       }
       setActionNotice({ ok: true, text: 'Senior Inspector dispatched and logged.' });
       setReviewMode(null);
+      notifyIssueUpdated(selectedRecord.id);
       fetchClaimGap();
     } catch (err) {
       setActionNotice({ ok: false, text: err instanceof Error ? err.message : 'Failed to dispatch inspector.' });
@@ -389,7 +419,12 @@ export function ClaimGapDashboard({
     { label: 'Disputed Repairs', value: summary.disputed, icon: XCircle, tone: 'text-[#B76F60] bg-[#FBF1EF] border-[#EAC8C1]' },
     { label: 'Reopened Issues', value: summary.reopened, icon: RotateCcw, tone: 'text-[#B68B63] bg-[#FDF7F0] border-[#F2DFCA]' },
     { label: 'Awaiting Verification', value: summary.awaitingVerification, icon: FileCheck2, tone: 'text-[#718F9E] bg-[#F0F5F8] border-[#D4E2E9]' },
-    { label: 'Overall Claim Gap Rate', value: `${summary.claimGapRate}%`, icon: AlertTriangle, tone: 'text-[#355858] bg-[#E5E9E3] border-[#DDDCD3]' },
+    {
+      label: 'Overall Claim Gap Rate',
+      value: summary.totalClaims === 0 ? 'Insufficient Data' : `${summary.claimGapRate}%`,
+      icon: AlertTriangle,
+      tone: 'text-[#355858] bg-[#E5E9E3] border-[#DDDCD3]',
+    },
   ];
 
   const availableWardsForCorp =

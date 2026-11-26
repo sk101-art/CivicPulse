@@ -12,6 +12,7 @@ import { RepairWindowBadge } from './RepairWindowBadge';
 import { Status, Category, Band } from '@prisma/client';
 import { formatPriority } from '@/lib/priority';
 import { useGeoContext } from '@/context/GeoContext';
+import { subscribeIssueUpdates } from '@/lib/map/statusPresentation';
 
 interface DeskQueueProps {
   initialIssues: DeskIssueItem[];
@@ -63,12 +64,29 @@ function formatLocationLabel(address?: string | null, lat?: number, lng?: number
   return parts.slice(0, 2).join(', ').trim();
 }
 
-function getSlaStatusInfo(slaDueAt: string | Date, slaBreached: boolean): {
+function getSlaStatusInfo(slaDueAt: string | Date, slaBreached: boolean, status?: Status): {
   label: string;
   remainingText: string;
   colorClass: string;
   dotClass: string;
 } {
+  if (status === Status.VERIFIED_FIXED) {
+    return {
+      label: 'Closed',
+      remainingText: 'Verified fixed',
+      colorClass: 'text-[#537C60]',
+      dotClass: 'bg-[#537C60]',
+    };
+  }
+  if (status === Status.REJECTED) {
+    return {
+      label: 'Closed',
+      remainingText: 'Rejected',
+      colorClass: 'text-[#65736B]',
+      dotClass: 'bg-[#929B92]',
+    };
+  }
+
   const now = Date.now();
   const due = new Date(slaDueAt).getTime();
   const diffHours = Math.round((due - now) / (1000 * 60 * 60));
@@ -103,10 +121,11 @@ function getSlaStatusInfo(slaDueAt: string | Date, slaBreached: boolean): {
 }
 
 export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProps) {
-  const { currentWard } = useGeoContext();
+  const { currentWard, availableWards } = useGeoContext();
 
   const [issues, setIssues] = useState<DeskIssueItem[]>(initialIssues);
   const [selectedIssue, setSelectedIssue] = useState<DeskIssueItem | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Filters state
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -114,6 +133,15 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
   const [agencyFilter, setAgencyFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isRefreshing, startTransition] = useTransition();
+
+  const wardLookup = useMemo(() => {
+    const map = new Map<string, { id: string; code: string; name: string }>();
+    for (const w of wards) map.set(w.id, w);
+    for (const w of availableWards) {
+      if (!map.has(w.id)) map.set(w.id, { id: w.id, code: w.code, name: w.name });
+    }
+    return map;
+  }, [wards, availableWards]);
 
   // Fetch filtered issues from API using currentWard and filters
   const fetchFilteredIssues = useCallback(async () => {
@@ -131,12 +159,17 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
 
     try {
       const res = await fetch(`/api/desk/queue?${params.toString()}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setIssues(data.issues || []);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        setFetchError(errBody?.message || errBody?.error || 'Failed to load Operations Queue records.');
+        return;
       }
+      const data = await res.json();
+      setFetchError(null);
+      setIssues(data.issues || []);
     } catch (err) {
       console.error('Failed to fetch filtered queue', err);
+      setFetchError('Network error while loading Operations Queue. Please retry.');
     }
   }, [statusFilter, categoryFilter, agencyFilter, currentWard, searchQuery]);
 
@@ -154,10 +187,14 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
         void fetchFilteredIssues();
       }
     };
+    const unsubscribe = subscribeIssueUpdates(() => {
+      void fetchFilteredIssues();
+    });
     window.addEventListener('focus', syncQueue);
     document.addEventListener('visibilitychange', syncQueue);
     const interval = window.setInterval(syncQueue, 15000);
     return () => {
+      unsubscribe();
       window.removeEventListener('focus', syncQueue);
       document.removeEventListener('visibilitychange', syncQueue);
       window.clearInterval(interval);
@@ -182,12 +219,19 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
       list = list.filter(i => 
         (i.address && i.address.toLowerCase().includes(q)) ||
         i.id.toLowerCase().includes(q) ||
+        formatIssueId(i.id).toLowerCase().includes(q) ||
         (i.category && i.category.toLowerCase().includes(q))
       );
     }
 
-    return list;
-  }, [issues, statusFilter, categoryFilter, agencyFilter, searchQuery]);
+    return list.map((item) => {
+      const rawWardId = (item as { wardId?: string | null }).wardId;
+      if (!item.ward && rawWardId && wardLookup.has(rawWardId)) {
+        return { ...item, ward: wardLookup.get(rawWardId) };
+      }
+      return item;
+    });
+  }, [issues, statusFilter, categoryFilter, agencyFilter, searchQuery, wardLookup]);
 
   const handleApplyFilters = () => {
     startTransition(() => {
@@ -215,11 +259,12 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
     }
   };
 
-  // Live Metrics counts for the currently selected ward
-  const totalOpen = displayIssues.filter(i => i.status !== Status.VERIFIED_FIXED && i.status !== Status.REJECTED).length;
-  const criticalCount = displayIssues.filter(i => (i.bandOverride || i.band) === 'CRITICAL' || (i.bandOverride || i.band) === 'HIGH').length;
-  const inProgressCount = displayIssues.filter(i => i.status === Status.IN_PROGRESS).length;
-  const breachedCount = displayIssues.filter(i => i.slaBreached).length;
+  // Live Metrics counts for the currently selected ward (active issues only for priority/SLA)
+  const activeIssues = displayIssues.filter(i => i.status !== Status.VERIFIED_FIXED && i.status !== Status.REJECTED);
+  const totalOpen = activeIssues.length;
+  const criticalCount = activeIssues.filter(i => (i.bandOverride || i.band) === 'CRITICAL' || (i.bandOverride || i.band) === 'HIGH').length;
+  const inProgressCount = activeIssues.filter(i => i.status === Status.IN_PROGRESS).length;
+  const breachedCount = activeIssues.filter(i => i.slaBreached).length;
 
   return (
     <div className="space-y-6">
@@ -282,11 +327,14 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
             >
               <option value="ALL">All Status</option>
               <option value="OPEN">Open / Reported</option>
+              <option value="CONFIRMED">Confirmed</option>
               <option value="ASSIGNED">Assigned</option>
               <option value="IN_PROGRESS">In Progress</option>
               <option value="CLAIMED_FIXED">Claimed Fixed</option>
-              <option value="VERIFIED_FIXED">Verified Fixed</option>
               <option value="DISPUTED">Disputed</option>
+              <option value="REOPENED_IN_WARRANTY">Reopened (Warranty)</option>
+              <option value="VERIFIED_FIXED">Verified Fixed</option>
+              <option value="REJECTED">Rejected</option>
             </select>
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#65736B] text-[10px]">▼</span>
           </div>
@@ -301,11 +349,15 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
               <option value="ALL">All Categories</option>
               <option value="POTHOLES">Potholes</option>
               <option value="DRAINAGE">Drainage</option>
+              <option value="WATERLOGGING">Waterlogging</option>
               <option value="STREETLIGHTS">Streetlights</option>
               <option value="TRASH">Garbage / Trash</option>
               <option value="SIDEWALKS">Sidewalks</option>
+              <option value="FOOTPATH">Footpath</option>
               <option value="TRAFFIC_SIGNS">Traffic Signs</option>
               <option value="ROAD_CUT">Road Cut</option>
+              <option value="TREE_FALL">Tree Fall</option>
+              <option value="GRAFFITI">Graffiti</option>
               <option value="OTHER">Other</option>
             </select>
             <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#65736B] text-[10px]">▼</span>
@@ -348,6 +400,23 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
         </div>
       </div>
 
+      {/* Error Banner (never silently treat failed API calls as 0 records) */}
+      {fetchError && (
+        <div className="p-3.5 rounded-2xl bg-[#FBF1EF] border border-[#EAC8C1] text-[#B76F60] text-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{fetchError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleApplyFilters}
+            className="px-3 py-1 rounded-lg bg-white border border-[#EAC8C1] text-[#B76F60] font-semibold hover:bg-[#FAF9F5] cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Swiss-Grid Operations Ledger Table */}
       <div className="bg-[#FFFFFF] rounded-2xl border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.04)] overflow-hidden">
         {/* Desktop & Tablet Aligned Grid */}
@@ -386,7 +455,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                   const currentBand = issue.bandOverride || issue.band;
                   const displayIssueId = formatIssueId(issue.id);
                   const locationText = formatLocationLabel(issue.address, issue.lat, issue.lng);
-                  const slaInfo = getSlaStatusInfo(issue.slaDueAt, issue.slaBreached);
+                  const slaInfo = getSlaStatusInfo(issue.slaDueAt, issue.slaBreached, issue.status);
                   const rw = issue.bestRepairWindow as any;
                   const rwResult = rw
                     ? rw.bestWindow
@@ -531,7 +600,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
               const currentBand = issue.bandOverride || issue.band;
               const displayIssueId = formatIssueId(issue.id);
               const locationText = formatLocationLabel(issue.address, issue.lat, issue.lng);
-              const slaInfo = getSlaStatusInfo(issue.slaDueAt, issue.slaBreached);
+              const slaInfo = getSlaStatusInfo(issue.slaDueAt, issue.slaBreached, issue.status);
               const rw = issue.bestRepairWindow as any;
               const rwResult = rw
                 ? rw.bestWindow

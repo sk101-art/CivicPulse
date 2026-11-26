@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useGeoContext } from '@/context/GeoContext';
+import { subscribeIssueUpdates } from '@/lib/map/statusPresentation';
 import { 
   Loader2, 
   AlertTriangle 
@@ -90,6 +91,22 @@ export function WardIntelligenceDashboard({ role: propRole }: Props) {
       cancelled = true;
     };
   }, [currentWard, period, refreshKey]);
+
+  // Auto-refresh Ward Intelligence when an issue changes in Operations Queue, Claim Gap, or Citizen Audit
+  useEffect(() => {
+    const triggerRefresh = () => setRefreshKey((k) => k + 1);
+    const unsubscribe = subscribeIssueUpdates(triggerRefresh);
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') {
+        triggerRefresh();
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
 
   const handleSelectWardFromComparison = (wardCode: string) => {
     const found = availableWards.find(

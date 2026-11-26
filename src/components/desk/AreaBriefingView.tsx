@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useGeoContext } from '@/context/GeoContext';
 import { formatTimeIST } from '@/lib/time/ist';
+import { subscribeIssueUpdates } from '@/lib/map/statusPresentation';
 import type { AreaBriefingTelemetry, BriefingPeriod } from '@/lib/desk/areaBriefing';
 
 interface ChatMessage {
@@ -125,6 +126,23 @@ export function AreaBriefingView() {
     void loadBriefing();
   }, [loadBriefing]);
 
+  // Auto-refresh Area Briefing when an issue changes in Operations Queue, Claim Gap, Route Optimizer, or Citizen Audit
+  useEffect(() => {
+    const unsubscribe = subscribeIssueUpdates(() => {
+      void loadBriefing();
+    });
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') {
+        void loadBriefing();
+      }
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [loadBriefing]);
+
   const handleSend = async (promptOverride?: string) => {
     const q = (promptOverride ?? query).trim();
     if (!q || isAsking) return;
@@ -141,8 +159,8 @@ export function AreaBriefingView() {
         body: JSON.stringify({
           query: q,
           message: q,
-          wardId: currentWard?.id,
-          wardCode: currentWard?.code,
+          wardId: wardId !== 'zone-all' ? wardId : undefined,
+          wardCode,
         }),
       });
 

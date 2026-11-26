@@ -13,7 +13,7 @@ import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
 import { NextResponse } from "next/server";
-import { Role, EvidenceRole, Status, AuditKind, AuditTaskStatus } from "@prisma/client";
+import { Role, EvidenceRole, Status, AuditKind, AuditTaskStatus, AssignmentStatus } from "@prisma/client";
 import { assignBlindAuditTasks } from "@/lib/audit/blindAudit";
 import { TEXT_LIMITS } from "@/lib/validation/limits";
 import { z } from "zod";
@@ -290,6 +290,14 @@ export async function POST(
         issueUpdateData.warrantyUntil = warrantyDate;
         if (body.contractorName) issueUpdateData.contractorName = body.contractorName;
         if (body.tenderId) issueUpdateData.tenderId = body.tenderId;
+
+        await tx.assignment.updateMany({
+          where: {
+            issueId: issue.id,
+            status: { in: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS] },
+          },
+          data: { status: AssignmentStatus.COMPLETED, completedAt: claimDate },
+        });
       }
       if (body.liabilityClauseRef !== undefined) {
         issueUpdateData.liabilityClauseRef = body.liabilityClauseRef;

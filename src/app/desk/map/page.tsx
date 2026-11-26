@@ -3,44 +3,59 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { RouteOptimizerView } from "@/components/desk/RouteOptimizerView";
 import { redirect } from "next/navigation";
+import { Status } from "@prisma/client";
 
 export const revalidate = 0;
 
 export default async function DeskMapPage() {
   const session = await getServerSession(authOptions);
-  
-  if (!session || session.user.role !== 'AUTHORITY') {
-    redirect('/login/staff');
+
+  if (!session || session.user.role !== "AUTHORITY") {
+    redirect("/login/staff");
   }
 
   const issues = await prisma.issue.findMany({
     where: {
       status: {
         in: [
-          'OPEN',
-          'IN_PROGRESS',
-          'CONFIRMED',
-          'ASSIGNED',
-          'CLAIMED_FIXED',
-          'VERIFIED_FIXED',
-          'DISPUTED',
-          'REOPENED_IN_WARRANTY',
+          Status.OPEN,
+          Status.CONFIRMED,
+          Status.ASSIGNED,
+          Status.IN_PROGRESS,
+          Status.DISPUTED,
+          Status.REOPENED_IN_WARRANTY,
         ],
       },
     },
+    include: {
+      agency: { select: { id: true, code: true, name: true } },
+      assignments: {
+        take: 1,
+        orderBy: { createdAt: "desc" },
+        include: { personnel: { select: { id: true, name: true, role: true } } },
+      },
+    },
     take: 150,
-    orderBy: { priority: 'desc' },
+    orderBy: { priority: "desc" },
   });
 
   const formattedReports = issues.map((i) => ({
     id: i.id,
     latitude: i.lat,
     longitude: i.lng,
-    title: `${(i.category || 'OTHER').replace(/_/g, ' ')} at ${i.address || 'Bengaluru'}`,
+    title: `${(i.category || "OTHER").replace(/_/g, " ")} at ${i.address || "Bengaluru"}`,
     status: i.status,
     category: i.category,
+    band: i.bandOverride || i.band,
     priorityScore: i.priority,
     address: i.address || undefined,
+    wardId: i.wardId || null,
+    slaDueAt: i.slaDueAt.toISOString(),
+    slaBreached: i.slaBreached,
+    agencyName: i.agency?.name || null,
+    assignedPersonnel: i.assignments[0]?.personnel
+      ? `${i.assignments[0].personnel.name} (${i.assignments[0].personnel.role})`
+      : null,
   }));
 
   return (
@@ -50,13 +65,13 @@ export default async function DeskMapPage() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
             <div className="text-[11px] font-mono font-bold text-[#527B7A] uppercase tracking-wider mb-0.5">
-              FIELD MOBILITY & INCIDENT LOGISTICS
+              FIELD MOBILITY &amp; INCIDENT LOGISTICS
             </div>
             <h1 className="text-2xl font-display font-bold text-[#293732] tracking-tight">
               Route Optimizer
             </h1>
             <p className="text-xs text-[#65736B] font-sans">
-              Urban cartography, defect clustering, and personnel dispatch itinerary planning.
+              Urban cartography, road-network visit sequencing, and personnel dispatch planning.
             </p>
           </div>
           <span className="text-xs font-mono font-semibold text-[#527B7A] bg-[#E9ECE6] px-3.5 py-1.5 rounded-xl border border-[#DDDCD3] shadow-sm">
