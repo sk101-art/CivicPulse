@@ -1,24 +1,49 @@
 import type { Metadata, Viewport } from "next";
-import { Newsreader, DM_Sans, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const newsreader = Newsreader({
+const newsreader = localFont({
+  src: [
+    {
+      path: "./fonts/newsreader-latin-opsz-normal.woff2",
+      weight: "200 800",
+      style: "normal",
+    },
+    {
+      path: "./fonts/newsreader-latin-opsz-italic.woff2",
+      weight: "200 800",
+      style: "italic",
+    },
+  ],
   variable: "--font-display",
-  subsets: ["latin"],
-  style: ["normal", "italic"],
-  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  fallback: ["Georgia", "Cambria", "Times New Roman", "serif"],
 });
 
-const dmSans = DM_Sans({
+const dmSans = localFont({
+  src: [
+    {
+      path: "./fonts/dm-sans-latin-wght-normal.woff2",
+      weight: "100 1000",
+      style: "normal",
+    },
+  ],
   variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  fallback: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: [
+    {
+      path: "./fonts/jetbrains-mono-latin-wght-normal.woff2",
+      weight: "100 800",
+      style: "normal",
+    },
+  ],
   variable: "--font-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  display: "swap",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"],
 });
 
 export const viewport: Viewport = {

@@ -1,0 +1,13 @@
+Self-hosted WOFF2 variable fonts sourced from @fontsource-variable (v5.2.6):
+
+1. Newsreader (newsreader-latin-opsz-normal.woff2, newsreader-latin-opsz-italic.woff2)
+   - License: SIL Open Font License 1.1 (OFL-1.1)
+   - Upstream: https://github.com/productiontype/Newsreader
+
+2. DM Sans (dm-sans-latin-wght-normal.woff2)
+   - License: SIL Open Font License 1.1 (OFL-1.1)
+   - Upstream: https://github.com/googlefonts/dm-fonts
+
+3. JetBrains Mono (jetbrains-mono-latin-wght-normal.woff2)
+   - License: SIL Open Font License 1.1 (OFL-1.1)
+   - Upstream: https://github.com/JetBrains/JetBrainsMono
