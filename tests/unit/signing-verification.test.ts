@@ -196,7 +196,7 @@ describe("T22 Acceptance: Camera capture, GPS gate and signing", () => {
     }
   });
 
-  it("accuracy > 30m fails with ACCURACY_TOO_LOW", async () => {
+  it("accuracy > 500m fails with ACCURACY_TOO_LOW", async () => {
     const { keyPair } = await setupKeys();
 
     const photoBuffer = Buffer.from("PHOTO_BYTES_FOR_ACCURACY_CHECK");
@@ -206,7 +206,7 @@ describe("T22 Acceptance: Camera capture, GPS gate and signing", () => {
     createdNonceValues.push(nonce);
 
     const payload: EvidencePayload = {
-      accuracy: 45, // exceeds 30m limit
+      accuracy: 501, // exceeds 500m limit
       capturedAt: new Date().toISOString(),
       lat: 12.9352,
       lng: 77.6245,

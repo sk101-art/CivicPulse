@@ -28,6 +28,7 @@ export interface QueuedOfflineReport {
   blockedShare?: string;
   address?: string;
   offline?: boolean;
+  captureCoords?: { lat: number; lng: number };
   /** Stable uuid sent with every attempt so the server stores the report once. */
   clientReportId?: string;
   createdAt: number;

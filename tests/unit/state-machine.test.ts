@@ -241,11 +241,11 @@ describe("T24 Acceptance: Issue state machine", () => {
         actor: citizenActor,
       },
       {
-        description: "12. CLAIM_FIX with distance > 50m throws validation error",
+        description: "12. CLAIM_FIX with distance > 500m throws validation error",
         from: Status.IN_PROGRESS,
         action: "CLAIM_FIX",
         actor: deskActor,
-        context: { evidence: { role: "CLAIM_FIX", distanceM: 75 } },
+        context: { evidence: { role: "CLAIM_FIX", distanceM: 501 } },
       },
     ];
 

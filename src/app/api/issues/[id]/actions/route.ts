@@ -12,6 +12,7 @@ import { uploadEvidencePhoto } from "@/lib/external/storage";
 import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
+import { MAX_GPS_ACCURACY_METERS } from "@/lib/evidence/locationLimits";
 import { NextResponse } from "next/server";
 import { Role, EvidenceRole, Status, AuditKind, AuditTaskStatus, AssignmentStatus } from "@prisma/client";
 import { assignBlindAuditTasks } from "@/lib/audit/blindAudit";
@@ -47,7 +48,7 @@ const actionSchema = z.object({
       distanceM: z.number().optional(),
       payload: z
         .object({
-          accuracy: z.number().min(0).max(30),
+          accuracy: z.number().finite().min(0).max(MAX_GPS_ACCURACY_METERS),
           capturedAt: z.string(),
           lat: z.number(),
           lng: z.number(),

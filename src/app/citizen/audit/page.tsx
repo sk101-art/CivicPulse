@@ -25,6 +25,13 @@ import { useOptionalGeoContext } from '@/context/GeoContext';
 import { formatDateIST, formatDateTimeIST } from '@/lib/time/ist';
 import { haversineDistanceM } from '@/lib/geo/distance';
 import { notifyIssueUpdated } from '@/lib/map/statusPresentation';
+import {
+  MAX_EVIDENCE_DISTANCE_METERS,
+  getGpsAccuracyWarning,
+  getEvidenceDistanceWarning,
+  isValidGpsAccuracy,
+  isWithinEvidenceDistance,
+} from '@/lib/evidence/locationLimits';
 
 interface NearbyAuditTask {
   id: string;
@@ -779,16 +786,19 @@ export default function CitizenAuditPage() {
                         {captureDistanceToIssueM != null && (
                           <span
                             className={`px-2 py-0.5 rounded-full font-mono text-[11px] border ${
-                              captureDistanceToIssueM <= 30
+                              isWithinEvidenceDistance(captureDistanceToIssueM)
                                 ? 'bg-[#EFF6F1] text-[#537C60] border-[#CFE4D4]'
                                 : 'bg-[#FBF1EF] text-[#B76F60] border-[#EAC8C1]'
                             }`}
                           >
-                            {captureDistanceToIssueM <= 30
-                              ? `Within 30 m audit radius (${captureDistanceToIssueM} m away)`
-                              : `${captureDistanceToIssueM} m away (must be within 30 m)`}
+                            {isWithinEvidenceDistance(captureDistanceToIssueM)
+                              ? `Within ${MAX_EVIDENCE_DISTANCE_METERS} m audit radius (${captureDistanceToIssueM} m away)`
+                              : `${captureDistanceToIssueM} m away (must be within ${MAX_EVIDENCE_DISTANCE_METERS} m)`}
                           </span>
                         )}
+                        <span className="px-2 py-0.5 rounded-full font-mono text-[11px] bg-[#F3F2EB] text-[#65736B] border border-[#DDDCD3]">
+                          ± {capturedEvidence.payload.accuracy.toFixed(1)} m GPS
+                        </span>
                         <span className="px-2 py-0.5 rounded-full font-mono text-[11px] bg-[#F3F2EB] text-[#65736B] border border-[#DDDCD3]">
                           {deviceHeading !== null ? `Compass: ${deviceHeading}°` : 'Compass heading unavailable'}
                         </span>
@@ -876,17 +886,68 @@ export default function CitizenAuditPage() {
                       </div>
                     )}
 
-                    {captureDistanceToIssueM !== null && captureDistanceToIssueM > 30 && (
-                      <div className="p-3 rounded-xl text-xs border bg-[#FBF1EF] border-[#EAC8C1] text-[#B76F60]">
-                        You are {captureDistanceToIssueM} m from the issue coordinates. Move within 30 m and retake your photo to submit verification evidence.
+                    {!isValidGpsAccuracy(capturedEvidence.payload.accuracy) && (
+                      <div className="p-3 rounded-xl text-xs border bg-[#FBF1EF] border-[#EAC8C1] text-[#B76F60] flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                          GPS accuracy (± {Math.round(capturedEvidence.payload.accuracy)} m) exceeds the {MAX_EVIDENCE_DISTANCE_METERS} m limit. Retake your photo in an open area.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCapturedEvidence(null);
+                            setPhotoBase64(null);
+                            setShowConfirm(false);
+                          }}
+                          className="px-3 py-1 rounded-lg bg-white border border-[#EAC8C1] text-xs font-semibold text-[#293732] cursor-pointer"
+                        >
+                          Retry Location
+                        </button>
                       </div>
                     )}
+
+                    {isValidGpsAccuracy(capturedEvidence.payload.accuracy) &&
+                      getGpsAccuracyWarning(capturedEvidence.payload.accuracy) && (
+                        <div className="p-3 rounded-xl text-xs border bg-[#FDF7F0] border-[#F2DFCA] text-[#8A5A2B]">
+                          {getGpsAccuracyWarning(capturedEvidence.payload.accuracy)}
+                        </div>
+                      )}
+
+                    {captureDistanceToIssueM !== null && !isWithinEvidenceDistance(captureDistanceToIssueM) && (
+                      <div className="p-3 rounded-xl text-xs border bg-[#FBF1EF] border-[#EAC8C1] text-[#B76F60] flex flex-wrap items-center justify-between gap-2">
+                        <span>
+                          You are {captureDistanceToIssueM} m from the issue coordinates. Move within {MAX_EVIDENCE_DISTANCE_METERS} m and retake your photo to submit verification evidence.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCapturedEvidence(null);
+                            setPhotoBase64(null);
+                            setShowConfirm(false);
+                          }}
+                          className="px-3 py-1 rounded-lg bg-white border border-[#EAC8C1] text-xs font-semibold text-[#293732] cursor-pointer"
+                        >
+                          Retry Location
+                        </button>
+                      </div>
+                    )}
+
+                    {captureDistanceToIssueM !== null &&
+                      isWithinEvidenceDistance(captureDistanceToIssueM) &&
+                      getEvidenceDistanceWarning(captureDistanceToIssueM) && (
+                        <div className="p-3 rounded-xl text-xs border bg-[#FDF7F0] border-[#F2DFCA] text-[#8A5A2B]">
+                          {getEvidenceDistanceWarning(captureDistanceToIssueM)}
+                        </div>
+                      )}
 
                     {!showConfirm ? (
                       <div className="flex justify-end">
                         <button
                           type="button"
-                          disabled={!observedVerdict || (captureDistanceToIssueM !== null && captureDistanceToIssueM > 30)}
+                          disabled={
+                            !observedVerdict ||
+                            !isValidGpsAccuracy(capturedEvidence.payload.accuracy) ||
+                            (captureDistanceToIssueM !== null && !isWithinEvidenceDistance(captureDistanceToIssueM))
+                          }
                           onClick={() => setShowConfirm(true)}
                           className="px-5 py-2.5 rounded-xl bg-[#355858] hover:bg-[#293732] text-white text-xs font-semibold disabled:opacity-50 cursor-pointer"
                         >

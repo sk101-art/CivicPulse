@@ -1,4 +1,5 @@
 import { Status, type Band, type Prisma } from "@prisma/client";
+import { MAX_EVIDENCE_DISTANCE_METERS } from "@/lib/evidence/locationLimits";
 
 export type IssueAction =
   | "CONFIRM"
@@ -151,9 +152,10 @@ const TRANSITION_RULES: TransitionRule[] = [
       }
       if (
         ctx.evidence.distanceM !== undefined &&
-        ctx.evidence.distanceM > 50
+        (!Number.isFinite(ctx.evidence.distanceM) ||
+          ctx.evidence.distanceM > MAX_EVIDENCE_DISTANCE_METERS)
       ) {
-        return `Claim photo must be taken within 50m of the issue (distance was ${Math.round(ctx.evidence.distanceM)}m)`;
+        return `Claim photo must be taken within ${MAX_EVIDENCE_DISTANCE_METERS}m of the issue (distance was ${Math.round(ctx.evidence.distanceM)}m)`;
       }
       return null;
     },

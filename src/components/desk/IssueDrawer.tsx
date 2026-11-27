@@ -8,6 +8,15 @@ import { getAllowedActions, type IssueAction } from '@/lib/issues/stateMachine';
 import { Status, Band, Category } from '@prisma/client';
 import Image from 'next/image';
 import { CaptureCamera, type CapturedEvidence } from '@/components/evidence/CaptureCamera';
+import { haversineDistanceM } from '@/lib/evidence/sign';
+import {
+  MAX_EVIDENCE_DISTANCE_METERS,
+  MAX_GPS_ACCURACY_METERS,
+  getGpsAccuracyWarning,
+  getEvidenceDistanceWarning,
+  isValidGpsAccuracy,
+  isWithinEvidenceDistance,
+} from '@/lib/evidence/locationLimits';
 import { formatPriority } from '@/lib/priority';
 import { formatDateTimeIST, formatDateIST } from '@/lib/time/ist';
 import type { RepairWindowResult } from '@/lib/traffic/repairWindow';
@@ -531,6 +540,26 @@ export function IssueDrawer({
         setActionError('Claiming a repair requires capturing or uploading a signed repair photograph first.');
         return;
       }
+      const claimDistM = Math.round(
+        haversineDistanceM(
+          issue.lat,
+          issue.lng,
+          capturedFixEvidence.payload.lat,
+          capturedFixEvidence.payload.lng
+        )
+      );
+      if (!isValidGpsAccuracy(capturedFixEvidence.payload.accuracy)) {
+        setActionError(
+          `GPS accuracy (± ${Math.round(capturedFixEvidence.payload.accuracy)}m) exceeds the ${MAX_GPS_ACCURACY_METERS}m limit. Retake the repair photo in an open area.`
+        );
+        return;
+      }
+      if (!isWithinEvidenceDistance(claimDistM)) {
+        setActionError(
+          `Repair photo was captured ${claimDistM}m from the issue location (maximum ${MAX_EVIDENCE_DISTANCE_METERS}m). Move closer and retake.`
+        );
+        return;
+      }
       if (!claimConfirmStep) {
         setActionError(null);
         setClaimConfirmStep(true);
@@ -943,6 +972,45 @@ export function IssueDrawer({
                                 className="w-full h-full object-cover"
                               />
                             </div>
+                            {(() => {
+                              const claimDistM = Math.round(
+                                haversineDistanceM(
+                                  issue.lat,
+                                  issue.lng,
+                                  capturedFixEvidence.payload.lat,
+                                  capturedFixEvidence.payload.lng
+                                )
+                              );
+                              const accWarn = getGpsAccuracyWarning(capturedFixEvidence.payload.accuracy);
+                              const distWarn = getEvidenceDistanceWarning(claimDistM);
+                              const accValid = isValidGpsAccuracy(capturedFixEvidence.payload.accuracy);
+                              const distValid = isWithinEvidenceDistance(claimDistM);
+                              return (
+                                <div className="space-y-1.5 text-[11px]">
+                                  <div className="flex items-center justify-between text-[#65736B] font-mono">
+                                    <span>GPS Accuracy: ± {capturedFixEvidence.payload.accuracy.toFixed(1)} m</span>
+                                    <span>Distance: {claimDistM} m</span>
+                                  </div>
+                                  {(!accValid || !distValid) && (
+                                    <div className="p-2 rounded-lg bg-[#FBF1EF] border border-[#EAC8C1] text-[#B76F60]">
+                                      {!accValid
+                                        ? `GPS accuracy (± ${Math.round(capturedFixEvidence.payload.accuracy)} m) exceeds ${MAX_GPS_ACCURACY_METERS} m. Retry location.`
+                                        : `Captured ${claimDistM} m from issue (maximum ${MAX_EVIDENCE_DISTANCE_METERS} m). Move closer and retake.`}
+                                    </div>
+                                  )}
+                                  {accValid && accWarn && (
+                                    <div className="p-2 rounded-lg bg-[#FDF7F0] border border-[#F2DFCA] text-[#8A5A2B]">
+                                      {accWarn}
+                                    </div>
+                                  )}
+                                  {distValid && distWarn && (
+                                    <div className="p-2 rounded-lg bg-[#FDF7F0] border border-[#F2DFCA] text-[#8A5A2B]">
+                                      {distWarn}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         ) : (
                           <button

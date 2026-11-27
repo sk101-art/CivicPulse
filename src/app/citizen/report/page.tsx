@@ -28,6 +28,11 @@ import { TEXT_LIMITS } from '@/lib/validation/limits';
 import { CivicHallArt } from '@/components/ui/CivicHallArt';
 import { useOptionalGeoContext } from '@/context/GeoContext';
 import { formatDateTimeIST } from '@/lib/time/ist';
+import { haversineDistanceM } from '@/lib/geo/distance';
+import {
+  getGpsAccuracyWarning,
+  getEvidenceDistanceWarning,
+} from '@/lib/evidence/locationLimits';
 
 const DRAFT_KEY = 'civicpulse:report-draft';
 
@@ -279,6 +284,7 @@ function FileReportContent() {
           sizeClass,
           blockedShare,
           offline: true,
+          captureCoords: capturedEvidence.captureCoords,
           clientReportId,
         });
 
@@ -300,6 +306,7 @@ function FileReportContent() {
           note,
           sizeClass,
           blockedShare,
+          captureCoords: capturedEvidence.captureCoords,
           clientReportId,
         }),
       });
@@ -823,6 +830,29 @@ function FileReportContent() {
                     </span>
                   </div>
                 </div>
+
+                {getGpsAccuracyWarning(capturedEvidence.payload.accuracy) && (
+                  <div className="p-3 rounded-xl bg-[#FDF7F0] border border-[#F2DFCA] text-xs text-[#8A5A2B]">
+                    {getGpsAccuracyWarning(capturedEvidence.payload.accuracy)}
+                  </div>
+                )}
+
+                {capturedEvidence.captureCoords && (() => {
+                  const pinDist = Math.round(
+                    haversineDistanceM(
+                      capturedEvidence.captureCoords.lat,
+                      capturedEvidence.captureCoords.lng,
+                      capturedEvidence.payload.lat,
+                      capturedEvidence.payload.lng
+                    )
+                  );
+                  const distWarn = getEvidenceDistanceWarning(pinDist);
+                  return distWarn ? (
+                    <div className="p-3 rounded-xl bg-[#FDF7F0] border border-[#F2DFCA] text-xs text-[#8A5A2B]">
+                      {distWarn}
+                    </div>
+                  ) : null;
+                })()}
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">

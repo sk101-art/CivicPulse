@@ -8,6 +8,7 @@ import {
 } from "./sign";
 import { PILOT_BOUNDS } from "@/lib/api/validate";
 import { isDefaultedCoordinate } from "./coords";
+import { isValidGpsAccuracy, MAX_GPS_ACCURACY_METERS } from "./locationLimits";
 
 export const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -85,14 +86,14 @@ export async function verifyEvidence(
     };
   }
 
-  // 3. Check GPS accuracy <= 30m
-  if (payload.accuracy > PILOT_BOUNDS.maxGpsAccuracyM || payload.accuracy < 0) {
+  // 3. Check GPS accuracy <= 500m (reject negative, NaN, Infinity, > 500)
+  if (!isValidGpsAccuracy(payload.accuracy)) {
     return {
       valid: false,
       reason: "ACCURACY_TOO_LOW",
       details: {
         accuracy: payload.accuracy,
-        maxAllowed: PILOT_BOUNDS.maxGpsAccuracyM,
+        maxAllowed: MAX_GPS_ACCURACY_METERS,
       },
     };
   }

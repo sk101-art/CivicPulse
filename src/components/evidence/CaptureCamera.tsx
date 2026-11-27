@@ -28,6 +28,14 @@ import {
 import { getOrCreateDeviceKey } from '@/lib/evidence/deviceKey';
 import { isDefaultedCoordinate, isInServiceArea } from '@/lib/evidence/coords';
 import { SERVICE_AREA_MESSAGE } from '@/lib/validation/limits';
+import {
+  MAX_GPS_ACCURACY_METERS,
+  MAX_EVIDENCE_DISTANCE_METERS,
+  getGpsAccuracyWarning,
+  getEvidenceDistanceWarning,
+  isValidGpsAccuracy,
+  isWithinEvidenceDistance,
+} from '@/lib/evidence/locationLimits';
 
 const ReportPickerMap = dynamic(() => import('@/components/citizen/ReportPickerMap'), {
   ssr: false,
@@ -39,7 +47,7 @@ const ReportPickerMap = dynamic(() => import('@/components/citizen/ReportPickerM
 });
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const PIN_RADIUS_METERS = 50;
+const PIN_RADIUS_METERS = MAX_EVIDENCE_DISTANCE_METERS;
 
 export interface CapturedEvidence {
   blob: Blob;
@@ -308,6 +316,28 @@ export function CaptureCamera({
     if (!isInServiceArea(pinCoords.lat, pinCoords.lng)) {
       setSecurityState({ image: 'failed', hash: 'pending', signature: 'pending', nonce: 'pending' });
       throw new Error(SERVICE_AREA_MESSAGE);
+    }
+
+    if (!isValidGpsAccuracy(gpsFix.accuracy)) {
+      setSecurityState({ image: 'failed', hash: 'pending', signature: 'pending', nonce: 'pending' });
+      throw new Error(
+        `GPS accuracy (± ${Math.round(gpsFix.accuracy)}m) exceeds the ${MAX_GPS_ACCURACY_METERS}m limit. Please move to an open area and retry location.`
+      );
+    }
+
+    if (targetCoords) {
+      const targetDist = haversineDistanceM(
+        gpsFix.lat,
+        gpsFix.lng,
+        targetCoords.lat,
+        targetCoords.lng
+      );
+      if (!isWithinEvidenceDistance(targetDist)) {
+        setSecurityState({ image: 'failed', hash: 'pending', signature: 'pending', nonce: 'pending' });
+        throw new Error(
+          `You are ${Math.round(targetDist)}m from the issue location. Evidence must be captured within ${MAX_EVIDENCE_DISTANCE_METERS}m.`
+        );
+      }
     }
 
     setSecurityState({
@@ -779,6 +809,63 @@ export function CaptureCamera({
             </div>
           </div>
 
+          {gpsFix && !isValidGpsAccuracy(gpsFix.accuracy) && (
+            <div className="p-3 bg-[#FBF1EF] rounded-xl border border-[#EAC8C1] text-xs text-[#B76F60] space-y-2">
+              <p>
+                GPS accuracy (± {Math.round(gpsFix.accuracy)} m) exceeds the {MAX_GPS_ACCURACY_METERS} m maximum. Move to an open area and retry location before capturing evidence.
+              </p>
+              <button
+                type="button"
+                onClick={requestGps}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#DDDCD3] text-[#293732] font-semibold text-xs cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-[#527B7A]" />
+                <span>Retry Location</span>
+              </button>
+            </div>
+          )}
+
+          {gpsFix && isValidGpsAccuracy(gpsFix.accuracy) && getGpsAccuracyWarning(gpsFix.accuracy) && (
+            <div className="p-2.5 bg-[#FDF7F0] rounded-xl border border-[#F2DFCA] text-[11px] text-[#8A5A2B]">
+              {getGpsAccuracyWarning(gpsFix.accuracy)}
+            </div>
+          )}
+
+          {gpsFix && targetCoords && (() => {
+            const targetDist = Math.round(
+              haversineDistanceM(gpsFix.lat, gpsFix.lng, targetCoords.lat, targetCoords.lng)
+            );
+            if (!isWithinEvidenceDistance(targetDist)) {
+              return (
+                <div className="p-3 bg-[#FBF1EF] rounded-xl border border-[#EAC8C1] text-xs text-[#B76F60] space-y-2">
+                  <p>
+                    You are {targetDist} m from the reported issue location (maximum {MAX_EVIDENCE_DISTANCE_METERS} m). Move closer and retry location.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={requestGps}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-[#DDDCD3] text-[#293732] font-semibold text-xs cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 text-[#527B7A]" />
+                    <span>Retry Location</span>
+                  </button>
+                </div>
+              );
+            }
+            const distWarn = getEvidenceDistanceWarning(targetDist);
+            return distWarn ? (
+              <div className="p-2.5 bg-[#FDF7F0] rounded-xl border border-[#F2DFCA] text-[11px] text-[#8A5A2B]">
+                {distWarn}
+              </div>
+            ) : null;
+          })()}
+
+          {gpsFix && !targetCoords && getEvidenceDistanceWarning(pinDistanceM) && (
+            <div className="p-2.5 bg-[#FDF7F0] rounded-xl border border-[#F2DFCA] text-[11px] text-[#8A5A2B]">
+              {getEvidenceDistanceWarning(pinDistanceM)}
+            </div>
+          )}
+
           <div className="relative h-36 rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#F3F2EB]">
             {pinCoords ? (
               <ReportPickerMap
@@ -825,7 +912,7 @@ export function CaptureCamera({
                   }`}
                 >
                   <Crosshair className="w-3.5 h-3.5" />
-                  <span>{isAdjustingPin ? 'Tap Map (≤50m)' : 'Adjust Pin'}</span>
+                  <span>{isAdjustingPin ? `Tap Map (≤${PIN_RADIUS_METERS}m)` : 'Adjust Pin'}</span>
                 </button>
               </div>
             )}

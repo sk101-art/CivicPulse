@@ -8,6 +8,7 @@ import {
   AuditObserved,
 } from "@prisma/client";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
+import { MAX_EVIDENCE_DISTANCE_METERS } from "@/lib/evidence/locationLimits";
 import { verifyEvidence } from "@/lib/evidence/verify";
 import { uploadEvidencePhoto } from "@/lib/external/storage";
 import { transition } from "@/lib/issues/stateMachine";
@@ -449,18 +450,18 @@ export async function submitAuditVote(input: SubmitAuditVoteInput) {
     );
   }
 
-  // Verify distance <= 30m
+  // Verify distance <= MAX_EVIDENCE_DISTANCE_METERS (500m)
   const distanceM = haversineDistanceM(
     task.issue.lat,
     task.issue.lng,
     evidence.payload.lat,
     evidence.payload.lng
   );
-  if (distanceM > 30) {
+  if (!Number.isFinite(distanceM) || distanceM > MAX_EVIDENCE_DISTANCE_METERS) {
     throw new AuditError(
       400,
       "AUDIT_VOTE_REJECTED",
-      `Audit photo must be taken within 30m of the challenge spot (distance was ${Math.round(distanceM)}m)`
+      `Audit photo must be taken within ${MAX_EVIDENCE_DISTANCE_METERS}m of the challenge spot (distance was ${Math.round(distanceM)}m)`
     );
   }
 

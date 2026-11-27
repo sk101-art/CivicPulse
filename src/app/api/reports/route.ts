@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db/prisma";
 import { ingestReportWithSpatialMerge } from "@/lib/issues/merge";
 import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { verifyEvidence } from "@/lib/evidence/verify";
-import { toCanonicalJson, type EvidencePayload } from "@/lib/evidence/sign";
+import { toCanonicalJson, haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
+import { MAX_GPS_ACCURACY_METERS, MAX_EVIDENCE_DISTANCE_METERS } from "@/lib/evidence/locationLimits";
 import * as storage from "@/lib/external/storage";
 import { NextResponse } from "next/server";
 import { Category, Status } from "@prisma/client";
@@ -17,7 +18,7 @@ import { latestReportPerIssue } from "@/lib/citizen/statsPure";
 
 // Bounds are checked after parsing so an out-of-area report gets a readable message.
 const evidencePayloadSchema = z.object({
-  accuracy: z.number().min(0).max(30),
+  accuracy: z.number().finite().min(0).max(MAX_GPS_ACCURACY_METERS),
   capturedAt: z.string(),
   lat: z.number(),
   lng: z.number(),
@@ -38,6 +39,12 @@ const signedReportSchema = z.object({
   blockedShare: z.enum(["none", "part lane", "one lane", "full"]).optional(),
   address: z.string().max(TEXT_LIMITS.address).optional(),
   offline: z.boolean().optional(),
+  captureCoords: z
+    .object({
+      lat: z.number().finite(),
+      lng: z.number().finite(),
+    })
+    .optional(),
   /** Client-generated uuid; a resubmission with the same id returns the stored report. */
   clientReportId: z.string().uuid().optional(),
 });
@@ -82,7 +89,7 @@ const directReportSchema = z.object({
   photoUrl: z.string().url().default("https://placehold.co/600x400.jpg"),
   photoSha256: z.string().default("placeholder_sha256"),
   signature: z.string().default("client_signature_placeholder"),
-  gpsAccuracyM: z.number().min(0).max(30).default(10),
+  gpsAccuracyM: z.number().finite().min(0).max(MAX_GPS_ACCURACY_METERS).default(10),
 }).transform((d) => ({
   ...d,
   lat: d.lat ?? d.latitude ?? 12.9716,
@@ -98,7 +105,7 @@ const directReportSchema = z.object({
     photoUrl: z.string().url(),
     photoSha256: z.string(),
     signature: z.string(),
-    gpsAccuracyM: z.number().min(0).max(30),
+    gpsAccuracyM: z.number().finite().min(0).max(MAX_GPS_ACCURACY_METERS),
   })
 );
 
@@ -130,6 +137,24 @@ export async function POST(req: Request) {
           "EVIDENCE_VERIFICATION_FAILED",
           "Evidence verification failed: DEFAULTED_COORDINATES (a live GPS fix is required)"
         );
+      }
+      if (data.captureCoords) {
+        if (!isInServiceArea(data.captureCoords.lat, data.captureCoords.lng)) {
+          return apiError(400, "OUT_OF_SERVICE_AREA", SERVICE_AREA_MESSAGE);
+        }
+        const pinDistanceM = haversineDistanceM(
+          data.captureCoords.lat,
+          data.captureCoords.lng,
+          data.payload.lat,
+          data.payload.lng
+        );
+        if (!Number.isFinite(pinDistanceM) || pinDistanceM > MAX_EVIDENCE_DISTANCE_METERS) {
+          return apiError(
+            400,
+            "EVIDENCE_TOO_FAR",
+            `Issue pin must be within ${MAX_EVIDENCE_DISTANCE_METERS}m of captured GPS coordinates (distance was ${Math.round(pinDistanceM)}m)`
+          );
+        }
       }
 
       // Idempotency: a retried submission (double click, offline re-sync) returns what was stored.

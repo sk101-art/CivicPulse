@@ -149,10 +149,10 @@ test.describe('Page 6: Repair Verification — Authenticated Browser Regression 
     await expect(noGpsPage.locator('body')).toContainText('Active Ward:', { timeout: 10000 });
     await noGpsCtx.close();
 
-    // 2. Farther than 30m (~100m away) -> 30m proximity gate blocks submit
+    // 2. Farther than 500m (~610m away) -> 500m proximity gate blocks submit
     const farCtx = await browser.newContext({
       permissions: ['geolocation', 'camera'],
-      geolocation: { latitude: siteLat + 0.001, longitude: siteLng, accuracy: 5 },
+      geolocation: { latitude: siteLat + 0.0055, longitude: siteLng, accuracy: 5 },
     });
     const farPage = await farCtx.newPage();
     await loginAsCitizen(farPage);
@@ -193,7 +193,7 @@ test.describe('Page 6: Repair Verification — Authenticated Browser Regression 
       buffer: TINY_JPEG,
     });
 
-    await expect(farPage.locator('body')).toContainText('must be within 30 m', { timeout: 15000 });
+    await expect(farPage.locator('body')).toContainText('must be within 500 m', { timeout: 15000 });
     await expect(farPage.locator('body')).toContainText('Compass heading unavailable');
     await farPage.getByRole('button', { name: /Repair completed correctly/i }).click();
     await expect(farPage.getByRole('button', { name: /Review & Confirm Verification/i })).toBeDisabled();
@@ -225,7 +225,7 @@ test.describe('Page 6: Repair Verification — Authenticated Browser Regression 
       buffer: TINY_JPEG,
     });
 
-    await expect(nearPage.locator('body')).toContainText('Within 30 m audit radius', { timeout: 15000 });
+    await expect(nearPage.locator('body')).toContainText('Within 500 m audit radius', { timeout: 15000 });
     await nearPage.getByRole('button', { name: /Repair completed correctly/i }).click();
     const fieldNote = `Field note ${uniqueTag}: smooth asphalt`;
     await nearPage.locator('textarea').fill(fieldNote);
