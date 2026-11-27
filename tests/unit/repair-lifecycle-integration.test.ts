@@ -134,6 +134,7 @@ describe("Municipal Repair Lifecycle -> Citizen Verification Integration", () =>
     vi.spyOn(prisma, "$transaction").mockImplementation(async (fn: any) =>
       fn({
         report: { create: vi.fn().mockResolvedValue({ id: "rep-claim-1" }) },
+        assignment: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
         issue: {
           update: vi.fn().mockResolvedValue({
             id: "issue-claim-1",
@@ -263,13 +264,16 @@ describe("Municipal Repair Lifecycle -> Citizen Verification Integration", () =>
     expect(data.tasks).toHaveLength(1);
     expect(data.tasks[0]).toMatchObject({
       issueId: "issue-claimed-1",
-      originalPhotoUrl: "https://storage.local/defect.jpg",
-      repairPhotoUrl: "https://storage.local/repaired.jpg",
-      contractorName: "Cauvery Infra",
-      tenderId: "BBMP/W-150",
-      agencyName: "BBMP Roads",
-      repairNote: "Resurfaced pothole",
-      originalNote: "Deep pothole near signal",
+      category: "POTHOLES",
+      status: "CLAIMED_FIXED",
+      address: "Bellandur Main Road",
     });
+    expect(data.tasks[0].originalPhotoUrl).toBeUndefined();
+    expect(data.tasks[0].repairPhotoUrl).toBeUndefined();
+    expect(data.tasks[0].contractorName).toBeUndefined();
+    expect(data.tasks[0].tenderId).toBeUndefined();
+    expect(data.tasks[0].agencyName).toBeUndefined();
+    expect(data.tasks[0].repairNote).toBeUndefined();
+    expect(data.tasks[0].originalNote).toBeUndefined();
   });
 });

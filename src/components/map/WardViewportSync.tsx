@@ -17,6 +17,7 @@ export interface WardViewportSyncProps {
   padding?: [number, number];
   maxZoom?: number;
   onMapReady?: (map: L.Map) => void;
+  suppressAutoSync?: boolean;
 }
 
 export function WardViewportSync({
@@ -24,6 +25,7 @@ export function WardViewportSync({
   padding = [40, 40],
   maxZoom = 16,
   onMapReady,
+  suppressAutoSync = false,
 }: WardViewportSyncProps) {
   const map = useMap();
   const lastWardKeyRef = useRef<string | null>(null);
@@ -53,7 +55,7 @@ export function WardViewportSync({
   }, [map]);
 
   useEffect(() => {
-    if (!ward || !map) return;
+    if (!ward || !map || suppressAutoSync) return;
     const wardKey = `${ward.id || ward.code || ''}-${ward.lat}-${ward.lng}`;
 
     if (lastWardKeyRef.current === wardKey) {

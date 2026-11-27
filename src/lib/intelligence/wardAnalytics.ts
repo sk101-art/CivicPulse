@@ -422,12 +422,11 @@ export async function getWardIntelligence(
     ? targetWard.name.replace(/\s*\(Demo\)/i, "").trim()
     : "All Assigned Wards";
 
-  // 2. Query Issues for this Ward (or all wards for ALL) with Time Period Filter
+  // 2. Query all issues for this Ward once so historical backlog/trends can account for pre-period open records
   const startDate = getPeriodStartDate(period);
-  const issues = await prisma.issue.findMany({
+  const allWardIssues = await prisma.issue.findMany({
     where: {
       ...(targetWard ? { wardId: targetWard.id } : {}),
-      ...(startDate && { createdAt: { gte: startDate } }),
     },
     include: {
       agency: { select: { id: true, code: true, name: true } },
@@ -449,6 +448,10 @@ export async function getWardIntelligence(
     orderBy: { createdAt: "desc" },
   });
 
+  const issues = startDate
+    ? allWardIssues.filter((i) => i.createdAt >= startDate)
+    : allWardIssues;
+
   const totalDistinctIssues = issues.length;
 
   // Latest issue date in ward
@@ -469,7 +472,7 @@ export async function getWardIntelligence(
     const count = matching.length;
     const percentage = totalDistinctIssues > 0 ? Number(((count / totalDistinctIssues) * 100).toFixed(1)) : 0;
     const resolvedCount = matching.filter((i) => i.status === Status.VERIFIED_FIXED).length;
-    const actCount = count - resolvedCount;
+    const actCount = matching.filter((i) => isUnresolvedIssueStatus(i.status)).length;
 
     const critical = matching.filter((i) => (i.bandOverride ?? i.band) === Band.CRITICAL).length;
     const high = matching.filter((i) => (i.bandOverride ?? i.band) === Band.HIGH).length;
@@ -576,7 +579,7 @@ export async function getWardIntelligence(
     };
   }).sort((a, b) => b.issueCount - a.issueCount);
 
-  // Clean Geo issue markers list
+  // Clean Geo issue markers list (consistent SLA breach logic with overview KPIs)
   const issuesGeo = issues.map((i) => ({
     id: i.id,
     category: i.category,
@@ -589,15 +592,18 @@ export async function getWardIntelligence(
     title: `${CATEGORY_LABELS[i.category] || i.category} at ${i.address || "Ward location"}`,
     isHotspot: Boolean(i.isHotspot),
     recurrenceOf: i.recurrenceOf,
-    slaBreached: i.slaBreached,
+    slaBreached: isSlaBreachedUnresolved(i, now),
     createdAt: i.createdAt.toISOString(),
   }));
 
   // 6. Section D — Resolution Performance (measured strictly from creation to independent VERIFIED_FIXED)
+  // Exclude REJECTED records from resolution & SLA denominators so dismissed spam/duplicates don't skew rates.
+  const eligibleIssues = issues.filter((i) => i.status !== Status.REJECTED);
+  const unresolvedIssues = issues.filter((i) => isUnresolvedIssueStatus(i.status));
   let totalResolutionTimeHours = 0;
   let resolvedWithTimestampCount = 0;
 
-  for (const item of issues) {
+  for (const item of eligibleIssues) {
     if (item.status === Status.VERIFIED_FIXED) {
       const action = item.actions.find((a) => a.toStatus === Status.VERIFIED_FIXED);
       const resDate = action?.createdAt || item.updatedAt;
@@ -619,13 +625,13 @@ export async function getWardIntelligence(
       : null;
 
   const resolutionRate =
-    totalDistinctIssues > 0
-      ? Number(((verifiedResolved.length / totalDistinctIssues) * 100).toFixed(1))
+    eligibleIssues.length > 0
+      ? Number(((verifiedResolved.length / eligibleIssues.length) * 100).toFixed(1))
       : 0;
 
   const slaBreachRate =
-    totalDistinctIssues > 0
-      ? Number(((slaBreachedIssues.length / totalDistinctIssues) * 100).toFixed(1))
+    eligibleIssues.length > 0
+      ? Number(((slaBreachedIssues.length / eligibleIssues.length) * 100).toFixed(1))
       : 0;
 
   const disputedCount = issues.filter((i) => i.status === Status.DISPUTED).length;
@@ -640,12 +646,12 @@ export async function getWardIntelligence(
   ).length;
 
   const resolutionPerformance: ResolutionPerformanceMetrics = {
-    totalReports: totalDistinctIssues,
+    totalReports: eligibleIssues.length,
     resolvedReports: verifiedResolved.length,
     resolutionRate,
     avgResolutionTimeHours,
     avgResolutionTimeDays,
-    outstandingIssues: activeIssues.length,
+    outstandingIssues: unresolvedIssues.length,
     slaBreachRate,
     independentVerificationRate,
     reopenedRepairsCount,
@@ -708,44 +714,80 @@ export async function getWardIntelligence(
     flaggedHotspots: flaggedHotspots.slice(0, 8),
   };
 
-  // 8. Section F — Historical Trends (Time-series aggregation)
+  // 8. Section F — Historical Trends (Lifecycle-reconstructed time-series aggregation)
   const timeBuckets: TrendTimeBucket[] = [];
-  const daysSpan = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : period === "6m" ? 180 : 365;
-  const numBuckets = period === "7d" ? 7 : 6;
-  const bucketDurationMs = (daysSpan * 24 * 3600 * 1000) / numBuckets;
-  const intervalType = period === "7d" ? "daily" : period === "30d" ? "weekly" : "monthly";
+  const nowMs = now.getTime();
 
-  const trendStartMs = (startDate || new Date(Date.now() - daysSpan * 24 * 3600 * 1000)).getTime();
+  let trendStartMs: number;
+  let daysSpan: number;
+  if (period === "all") {
+    if (allWardIssues.length > 0) {
+      const earliestMs = Math.min(...allWardIssues.map((i) => i.createdAt.getTime()));
+      trendStartMs = earliestMs;
+      daysSpan = Math.max(7, Math.ceil((nowMs - earliestMs) / (24 * 3600 * 1000)));
+    } else {
+      daysSpan = 30;
+      trendStartMs = nowMs - daysSpan * 24 * 3600 * 1000;
+    }
+  } else {
+    daysSpan = period === "7d" ? 7 : period === "30d" ? 30 : period === "90d" ? 90 : 180;
+    trendStartMs = (startDate ?? new Date(nowMs - daysSpan * 24 * 3600 * 1000)).getTime();
+  }
+
+  const numBuckets =
+    period === "7d"
+      ? 7
+      : period === "all" && daysSpan > 180
+        ? Math.min(12, Math.max(6, Math.ceil(daysSpan / 30)))
+        : 6;
+  const totalSpanMs = Math.max(24 * 3600 * 1000, nowMs - trendStartMs);
+  const bucketDurationMs = totalSpanMs / numBuckets;
+  const intervalType: "daily" | "weekly" | "monthly" =
+    daysSpan <= 14 ? "daily" : daysSpan <= 60 ? "weekly" : "monthly";
+
+  // Helper to reconstruct an issue's lifecycle status at a given timestamp using ActionLog
+  const statusAtTime = (issue: (typeof allWardIssues)[number], at: Date): Status => {
+    if (issue.actions.length === 0) return issue.status;
+    // actions are ordered desc; find latest status transition at or before `at`
+    const latestBefore = issue.actions.find((a) => a.createdAt <= at && a.toStatus !== null);
+    if (latestBefore?.toStatus) return latestBefore.toStatus;
+    return Status.OPEN;
+  };
 
   for (let b = 0; b < numBuckets; b++) {
     const bStart = new Date(trendStartMs + b * bucketDurationMs);
-    const bEnd = new Date(trendStartMs + (b + 1) * bucketDurationMs);
+    const bEnd = new Date(b === numBuckets - 1 ? nowMs + 1 : trendStartMs + (b + 1) * bucketDurationMs);
 
-    const newInBucket = issues.filter(
+    const newInBucket = allWardIssues.filter(
       (i) => i.createdAt >= bStart && i.createdAt < bEnd
     );
 
-    const resolvedInBucket = issues.filter((i) => {
-      const act = i.actions.find(
-        (a) => a.toStatus === Status.VERIFIED_FIXED || a.toStatus === Status.CLAIMED_FIXED
-      );
-      const resDate = act?.createdAt || i.repairClaimedAt || i.updatedAt;
-      return i.status === Status.VERIFIED_FIXED && resDate >= bStart && resDate < bEnd;
+    // Count verified resolutions strictly by authoritative VERIFIED_FIXED transition timestamp
+    const resolvedInBucket = allWardIssues.filter((i) => {
+      if (i.status !== Status.VERIFIED_FIXED) return false;
+      const verifiedAction = i.actions.find((a) => a.toStatus === Status.VERIFIED_FIXED);
+      if (!verifiedAction) return false;
+      return verifiedAction.createdAt >= bStart && verifiedAction.createdAt < bEnd;
     });
 
-    const breachesInBucket = newInBucket.filter((i) => i.slaBreached).length;
+    // Count SLA breaches in the bucket when the SLA deadline actually expired while unresolved
+    const breachesInBucket = allWardIssues.filter((i) => {
+      if (i.createdAt > bEnd) return false;
+      if (i.slaDueAt < bStart || i.slaDueAt >= bEnd || i.slaDueAt > now) return false;
+      return isUnresolvedIssueStatus(statusAtTime(i, i.slaDueAt));
+    });
 
-    // Cumulative backlog at this point
-    const backlogAtBucket = issues.filter(
-      (i) => i.createdAt <= bEnd && (i.status !== Status.VERIFIED_FIXED || i.updatedAt > bEnd)
+    // Reconstruct true unresolved backlog at bEnd (including pre-period issues)
+    const backlogAtBucket = allWardIssues.filter(
+      (i) => i.createdAt <= bEnd && isUnresolvedIssueStatus(statusAtTime(i, bEnd))
     ).length;
 
     const label =
-      period === "7d"
+      intervalType === "daily"
         ? bStart.toLocaleDateString("en-IN", { weekday: "short", day: "numeric" })
-        : period === "30d"
-        ? `Wk ${b + 1}`
-        : bStart.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+        : intervalType === "weekly" && period === "30d"
+          ? `Wk ${b + 1}`
+          : bStart.toLocaleDateString("en-IN", { month: "short", year: daysSpan > 365 ? "2-digit" : undefined, day: daysSpan > 180 ? undefined : "numeric" });
 
     timeBuckets.push({
       label,
@@ -753,7 +795,7 @@ export async function getWardIntelligence(
       newReports: newInBucket.length,
       verifiedRepairs: resolvedInBucket.length,
       backlog: backlogAtBucket,
-      slaBreaches: breachesInBucket,
+      slaBreaches: breachesInBucket.length,
     });
   }
 
@@ -796,51 +838,90 @@ export async function getWardIntelligence(
 
   const recommendedActions: WardBriefingOutput["recommendedActions"] = [];
 
-  if (criticalHighIssues.length > 0) {
-    const critCat = criticalHighIssues[0].category;
-    recommendedActions.push({
-      priority: "CRITICAL",
-      title: `Prioritize ${criticalHighIssues.length} high-severity hazards`,
-      reason: `Unattended critical defects present elevated road safety and traffic disruption risks.`,
-      affectedCategory: CATEGORY_LABELS[critCat] || critCat,
-    });
-  }
+  if (userRole === Role.CITIZEN) {
+    if (awaitingVerification.length > 0) {
+      recommendedActions.push({
+        priority: "HIGH",
+        title: `Verify ${awaitingVerification.length} claimed ${awaitingVerification.length === 1 ? "repair" : "repairs"}`,
+        reason: "Municipal crews marked these defects repaired. Independent citizen photos confirm whether the fix is genuine.",
+        affectedCategory: "Verification",
+      });
+    }
 
-  if (slaBreachedIssues.length > 0) {
-    recommendedActions.push({
-      priority: "HIGH",
-      title: "Expedite overdue SLA work orders",
-      reason: `${slaBreachedIssues.length} tickets have breached statutory response windows and require operational escalation.`,
-      affectedCategory: "Operations",
-    });
-  }
+    if (slaBreachedIssues.length > 0) {
+      recommendedActions.push({
+        priority: "HIGH",
+        title: `${slaBreachedIssues.length} overdue ${slaBreachedIssues.length === 1 ? "issue" : "issues"} past expected timeline`,
+        reason: `These unresolved defects in ${cleanName} have exceeded their municipal SLA response window.`,
+        affectedCategory: "Timeline",
+      });
+    }
 
-  if (awaitingVerification.length > 0) {
-    recommendedActions.push({
-      priority: "HIGH",
-      title: "Mobilize citizen repair verification",
-      reason: `${awaitingVerification.length} completed repair claims require on-site photographic evidence to close the claim gap.`,
-      affectedCategory: "Audit",
-    });
-  }
+    if (flaggedHotspots.length > 0) {
+      const topHotspot = flaggedHotspots[0];
+      recommendedActions.push({
+        priority: "MEDIUM",
+        title: `Recurring cluster near ${topHotspot.location}`,
+        reason: `${topHotspot.issueCount} reports are concentrated within 180m. Explore this area on Map View.`,
+        affectedCategory: "Hotspot",
+      });
+    }
 
-  if (flaggedHotspots.length > 0) {
-    const topHotspot = flaggedHotspots[0];
-    recommendedActions.push({
-      priority: "MEDIUM",
-      title: `Conduct engineering review at ${topHotspot.location}`,
-      reason: topHotspot.evidenceSummary,
-      affectedCategory: topHotspot.category,
-    });
-  }
+    if (recommendedActions.length === 0) {
+      recommendedActions.push({
+        priority: "MEDIUM",
+        title: "No urgent verification gaps or overdue issues",
+        reason: `Active reports in ${cleanName} are within their expected resolution windows.`,
+        affectedCategory: "General",
+      });
+    }
+  } else {
+    if (criticalHighIssues.length > 0) {
+      const critCat = criticalHighIssues[0].category;
+      recommendedActions.push({
+        priority: "CRITICAL",
+        title: `Prioritize ${criticalHighIssues.length} high-severity hazards`,
+        reason: `Unattended critical defects present elevated road safety and traffic disruption risks.`,
+        affectedCategory: CATEGORY_LABELS[critCat] || critCat,
+      });
+    }
 
-  if (recommendedActions.length === 0) {
-    recommendedActions.push({
-      priority: "MEDIUM",
-      title: "Maintain preventative infrastructure monitoring",
-      reason: "No acute SLA breaches or unverified claims detected in the selected time period.",
-      affectedCategory: "General",
-    });
+    if (slaBreachedIssues.length > 0) {
+      recommendedActions.push({
+        priority: "HIGH",
+        title: "Expedite overdue SLA work orders",
+        reason: `${slaBreachedIssues.length} tickets have breached statutory response windows and require operational escalation.`,
+        affectedCategory: "Operations",
+      });
+    }
+
+    if (awaitingVerification.length > 0) {
+      recommendedActions.push({
+        priority: "HIGH",
+        title: "Mobilize citizen repair verification",
+        reason: `${awaitingVerification.length} completed repair claims require on-site photographic evidence to close the claim gap.`,
+        affectedCategory: "Audit",
+      });
+    }
+
+    if (flaggedHotspots.length > 0) {
+      const topHotspot = flaggedHotspots[0];
+      recommendedActions.push({
+        priority: "MEDIUM",
+        title: `Conduct engineering review at ${topHotspot.location}`,
+        reason: topHotspot.evidenceSummary,
+        affectedCategory: topHotspot.category,
+      });
+    }
+
+    if (recommendedActions.length === 0) {
+      recommendedActions.push({
+        priority: "MEDIUM",
+        title: "Maintain preventative infrastructure monitoring",
+        reason: "No acute SLA breaches or unverified claims detected in the selected time period.",
+        affectedCategory: "General",
+      });
+    }
   }
 
   const headline =

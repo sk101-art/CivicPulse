@@ -74,9 +74,9 @@ export function CartoTileLayer({
 }
 
 /**
- * Map Configuration Error / Notice Banner.
- * Displays a tactile notice only when CARTO API Key is not configured,
- * informing the user/admin that the OpenStreetMap fallback basemap is active.
+ * Map Configuration Notice Banner.
+ * Displays a subtle, citizen-friendly notice when the OpenStreetMap fallback basemap is active,
+ * without exposing technical environment variable details.
  */
 export function CartoConfigNotice({ className = "" }: { className?: string }) {
   const rawKey = process.env.NEXT_PUBLIC_CARTO_API_KEY;
@@ -87,12 +87,10 @@ export function CartoConfigNotice({ className = "" }: { className?: string }) {
     <div
       role="status"
       aria-live="polite"
-      className={`absolute bottom-3 left-3 z-[1000] px-2.5 py-1.5 rounded-lg bg-[#FAF9F5]/95 backdrop-blur-sm border border-[#DDDCD3] shadow-[0_1px_3px_rgba(41,55,50,0.06)] flex items-center gap-2 text-[10px] text-[#65736B] font-mono pointer-events-auto select-none ${className}`}
+      className={`absolute top-3 left-1/2 -translate-x-1/2 z-[950] px-2.5 py-1 rounded-full bg-[#FAF9F5]/90 backdrop-blur-sm border border-[#DDDCD3] shadow-[0_1px_3px_rgba(41,55,50,0.06)] flex items-center gap-1.5 text-[10px] text-[#65736B] font-medium pointer-events-none select-none ${className}`}
     >
-      <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
-      <span>
-        CARTO key unconfigured (<code>NEXT_PUBLIC_CARTO_API_KEY</code>). Active: OpenStreetMap fallback.
-      </span>
+      <span className="w-1.5 h-1.5 rounded-full bg-[#527B7A] shrink-0" />
+      <span>Using OpenStreetMap base map</span>
     </div>
   );
 }

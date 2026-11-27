@@ -6,19 +6,9 @@ import { parseJson } from "@/lib/api/validate";
 import { apiError, formatSafeApiError } from "@/lib/api/errors";
 import { prisma } from "@/lib/db/prisma";
 import { TEXT_LIMITS } from "@/lib/validation/limits";
+import { REASSIGNMENT_REASONS } from "@/lib/issues/reassignment";
 
 export const dynamic = "force-dynamic";
-
-const REASSIGNMENT_REASONS = [
-  "Repair quality unsatisfactory",
-  "Contractor failed to meet requirements",
-  "SLA breach",
-  "Insufficient repair evidence",
-  "Original agency unavailable",
-  "Repeated repair failure",
-  "Incorrect original assignment",
-  "Other",
-] as const;
 
 const reassignSchema = z.object({
   agencyId: z.string().min(1, "New agency is required"),

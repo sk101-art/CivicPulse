@@ -1,16 +1,36 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
-import { EvidenceRole, Tier } from "@prisma/client";
+import { EvidenceRole, Status, Tier } from "@prisma/client";
 import { latestReportPerIssue, publicDisplayName } from "@/lib/citizen/statsPure";
+
+const ACTIVE_PENDING_STATUSES: Status[] = [
+  Status.OPEN,
+  Status.CONFIRMED,
+  Status.ASSIGNED,
+  Status.IN_PROGRESS,
+  Status.CLAIMED_FIXED,
+  Status.DISPUTED,
+  Status.REOPENED_IN_WARRANTY,
+];
 
 /**
  * Everything the citizen dashboard and profile show, fetched in one parallel batch.
  * - reportsFiled: issues this person reported first (REPORT evidence only)
+ * - verifiedFixedCount: all-time primary reports independently verified fixed (VERIFIED_FIXED only; CLAIMED_FIXED excluded)
+ * - pendingCount: all-time primary reports still active / awaiting final verification
  * - votesCast: real votes only, i.e. blind-audit votes plus fix verifications. Confirming a report
  *   (a duplicate merged into an issue) is not a vote, and nobody "confirms" their own report.
  */
 export async function loadCitizenOverview(userId: string, opts: { reportLimit?: number } = {}) {
-  const [user, recentReports, reportsFiled, auditVotes, verifications] = await Promise.all([
+  const [
+    user,
+    recentReports,
+    reportsFiled,
+    verifiedFixedCount,
+    pendingCount,
+    auditVotes,
+    verifications,
+  ] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, include: { citizenProfile: true } }),
     prisma.report.findMany({
       where: { userId, role: { in: [EvidenceRole.REPORT, EvidenceRole.CONFIRM] } },
@@ -33,6 +53,20 @@ export async function loadCitizenOverview(userId: string, opts: { reportLimit?: 
       },
     }),
     prisma.report.count({ where: { userId, role: EvidenceRole.REPORT } }),
+    prisma.report.count({
+      where: {
+        userId,
+        role: EvidenceRole.REPORT,
+        issue: { status: Status.VERIFIED_FIXED },
+      },
+    }),
+    prisma.report.count({
+      where: {
+        userId,
+        role: EvidenceRole.REPORT,
+        issue: { status: { in: ACTIVE_PENDING_STATUSES } },
+      },
+    }),
     prisma.auditVote.count({ where: { userId } }),
     prisma.verification.count({ where: { verifierId: userId } }),
   ]);
@@ -45,6 +79,8 @@ export async function loadCitizenOverview(userId: string, opts: { reportLimit?: 
     profile: user?.citizenProfile ?? null,
     reports,
     reportsFiled,
+    verifiedFixedCount,
+    pendingCount,
     votesCast: auditVotes + verifications,
   };
 }

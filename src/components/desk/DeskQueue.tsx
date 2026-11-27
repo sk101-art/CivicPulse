@@ -28,7 +28,7 @@ const BAND_PRIORITY: Record<Band, number> = {
 };
 
 const QUEUE_GRID_COLUMNS =
-  'grid grid-cols-[150px_165px_minmax(260px,1.5fr)_190px_180px_minmax(300px,1.3fr)_48px] items-center';
+  'grid grid-cols-[88px_minmax(108px,0.9fr)_minmax(150px,1.25fr)_minmax(124px,0.85fr)_minmax(122px,0.85fr)_minmax(290px,2.1fr)_42px] items-center';
 
 const STATUS_STYLES: Record<string, string> = {
   OPEN: 'bg-[#EFF3F6] text-[#718F9E] border-[#D4E0E7]',
@@ -421,19 +421,19 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
       <div className="bg-[#FFFFFF] rounded-2xl border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.04)] overflow-hidden">
         {/* Desktop & Tablet Aligned Grid */}
         <div className="hidden md:block overflow-x-auto w-full">
-          <div className="min-w-[1293px] w-full text-left text-xs">
+          <div className="min-w-[924px] w-full text-left text-xs">
             {/* Table Header */}
             <div
               role="row"
               className={`${QUEUE_GRID_COLUMNS} border-b border-[#DDDCD3] bg-[#FAF9F5] text-[#65736B] font-semibold select-none`}
             >
-              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Issue ID</div>
-              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Category</div>
-              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Location</div>
-              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Priority Index</div>
-              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">Status</div>
-              <div className="py-3 px-3 lg:px-4 whitespace-nowrap">SLA Clock</div>
-              <div className="py-3 px-1.5 text-center whitespace-nowrap">Action</div>
+              <div className="py-3 px-2.5 lg:px-3 whitespace-nowrap">Issue ID</div>
+              <div className="py-3 px-2.5 lg:px-3 whitespace-nowrap">Category</div>
+              <div className="py-3 px-2.5 lg:px-3 whitespace-nowrap">Location</div>
+              <div className="py-3 px-2.5 lg:px-3 whitespace-nowrap">Priority Index</div>
+              <div className="py-3 px-2.5 lg:px-3 whitespace-nowrap">Status</div>
+              <div className="py-3 px-2.5 lg:px-3 whitespace-nowrap">SLA Clock</div>
+              <div className="py-3 px-1 text-center whitespace-nowrap">Action</div>
             </div>
 
             {/* Table Rows */}
@@ -477,17 +477,17 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                       className={`${QUEUE_GRID_COLUMNS} min-h-[84px] hover:bg-[#FAF9F5] transition-colors cursor-pointer group`}
                     >
                       {/* 1. Issue ID */}
-                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0 font-mono font-bold text-[#355858]">
+                      <div className="py-2.5 px-2.5 lg:px-3 flex items-center min-w-0 font-mono font-bold text-[#355858]">
                         <span
                           title={issue.id}
-                          className={displayIssueId.length > 16 ? 'break-words leading-tight' : 'whitespace-nowrap'}
+                          className={displayIssueId.length > 10 ? 'break-words leading-tight' : 'whitespace-nowrap'}
                         >
                           {displayIssueId}
                         </span>
                       </div>
 
                       {/* 2. Category */}
-                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
+                      <div className="py-2.5 px-2.5 lg:px-3 flex items-center min-w-0">
                         <span
                           title={(issue.category || 'OTHER').replace(/_/g, ' ')}
                           className="font-medium text-[#293732] truncate"
@@ -497,7 +497,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                       </div>
 
                       {/* 3. Location */}
-                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
+                      <div className="py-2.5 px-2.5 lg:px-3 flex items-center min-w-0">
                         <div
                           title={issue.address || locationText}
                           className="line-clamp-2 font-sans text-[#293732] leading-snug break-words"
@@ -507,8 +507,8 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                       </div>
 
                       {/* 4. Priority Index */}
-                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
-                        <div className="inline-flex items-center gap-2 whitespace-nowrap">
+                      <div className="py-2.5 px-2.5 lg:px-3 flex items-center min-w-0">
+                        <div className="inline-flex items-center gap-1.5 whitespace-nowrap">
                           <span
                             className={`inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap ${
                               BAND_STYLES[currentBand] || BAND_STYLES.LOW
@@ -523,9 +523,9 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                       </div>
 
                       {/* 5. Status */}
-                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
+                      <div className="py-2.5 px-2.5 lg:px-3 flex items-center min-w-0">
                         <span
-                          className={`inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
+                          className={`inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
                             STATUS_STYLES[issue.status] || STATUS_STYLES.OPEN
                           }`}
                         >
@@ -534,14 +534,14 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                       </div>
 
                       {/* 6. SLA Clock */}
-                      <div className="py-2.5 px-3 lg:px-4 flex items-center min-w-0">
+                      <div className="py-2.5 px-2.5 lg:px-3 flex items-center min-w-0">
                         <div className="w-full flex flex-col justify-center gap-1.5 min-w-0">
-                          <div className="flex items-center gap-1.5 text-xs whitespace-nowrap">
+                          <div className="flex items-center flex-wrap gap-x-1.5 gap-y-0.5 text-xs">
                             <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${slaInfo.dotClass}`} />
-                            <span className={`font-semibold ${slaInfo.colorClass}`}>
+                            <span className={`font-semibold whitespace-nowrap ${slaInfo.colorClass}`}>
                               {slaInfo.label}
                             </span>
-                            <span className="font-mono text-[11px] text-[#65736B]">
+                            <span className="font-mono text-[11px] text-[#65736B] whitespace-nowrap">
                               · {slaInfo.remainingText}
                             </span>
                           </div>
@@ -560,7 +560,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                       </div>
 
                       {/* 7. Action */}
-                      <div className="py-2.5 px-1.5 flex items-center justify-center">
+                      <div className="py-2.5 px-1 flex items-center justify-center">
                         <button
                           type="button"
                           onClick={(e) => {

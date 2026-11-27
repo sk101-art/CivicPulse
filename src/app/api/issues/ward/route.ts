@@ -16,6 +16,10 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const wardParam = url.searchParams.get('ward') || url.searchParams.get('wardId');
     const categoryParam = url.searchParams.get('category'); // optional category filter
+    const rawLimit = Number(url.searchParams.get('limit') || 100);
+    const rawOffset = Number(url.searchParams.get('offset') || 0);
+    const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(250, Math.floor(rawLimit))) : 100;
+    const offset = Number.isFinite(rawOffset) ? Math.max(0, Math.floor(rawOffset)) : 0;
 
     // 1. Resolve target ward from DB (prefer exact id/code on active GBA wards)
     type WardRecord = Awaited<ReturnType<typeof prisma.ward.findFirst<{ include: { corporation: true } }>>>;
@@ -111,10 +115,24 @@ export async function GET(req: Request) {
       ? String(targetWard.wardNumber)
       : targetWard.code.replace(/^[A-Z]+-/, '');
 
-    // 2. Query Category Breakdown for this specific Ward
+    // 2. Spatial + Attribute Ward Scope (PostGIS ST_Covers when ward polygon exists, plus wardId fallback)
+    let baseIssueWhere: Prisma.IssueWhereInput = { wardId: targetWard.id };
+    if (hasGeometry) {
+      const spatialMatches = await prisma.$queryRaw<Array<{ id: string }>>`
+        SELECT DISTINCT i.id
+        FROM "Issue" i
+        LEFT JOIN "Ward" w ON w.id = ${targetWard.id}
+        WHERE i."wardId" = ${targetWard.id}
+           OR (w.geom IS NOT NULL AND i.geom IS NOT NULL AND ST_Covers(w.geom::geometry, i.geom::geometry))
+      `;
+      const matchedIds = spatialMatches.map((r) => r.id);
+      baseIssueWhere = matchedIds.length > 0 ? { id: { in: matchedIds } } : { id: { in: [] } };
+    }
+
+    // Query Category Breakdown for this specific Ward
     const categoryCountsRaw = await prisma.issue.groupBy({
       by: ['category'],
-      where: { wardId: targetWard.id },
+      where: baseIssueWhere,
       _count: { id: true },
     });
 
@@ -143,8 +161,8 @@ export async function GET(req: Request) {
       categoryBreakdown[c.category] = c._count.id;
     });
 
-    // 3. Query Issues for this Ward (optionally filtered by Category)
-    const issueWhere: Prisma.IssueWhereInput = { wardId: targetWard.id };
+    // 3. Query Issues for this Ward (optionally filtered by Category, with bounded pagination)
+    const issueWhere: Prisma.IssueWhereInput = { ...baseIssueWhere };
 
     if (categoryParam && categoryParam !== 'ALL') {
       const catUpper = categoryParam.toUpperCase().replace(/\s+/g, '_');
@@ -155,29 +173,33 @@ export async function GET(req: Request) {
 
     const isAuthority = session.user.role === 'AUTHORITY';
 
-    const issues = await prisma.issue.findMany({
-      where: issueWhere,
-      include: {
-        agency: { select: { id: true, code: true, name: true } },
-        ...(isAuthority
-          ? {
-              assignments: {
-                take: 1,
-                orderBy: { createdAt: 'desc' },
-                include: { personnel: { select: { id: true, name: true, role: true } } },
-              },
-            }
-          : {}),
-        reports: {
-          take: 3,
-          orderBy: { createdAt: 'desc' },
-          select: { id: true, role: true, photoUrl: true, createdAt: true, note: true },
+    const [totalMatchingCount, issues] = await Promise.all([
+      prisma.issue.count({ where: issueWhere }),
+      prisma.issue.findMany({
+        where: issueWhere,
+        include: {
+          agency: { select: { id: true, code: true, name: true } },
+          ...(isAuthority
+            ? {
+                assignments: {
+                  take: 1,
+                  orderBy: { createdAt: 'desc' },
+                  include: { personnel: { select: { id: true, name: true, role: true } } },
+                },
+              }
+            : {}),
+          reports: {
+            take: 3,
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, role: true, photoUrl: true, createdAt: true, note: true },
+          },
+          _count: { select: { reports: true, comments: true } },
         },
-        _count: { select: { reports: true, comments: true } },
-      },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
-      take: 100,
-    });
+        orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+        skip: offset,
+        take: limit,
+      }),
+    ]);
 
     // Format issues for client maps and list components
     const statusLabelMap: Record<string, string> = {
@@ -196,8 +218,8 @@ export async function GET(req: Request) {
       const latestReport = iss.reports[0] || null;
       return {
         id: iss.id,
-        category: iss.category,
-        title: `${iss.category.replace(/_/g, ' ')} at ${iss.address || 'Ward location'}`,
+        category: iss.category ?? 'OTHER',
+        title: `${(iss.category ?? 'CIVIC_ISSUE').replace(/_/g, ' ')} at ${iss.address || 'Ward location'}`,
         location: iss.address || `Ward ${codeNumber}`,
         lat: iss.lat,
         lng: iss.lng,
@@ -229,7 +251,7 @@ export async function GET(req: Request) {
 
     // 4. Query Ward-level Overall Statistics
     const allWardIssues = await prisma.issue.findMany({
-      where: { wardId: targetWard.id },
+      where: baseIssueWhere,
       select: {
         id: true,
         status: true,
@@ -276,8 +298,8 @@ export async function GET(req: Request) {
       id: t.id,
       issueId: t.issueId,
       kind: t.kind,
-      category: t.issue.category,
-      title: `${t.kind === 'CLAIM_CHECK' ? 'Repair Verification' : 'Durability Check'}: ${t.issue.category.replace(/_/g, ' ')}`,
+      category: t.issue.category ?? 'OTHER',
+      title: `${t.kind === 'CLAIM_CHECK' ? 'Repair Verification' : 'Durability Check'}: ${(t.issue.category ?? 'CIVIC_ISSUE').replace(/_/g, ' ')}`,
       location: t.issue.address || `Ward ${codeNumber}`,
       lat: t.issue.lat,
       lng: t.issue.lng,
@@ -306,6 +328,13 @@ export async function GET(req: Request) {
         resolvedCount,
         criticalCount,
         slaBreachedCount,
+      },
+      pagination: {
+        total: totalMatchingCount,
+        returned: formattedIssues.length,
+        offset,
+        limit,
+        hasMore: offset + formattedIssues.length < totalMatchingCount,
       },
       audits: formattedAudits,
     });

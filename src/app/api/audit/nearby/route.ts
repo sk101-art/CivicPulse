@@ -17,6 +17,7 @@ const querySchema = z.object({
   radiusM: z.coerce.number().int().min(100).max(50000).default(2000),
   wardId: z.string().trim().optional(),
   corporationId: z.string().trim().optional(),
+  mode: z.enum(['NEARBY', 'WARD']).optional(),
 });
 
 export async function GET(req: Request) {
@@ -33,13 +34,14 @@ export async function GET(req: Request) {
       radiusM: searchParams.get('radiusM') ?? undefined,
       wardId: searchParams.get('wardId') || undefined,
       corporationId: searchParams.get('corporationId') || undefined,
+      mode: searchParams.get('mode') || undefined,
     });
 
     if (!parsed.success) {
       return apiError(400, 'VALIDATION_ERROR', 'Invalid nearby audit query parameters');
     }
 
-    const { lat, lng, radiusM, wardId, corporationId } = parsed.data;
+    const { lat, lng, radiusM, wardId, corporationId, mode } = parsed.data;
     const hasCoords = lat !== undefined && lng !== undefined;
 
     const user = await prisma.user.findUnique({
@@ -110,6 +112,18 @@ export async function GET(req: Request) {
           reason: eligibility.reason,
           message: INELIGIBLE_MESSAGES[eligibility.reason],
           eligibleAt: 'eligibleAt' in eligibility ? eligibility.eligibleAt ?? null : null,
+          tasks: [],
+          submissions: mySubmissions,
+        },
+        { headers: { 'Cache-Control': 'no-store, max-age=0' } }
+      );
+    }
+
+    if ((mode === 'NEARBY' || (!mode && !wardId && !corporationId)) && !hasCoords) {
+      return NextResponse.json(
+        {
+          eligible: true,
+          locationRequired: true,
           tasks: [],
           submissions: mySubmissions,
         },
@@ -242,15 +256,9 @@ export async function GET(req: Request) {
       : [];
     const wardById = new Map(wardsList.map((w) => [w.id, w]));
 
-    const votedIssueIds = new Set(
-      myVotesRaw
-        .filter((v) => {
-          const roundStart = v.task.issue ? 0 : 0;
-          void roundStart;
-          return true;
-        })
-        .map((v) => `${v.task.issueId}:${v.task.kind}`)
-    );
+    // Multi-round re-verification: only votes cast during the current repair round
+    // (handled per-issue via `alreadyVotedThisRound`) should block voting again.
+    void myVotesRaw;
 
     const seenIssues = new Set<string>();
     const availableTasks = [];
@@ -273,7 +281,7 @@ export async function GET(req: Request) {
           v.task.kind === t.kind &&
           v.createdAt.getTime() >= roundStartMs
       );
-      if (alreadyVotedThisRound || votedIssueIds.has(`${iss.id}:${t.kind}`)) continue;
+      if (alreadyVotedThisRound) continue;
 
       const validCoords = Number.isFinite(iss.lat) && Number.isFinite(iss.lng);
       let distanceM: number | null = null;
@@ -286,8 +294,6 @@ export async function GET(req: Request) {
 
       seenIssues.add(iss.id);
 
-      const originalReport = iss.reports.find((r) => r.role === EvidenceRole.REPORT) ?? null;
-      const claimFixReport = iss.reports.find((r) => r.role === EvidenceRole.CLAIM_FIX) ?? null;
       const ward = iss.wardId ? wardById.get(iss.wardId) ?? null : null;
 
       availableTasks.push({
@@ -301,18 +307,9 @@ export async function GET(req: Request) {
         hasValidCoordinates: validCoords,
         distanceM,
         dueAt: t.dueAt.toISOString(),
-        repairClaimedAt: iss.repairClaimedAt?.toISOString() ?? null,
         status: iss.status,
         challengeBearingDeg: t.challengeBearingDeg,
         challengeNonce: t.challengeNonce,
-        originalPhotoUrl: originalReport?.photoUrl ?? null,
-        originalNote: originalReport?.note ?? null,
-        originalReportedAt: (originalReport?.capturedAt ?? iss.createdAt).toISOString(),
-        repairPhotoUrl: claimFixReport?.photoUrl ?? null,
-        repairNote: claimFixReport?.note ?? null,
-        agencyName: iss.agency?.name ?? null,
-        contractorName: iss.contractorName ?? null,
-        tenderId: iss.tenderId ?? null,
         ward: ward
           ? {
               id: ward.id,

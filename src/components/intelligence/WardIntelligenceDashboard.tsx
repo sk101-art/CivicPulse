@@ -169,18 +169,21 @@ export function WardIntelligenceDashboard({ role: propRole }: Props) {
             lastRefreshedAt={data.lastRefreshedAt}
           />
 
-          {/* Section H: AI Ward Briefing & Action Recommendations */}
+          {/* Section H: Ward Briefing & Insights */}
           <AiWardBriefingCard
             briefing={data.wardBriefing}
             wardName={data.ward.name}
+            role={effectiveRole}
+            awaitingVerificationCount={data.overview.awaitingVerificationIssues}
           />
 
-          {/* Section C: Large Interactive Geographical Intelligence Map */}
+          {/* Section C: Hotspot Visualization (Compact for Citizens, Full Map for Authority) */}
           <GeoIntelligenceMap
             ward={data.ward}
             hotspots={data.geoIntelligence.hotspots}
             issuesGeo={data.geoIntelligence.issuesGeo}
             selectedCategory={selectedCategory}
+            mode={effectiveRole === 'CITIZEN' ? 'compact-hotspot' : 'full'}
           />
 
           {/* Section B: Category-Wise Issue Analysis */}
@@ -189,6 +192,7 @@ export function WardIntelligenceDashboard({ role: propRole }: Props) {
             selectedCategory={selectedCategory}
             onSelectCategory={setSelectedCategory}
             totalIssues={data.overview.totalIssues}
+            role={effectiveRole}
           />
 
           {/* Section D: Resolution Performance */}
@@ -201,6 +205,7 @@ export function WardIntelligenceDashboard({ role: propRole }: Props) {
           <RecurringIssuesSection
             hotspots={data.recurringAnalysis.flaggedHotspots}
             wardName={data.ward.name}
+            role={effectiveRole}
           />
 
           {/* Section F: Historical Trends */}

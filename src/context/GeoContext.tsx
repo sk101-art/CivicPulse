@@ -94,11 +94,20 @@ export interface WardAuditItem {
   dueAt: string;
 }
 
+export interface WardPagination {
+  total: number;
+  returned: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+}
+
 export interface WardDataState {
   issues: WardIssueItem[];
   categoryBreakdown: Record<string, number>;
   stats: WardStats;
   audits: WardAuditItem[];
+  pagination?: WardPagination;
   isLoading: boolean;
   error: string | null;
 }
@@ -152,6 +161,7 @@ interface GeoContextType {
   setFollowLocation: (enabled: boolean) => void;
   refresh: () => Promise<void>;
   refreshWardData: () => Promise<void>;
+  loadMoreWardIssues?: () => Promise<void>;
 }
 
 const GeoContext = createContext<GeoContextType | undefined>(undefined);
@@ -351,6 +361,7 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         categoryBreakdown: data.categoryBreakdown || {},
         stats: data.stats || DEFAULT_STATS,
         audits: data.audits || [],
+        pagination: data.pagination,
         isLoading: false,
         error: null,
       });
@@ -661,6 +672,31 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
     };
   }, [currentWard, selectedCategory, fetchWardData]);
 
+  const loadMoreWardIssues = useCallback(async () => {
+    if (!currentWard || !wardData.pagination?.hasMore) return;
+    const nextOffset = wardData.pagination.offset + wardData.pagination.returned;
+    try {
+      const wardIdentifier = currentWard.code || currentWard.id;
+      const catParam = selectedCategory && selectedCategory !== 'ALL' ? `&category=${encodeURIComponent(selectedCategory)}` : '';
+      const res = await fetch(
+        `/api/issues/ward?ward=${encodeURIComponent(wardIdentifier)}${catParam}&offset=${nextOffset}&limit=${wardData.pagination.limit}`
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setWardData((prev) => {
+        const existingIds = new Set(prev.issues.map((i) => i.id));
+        const incoming = (data.issues || []).filter((i: WardIssueItem) => !existingIds.has(i.id));
+        return {
+          ...prev,
+          issues: [...prev.issues, ...incoming],
+          pagination: data.pagination,
+        };
+      });
+    } catch {
+      // keep existing loaded issues
+    }
+  }, [currentWard, selectedCategory, wardData.pagination]);
+
   return (
     <GeoContext.Provider
       value={{
@@ -688,6 +724,7 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
         setFollowLocation,
         refresh: refreshGeoContext,
         refreshWardData: () => fetchWardData(currentWard, selectedCategory),
+        loadMoreWardIssues,
       }}
     >
       {children}

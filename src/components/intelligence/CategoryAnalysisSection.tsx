@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Layers, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import Link from 'next/link';
+import { Layers, CheckCircle2, Clock, AlertTriangle, ArrowRight, X } from 'lucide-react';
 import type { CategoryMetric } from '@/lib/intelligence/wardAnalytics';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
   selectedCategory: string;
   onSelectCategory: (cat: string) => void;
   totalIssues: number;
+  role?: 'CITIZEN' | 'AUTHORITY';
 }
 
 export function CategoryAnalysisSection({
@@ -16,7 +18,11 @@ export function CategoryAnalysisSection({
   selectedCategory,
   onSelectCategory,
   totalIssues,
+  role = 'CITIZEN',
 }: Props) {
+  const selectedMeta = selectedCategory !== 'ALL'
+    ? categories.find((c) => c.category === selectedCategory) || null
+    : null;
   return (
     <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.04)] space-y-5">
       {/* Section Header */}
@@ -68,6 +74,40 @@ export function CategoryAnalysisSection({
         </div>
       </div>
 
+      {/* Selected Category Feedback Banner */}
+      {selectedMeta && (
+        <div
+          data-testid="selected-category-banner"
+          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-[#F2F6F5] border border-[#C2D7D1] text-xs"
+        >
+          <div className="flex items-center gap-2 text-[#293732]">
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: selectedMeta.color }} />
+            <span>
+              Selected: <strong>{selectedMeta.label}</strong> ({selectedMeta.count} {selectedMeta.count === 1 ? 'issue' : 'issues'}, {selectedMeta.activeCount} active, {selectedMeta.resolvedCount} verified fixed)
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {role === 'CITIZEN' && (
+              <Link
+                href={`/citizen/map?category=${selectedMeta.category}`}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#355858] text-white font-semibold hover:bg-[#2E5453] transition-colors"
+              >
+                <span>Explore {selectedMeta.label} on Map View</span>
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            )}
+            <button
+              type="button"
+              onClick={() => onSelectCategory('ALL')}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-white border border-[#DDDCD3] text-[#65736B] hover:text-[#293732] cursor-pointer"
+            >
+              <X className="w-3 h-3" />
+              <span>Clear</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Category Horizontal Comparison Table */}
       <div className="space-y-3">
         {categories.map((cat) => {
@@ -79,7 +119,9 @@ export function CategoryAnalysisSection({
               className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
                 isSelected
                   ? 'bg-[#F2F6F5] border-[#527B7A] shadow-sm'
-                  : 'bg-white hover:bg-[#FAF9F5] border-[#E8E7DF]'
+                  : cat.count === 0
+                    ? 'bg-[#FAF9F5]/60 border-[#E8E7DF] opacity-70 hover:opacity-100'
+                    : 'bg-white hover:bg-[#FAF9F5] border-[#E8E7DF]'
               }`}
             >
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2">

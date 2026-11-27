@@ -55,14 +55,42 @@ describe('GET /api/audit/nearby', () => {
     expect(Array.isArray(json.tasks)).toBe(true);
     expect(Array.isArray(json.submissions)).toBe(true);
 
-    // Every returned task must be CLAIMED_FIXED and <= 10000m away, sorted nearest-first
+    // Every returned task must be CLAIMED_FIXED and <= 10000m away, sorted nearest-first, and blind
     let prevDist = -1;
     for (const t of json.tasks) {
       expect(t.status).toBe('CLAIMED_FIXED');
       expect(t.distanceM).not.toBeNull();
       expect(t.distanceM).toBeLessThanOrEqual(10000);
       expect(t.distanceM).toBeGreaterThanOrEqual(prevDist);
+      expect(t.originalPhotoUrl).toBeUndefined();
+      expect(t.repairPhotoUrl).toBeUndefined();
+      expect(t.contractorName).toBeUndefined();
+      expect(t.agencyName).toBeUndefined();
+      expect(t.tenderId).toBeUndefined();
+      expect(t.repairClaimedAt).toBeUndefined();
       prevDist = t.distanceM;
     }
+  });
+
+  it('returns locationRequired: true and empty tasks in NEARBY mode when coordinates are missing', async () => {
+    const citizen = await prisma.user.findFirst({
+      where: {
+        role: 'CITIZEN',
+        createdAt: { lt: new Date(Date.now() - 48 * 3600 * 1000) },
+      },
+    });
+    expect(citizen).not.toBeNull();
+
+    mockedGetSession.mockResolvedValueOnce({
+      user: { id: citizen!.id, role: 'CITIZEN', email: citizen!.email },
+    } as any);
+
+    const req = new Request('http://localhost:3000/api/audit/nearby?mode=NEARBY&radiusM=2000');
+    const res = await GET(req);
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.eligible).toBe(true);
+    expect(json.locationRequired).toBe(true);
+    expect(json.tasks).toEqual([]);
   });
 });

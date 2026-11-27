@@ -90,6 +90,7 @@ interface Props {
     createdAt: string;
   }>;
   selectedCategory: string;
+  mode?: 'compact-hotspot' | 'full';
 }
 
 export function GeoIntelligenceMap({
@@ -97,7 +98,9 @@ export function GeoIntelligenceMap({
   hotspots,
   issuesGeo,
   selectedCategory,
+  mode = 'full',
 }: Props) {
+  const isCompactHotspot = mode === 'compact-hotspot';
   const [viewMode, setViewMode] = useState<MapViewMode>('ALL');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [selectedHotspot, setSelectedHotspot] = useState<HotspotCluster | null>(null);
@@ -193,45 +196,62 @@ export function GeoIntelligenceMap({
           <div className="flex items-center gap-2">
             <Flame className="w-4 h-4 text-[#B76F60]" />
             <h2 className="text-lg font-display font-bold text-[#293732] tracking-tight">
-              Geographical Intelligence & Defect Density
+              {isCompactHotspot ? 'Recurring Hotspot Map' : 'Geographical Intelligence & Defect Density'}
             </h2>
           </div>
           <p className="text-xs text-[#65736B] mt-0.5">
-            Spatial concentration clusters and infrastructure hotspots derived from GPS ground evidence.
+            {isCompactHotspot
+              ? 'Ward boundary and spatial clusters of recurring civic defects. Click any cluster to inspect.'
+              : 'Spatial concentration clusters and infrastructure hotspots derived from GPS ground evidence.'}
           </p>
         </div>
 
-        {/* View Mode Toggle Pill Bar */}
-        <div className="flex items-center gap-1.5 p-1 bg-[#FAF9F5] border border-[#DDDCD3] rounded-xl overflow-x-auto max-w-full">
-          {[
-            { id: 'ALL', label: 'All Issues', icon: Layers },
-            { id: 'UNRESOLVED', label: 'Active Defect Density', icon: Clock },
-            { id: 'CRITICAL', label: 'Critical Hotspots', icon: AlertTriangle },
-            { id: 'RECURRING', label: 'Recurring Problem Areas', icon: Repeat },
-          ].map((mode) => {
-            const Icon = mode.icon;
-            const isActive = viewMode === mode.id;
-            return (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => setViewMode(mode.id as MapViewMode)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
-                  isActive
-                    ? 'bg-[#355858] text-white font-semibold shadow-sm'
-                    : 'text-[#65736B] hover:text-[#293732] hover:bg-[#EAECE6]'
-                }`}
-              >
-                <Icon className="w-3 h-3" />
-                <span>{mode.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        {isCompactHotspot ? (
+          <Link
+            href="/citizen/map"
+            data-testid="explore-map-view-link"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#FAF9F5] hover:bg-[#E5E9E3] border border-[#DDDCD3] text-[#355858] text-xs font-semibold transition-colors self-start lg:self-auto shrink-0"
+          >
+            <span>Explore all issues on Map View</span>
+            <ExternalLink className="w-3.5 h-3.5 text-[#527B7A]" />
+          </Link>
+        ) : (
+          /* View Mode Toggle Pill Bar */
+          <div className="flex items-center gap-1.5 p-1 bg-[#FAF9F5] border border-[#DDDCD3] rounded-xl overflow-x-auto max-w-full">
+            {[
+              { id: 'ALL', label: 'All Issues', icon: Layers },
+              { id: 'UNRESOLVED', label: 'Active Defect Density', icon: Clock },
+              { id: 'CRITICAL', label: 'Critical Hotspots', icon: AlertTriangle },
+              { id: 'RECURRING', label: 'Recurring Problem Areas', icon: Repeat },
+            ].map((m) => {
+              const Icon = m.icon;
+              const isActive = viewMode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setViewMode(m.id as MapViewMode)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all whitespace-nowrap cursor-pointer ${
+                    isActive
+                      ? 'bg-[#355858] text-white font-semibold shadow-sm'
+                      : 'text-[#65736B] hover:text-[#293732] hover:bg-[#EAECE6]'
+                  }`}
+                >
+                  <Icon className="w-3 h-3" />
+                  <span>{m.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Map Display Canvas */}
-      <div className="relative w-full h-[500px] sm:h-[560px] rounded-2xl overflow-hidden border border-[#DDDCD3]">
+      <div
+        className={`relative w-full rounded-2xl overflow-hidden border border-[#DDDCD3] ${
+          isCompactHotspot ? 'h-[340px] sm:h-[380px]' : 'h-[500px] sm:h-[560px]'
+        }`}
+      >
         {/* Floating Controls Top-Right */}
         <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-2 pointer-events-auto">
           <button
@@ -371,83 +391,100 @@ export function GeoIntelligenceMap({
             );
           })}
 
-          {/* Individual Issue Marker Pins */}
-          {filteredIssues.map((issue) => {
-            const icon = getMarkerIcon(issue.status);
-            const statusMeta = getMapStatusMeta(issue.status);
+          {/* Individual Issue Marker Pins (Full Authority Mode only — Citizens use Map View) */}
+          {!isCompactHotspot &&
+            filteredIssues.map((issue) => {
+              const icon = getMarkerIcon(issue.status);
+              const statusMeta = getMapStatusMeta(issue.status);
 
-            return (
-              <Marker
-                key={issue.id}
-                position={[issue.lat, issue.lng]}
-                icon={icon}
-              >
-                <Popup>
-                  <div className="p-3 space-y-2 min-w-[210px]">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-mono uppercase tracking-wider font-bold text-[#527B7A]">
-                        {issue.category.replace(/_/g, ' ')}
-                      </span>
-                      <span className="font-mono text-[10px] text-[#65736B]">
-                        {issue.band}
-                      </span>
+              return (
+                <Marker
+                  key={issue.id}
+                  position={[issue.lat, issue.lng]}
+                  icon={icon}
+                >
+                  <Popup>
+                    <div className="p-3 space-y-2 min-w-[210px]">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-mono uppercase tracking-wider font-bold text-[#527B7A]">
+                          {issue.category.replace(/_/g, ' ')}
+                        </span>
+                        <span className="font-mono text-[10px] text-[#65736B]">
+                          {issue.band}
+                        </span>
+                      </div>
+                      <h5 className="font-display font-semibold text-xs text-[#293732]">
+                        {issue.title}
+                      </h5>
+                      <p className="text-[11px] text-[#65736B]">
+                        {issue.address || 'Ward location'}
+                      </p>
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-[#DDDCD3]">
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+                          style={{
+                            backgroundColor: statusMeta.badgeBg,
+                            color: statusMeta.badgeText,
+                            borderColor: statusMeta.badgeBorder,
+                          }}
+                        >
+                          {statusMeta.label}
+                        </span>
+                        <Link
+                          href={`/issue/${issue.id}`}
+                          className="text-[#527B7A] hover:underline font-semibold flex items-center gap-0.5"
+                        >
+                          Details <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
                     </div>
-                    <h5 className="font-display font-semibold text-xs text-[#293732]">
-                      {issue.title}
-                    </h5>
-                    <p className="text-[11px] text-[#65736B]">
-                      {issue.address || 'Ward location'}
-                    </p>
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-[#DDDCD3]">
-                      <span
-                        className="px-2 py-0.5 rounded-full text-[10px] font-semibold border"
-                        style={{
-                          backgroundColor: statusMeta.badgeBg,
-                          color: statusMeta.badgeText,
-                          borderColor: statusMeta.badgeBorder,
-                        }}
-                      >
-                        {statusMeta.label}
-                      </span>
-                      <Link
-                        href={`/issue/${issue.id}`}
-                        className="text-[#527B7A] hover:underline font-semibold flex items-center gap-0.5"
-                      >
-                        Details <ExternalLink className="w-3 h-3" />
-                      </Link>
-                    </div>
-                  </div>
-                </Popup>
-              </Marker>
-            );
-          })}
+                  </Popup>
+                </Marker>
+              );
+            })}
         </MapContainer>
       </div>
 
-      {/* Status Legend & Filter Bar */}
-      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-        {MAP_STATUS_FILTER_OPTIONS.map((st) => {
-          const active = statusFilter === st.id;
-          return (
-            <button
-              key={st.id}
-              type="button"
-              onClick={() => setStatusFilter(st.id)}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer ${
-                active
-                  ? 'bg-[#293732] text-white border-[#293732]'
-                  : 'bg-[#FAF9F5] text-[#65736B] border-[#DDDCD3] hover:text-[#293732]'
-              }`}
-            >
-              <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: active ? '#FFFFFF' : st.color }}
-              />
-              <span>{st.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Status Legend & Filter Bar (Full Mode) / Compact Cluster Legend (Citizen Mode) */}
+      {isCompactHotspot ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#65736B] pt-1">
+          <div className="flex items-center gap-4">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#B76F60]" />
+              <span>Critical Hotspot Cluster</span>
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#E07A5F]" />
+              <span>Defect Cluster</span>
+            </span>
+          </div>
+          <span className="font-mono">{filteredHotspots.length} spatial clusters in ward</span>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1.5 pt-1">
+          {MAP_STATUS_FILTER_OPTIONS.map((st) => {
+            const active = statusFilter === st.id;
+            return (
+              <button
+                key={st.id}
+                type="button"
+                onClick={() => setStatusFilter(st.id)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer ${
+                  active
+                    ? 'bg-[#293732] text-white border-[#293732]'
+                    : 'bg-[#FAF9F5] text-[#65736B] border-[#DDDCD3] hover:text-[#293732]'
+                }`}
+              >
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: active ? '#FFFFFF' : st.color }}
+                />
+                <span>{st.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

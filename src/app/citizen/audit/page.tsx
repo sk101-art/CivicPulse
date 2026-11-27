@@ -37,18 +37,9 @@ interface NearbyAuditTask {
   hasValidCoordinates: boolean;
   distanceM: number | null;
   dueAt: string;
-  repairClaimedAt: string | null;
   status: string;
   challengeBearingDeg: number;
   challengeNonce: string;
-  originalPhotoUrl: string | null;
-  originalNote?: string | null;
-  originalReportedAt?: string | null;
-  repairPhotoUrl: string | null;
-  repairNote?: string | null;
-  agencyName?: string | null;
-  contractorName?: string | null;
-  tenderId?: string | null;
   ward: {
     id: string;
     code: string;
@@ -119,6 +110,7 @@ export default function CitizenAuditPage() {
   const [loadingTasks, setLoadingTasks] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [eligibilityNotice, setEligibilityNotice] = useState<string | null>(null);
+  const [locationRequired, setLocationRequired] = useState(false);
 
   // Selected task detail + verification workflow
   const [activeTask, setActiveTask] = useState<NearbyAuditTask | null>(null);
@@ -184,9 +176,11 @@ export default function CitizenAuditPage() {
     setLoadingTasks(true);
     setLoadError(null);
     setEligibilityNotice(null);
+    setLocationRequired(false);
 
     try {
       const params = new URLSearchParams();
+      params.set('mode', discoveryMode);
       if (userLocation) {
         params.set('lat', String(userLocation.lat));
         params.set('lng', String(userLocation.lng));
@@ -215,6 +209,9 @@ export default function CitizenAuditPage() {
       if (data.eligible === false) {
         setTasks([]);
         setEligibilityNotice(data.message || 'You are not currently eligible to submit blind verifications.');
+      } else if (data.locationRequired) {
+        setTasks([]);
+        setLocationRequired(true);
       } else {
         setTasks(data.tasks || []);
       }
@@ -264,12 +261,13 @@ export default function CitizenAuditPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           observed: observedVerdict,
-          deviceHeadingDeg: deviceHeading ?? activeTask.challengeBearingDeg,
+          deviceHeadingDeg: deviceHeading ?? undefined,
+          note: verdictComment.trim() || undefined,
           evidence: {
             payload: capturedEvidence.payload,
             signature: capturedEvidence.signature,
             photoBase64,
-            mimeType: 'image/jpeg',
+            mimeType: capturedEvidence.blob.type || 'image/jpeg',
           },
         }),
       });
@@ -534,6 +532,34 @@ export default function CitizenAuditPage() {
                 <p className="text-sm font-semibold text-[#293732]">Verification Eligibility</p>
                 <p className="text-xs text-[#65736B] max-w-md mx-auto">{eligibilityNotice}</p>
               </div>
+            ) : discoveryMode === 'NEARBY' && locationRequired ? (
+              <div className="bg-white rounded-2xl p-10 border border-[#DDDCD3] text-center space-y-3">
+                <LocateFixed className="w-9 h-9 text-[#527B7A] mx-auto" />
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-[#293732]">
+                    Location required for Nearby verification
+                  </p>
+                  <p className="text-xs text-[#65736B] max-w-md mx-auto">
+                    Enable device GPS to discover repairs within your chosen radius, or switch to Explore by Ward.
+                  </p>
+                </div>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={requestUserLocation}
+                    className="px-3.5 py-2 rounded-xl bg-[#355858] text-white text-xs font-semibold cursor-pointer"
+                  >
+                    Retry Location
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiscoveryMode('WARD')}
+                    className="px-3.5 py-2 rounded-xl bg-[#E9ECE6] text-[#293732] text-xs font-semibold cursor-pointer"
+                  >
+                    Explore by Ward
+                  </button>
+                </div>
+              </div>
             ) : tasks.length === 0 ? (
               <div className="bg-white rounded-2xl p-10 border border-[#DDDCD3] text-center space-y-3">
                 <Inbox className="w-9 h-9 text-[#929B92] mx-auto" />
@@ -569,7 +595,6 @@ export default function CitizenAuditPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {tasks.map((task) => {
-                  const thumb = task.repairPhotoUrl || task.originalPhotoUrl;
                   const distLabel = formatDistance(task.distanceM);
                   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${task.lat},${task.lng}`;
 
@@ -579,13 +604,8 @@ export default function CitizenAuditPage() {
                       className="bg-white rounded-2xl border border-[#DDDCD3] shadow-[0_2px_10px_rgba(41,55,50,0.04)] overflow-hidden flex flex-col"
                     >
                       <div className="flex gap-4 p-4">
-                        <div className="w-24 h-24 rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] shrink-0 flex items-center justify-center">
-                          {thumb ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={thumb} alt={task.title} className="w-full h-full object-cover" />
-                          ) : (
-                            <Camera className="w-6 h-6 text-[#929B92]" />
-                          )}
+                        <div className="w-14 h-14 rounded-xl border border-[#DDDCD3] bg-[#E9ECE6] shrink-0 flex items-center justify-center">
+                          <ShieldCheck className="w-6 h-6 text-[#527B7A]" />
                         </div>
 
                         <div className="min-w-0 flex-1 space-y-1.5">
@@ -612,10 +632,9 @@ export default function CitizenAuditPage() {
                           </div>
 
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#65736B] pt-0.5">
-                            <span className="inline-flex items-center gap-1 text-[#537C60] font-medium">
+                            <span className="inline-flex items-center gap-1 text-[#527B7A] font-medium">
                               <Clock className="w-3 h-3" />
-                              Claimed fixed{' '}
-                              {task.repairClaimedAt ? formatDateIST(task.repairClaimedAt) : 'recently'}
+                              Independent Site Inspection
                             </span>
                             <span>· Due {formatDateIST(task.dueAt)}</span>
                           </div>
@@ -624,12 +643,6 @@ export default function CitizenAuditPage() {
 
                       <div className="px-4 py-3 bg-[#FAF9F5] border-t border-[#E9ECE6] flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
-                          <Link
-                            href={`/citizen/report/${task.issueId}`}
-                            className="px-3 py-1.5 rounded-xl bg-white border border-[#DDDCD3] text-xs font-semibold text-[#293732] hover:bg-[#E5E9E3]/50 transition-colors"
-                          >
-                            View Details
-                          </Link>
                           <a
                             href={mapsUrl}
                             target="_blank"
@@ -689,84 +702,23 @@ export default function CitizenAuditPage() {
               </button>
             </div>
 
-            {/* Side-by-side Evidence Comparison */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-[#293732]">Original Defect Photograph</span>
-                  {activeTask.originalReportedAt && (
-                    <span className="font-mono text-[11px] text-[#65736B]">
-                      {formatDateIST(activeTask.originalReportedAt)}
-                    </span>
-                  )}
-                </div>
-                <div className="aspect-[4/3] rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] flex items-center justify-center">
-                  {activeTask.originalPhotoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={activeTask.originalPhotoUrl}
-                      alt="Original issue evidence"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-xs text-[#65736B]">No original photograph available</span>
-                  )}
-                </div>
-                {activeTask.originalNote && (
-                  <p className="text-xs text-[#65736B] bg-[#FAF9F5] p-2.5 rounded-lg border border-[#E9ECE6]">
-                    {activeTask.originalNote}
-                  </p>
-                )}
+            {/* Blind Inspection Briefing (prior photos, contractor & claim details hidden before voting) */}
+            <div className="p-4 rounded-xl bg-[#F0F5F8] border border-[#D4E2E9] space-y-1.5">
+              <div className="flex items-center gap-2 text-xs font-semibold text-[#293732]">
+                <ShieldCheck className="w-4 h-4 text-[#527B7A]" />
+                <span>Independent Site Inspection</span>
               </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-[#293732]">Agency Repair Claim Photograph</span>
-                  {activeTask.repairClaimedAt && (
-                    <span className="font-mono text-[11px] text-[#537C60]">
-                      {formatDateIST(activeTask.repairClaimedAt)}
-                    </span>
-                  )}
-                </div>
-                <div className="aspect-[4/3] rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] flex items-center justify-center">
-                  {activeTask.repairPhotoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={activeTask.repairPhotoUrl}
-                      alt="Municipal repair evidence"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-xs text-[#65736B]">No repair photograph uploaded</span>
-                  )}
-                </div>
-                {(activeTask.agencyName || activeTask.contractorName || activeTask.tenderId || activeTask.repairNote) && (
-                  <div className="text-xs text-[#293732] bg-[#FAF9F5] p-2.5 rounded-lg border border-[#E9ECE6] space-y-1">
-                    {(activeTask.contractorName || activeTask.agencyName) && (
-                      <div>
-                        <span className="text-[#65736B]">Agency / Contractor: </span>
-                        <span className="font-semibold">{activeTask.contractorName || activeTask.agencyName}</span>
-                      </div>
-                    )}
-                    {activeTask.tenderId && (
-                      <div>
-                        <span className="text-[#65736B]">Work Order: </span>
-                        <span className="font-mono">{activeTask.tenderId}</span>
-                      </div>
-                    )}
-                    {activeTask.repairNote && (
-                      <div className="text-[#65736B] italic">&ldquo;{activeTask.repairNote}&rdquo;</div>
-                    )}
-                  </div>
-                )}
-              </div>
+              <p className="text-xs text-[#65736B]">
+                Record what you observe at the site using live GPS-signed camera evidence. Prior photographs,
+                agency identities, and repair claim details are intentionally hidden to preserve blind audit integrity.
+              </p>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-[#FAF9F5] p-3.5 rounded-xl border border-[#E9ECE6]">
               <div>
-                <div className="text-[#65736B]">Repair Marked Completed</div>
+                <div className="text-[#65736B]">Inspection Type</div>
                 <div className="font-mono font-semibold text-[#293732] mt-0.5">
-                  {activeTask.repairClaimedAt ? formatDateTimeIST(activeTask.repairClaimedAt) : '—'}
+                  {activeTask.category.replace(/_/g, ' ')}
                 </div>
               </div>
               <div>
@@ -819,7 +771,7 @@ export default function CitizenAuditPage() {
                 ) : (
                   <div className="space-y-4">
                     <div className="p-3.5 rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] flex flex-wrap items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-[#537C60]" />
                         <span className="font-semibold text-[#293732]">
                           Signed GPS evidence captured
@@ -827,16 +779,19 @@ export default function CitizenAuditPage() {
                         {captureDistanceToIssueM != null && (
                           <span
                             className={`px-2 py-0.5 rounded-full font-mono text-[11px] border ${
-                              captureDistanceToIssueM <= 100
+                              captureDistanceToIssueM <= 30
                                 ? 'bg-[#EFF6F1] text-[#537C60] border-[#CFE4D4]'
-                                : 'bg-[#FDF7F0] text-[#B68B63] border-[#F2DFCA]'
+                                : 'bg-[#FBF1EF] text-[#B76F60] border-[#EAC8C1]'
                             }`}
                           >
-                            {captureDistanceToIssueM <= 100
-                              ? `Captured near issue (${captureDistanceToIssueM} m away)`
-                              : `${captureDistanceToIssueM} m from reported coordinates`}
+                            {captureDistanceToIssueM <= 30
+                              ? `Within 30 m audit radius (${captureDistanceToIssueM} m away)`
+                              : `${captureDistanceToIssueM} m away (must be within 30 m)`}
                           </span>
                         )}
+                        <span className="px-2 py-0.5 rounded-full font-mono text-[11px] bg-[#F3F2EB] text-[#65736B] border border-[#DDDCD3]">
+                          {deviceHeading !== null ? `Compass: ${deviceHeading}°` : 'Compass heading unavailable'}
+                        </span>
                       </div>
                       <button
                         type="button"
@@ -921,11 +876,17 @@ export default function CitizenAuditPage() {
                       </div>
                     )}
 
+                    {captureDistanceToIssueM !== null && captureDistanceToIssueM > 30 && (
+                      <div className="p-3 rounded-xl text-xs border bg-[#FBF1EF] border-[#EAC8C1] text-[#B76F60]">
+                        You are {captureDistanceToIssueM} m from the issue coordinates. Move within 30 m and retake your photo to submit verification evidence.
+                      </div>
+                    )}
+
                     {!showConfirm ? (
                       <div className="flex justify-end">
                         <button
                           type="button"
-                          disabled={!observedVerdict}
+                          disabled={!observedVerdict || (captureDistanceToIssueM !== null && captureDistanceToIssueM > 30)}
                           onClick={() => setShowConfirm(true)}
                           className="px-5 py-2.5 rounded-xl bg-[#355858] hover:bg-[#293732] text-white text-xs font-semibold disabled:opacity-50 cursor-pointer"
                         >
@@ -987,7 +948,7 @@ export default function CitizenAuditPage() {
                   return (
                     <Link
                       key={sub.id}
-                      href={`/citizen/report/${sub.issueId}`}
+                      href={`/issue/${sub.issueId}`}
                       className="bg-white rounded-2xl p-4 border border-[#DDDCD3] shadow-[0_2px_8px_rgba(41,55,50,0.04)] hover:border-[#527B7A] transition-colors flex gap-4"
                     >
                       <div className="w-20 h-20 rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6] shrink-0 flex items-center justify-center">
@@ -1012,7 +973,7 @@ export default function CitizenAuditPage() {
                         </h3>
                         <div className="text-xs text-[#65736B] truncate">{sub.location}</div>
                         <div className="text-[11px] font-mono text-[#355858]">
-                          Verdict: {sub.observed.replace(/_/g, ' ')}
+                          Verdict: {(sub.observed ?? 'SUBMITTED').replace(/_/g, ' ')}
                         </div>
                       </div>
                     </Link>

@@ -1,19 +1,22 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
 import { 
   Repeat, 
   MapPin, 
-  CheckCircle2
+  CheckCircle2,
+  ExternalLink
 } from 'lucide-react';
 import type { FlaggedRecurringHotspot } from '@/lib/intelligence/wardAnalytics';
 
 interface Props {
   hotspots: FlaggedRecurringHotspot[];
   wardName: string;
+  role?: 'CITIZEN' | 'AUTHORITY';
 }
 
-export function RecurringIssuesSection({ hotspots, wardName }: Props) {
+export function RecurringIssuesSection({ hotspots, wardName, role = 'CITIZEN' }: Props) {
   return (
     <div className="bg-white rounded-2xl p-5 sm:p-6 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.04)] space-y-5">
       {/* Header */}
@@ -30,9 +33,20 @@ export function RecurringIssuesSection({ hotspots, wardName }: Props) {
           </p>
         </div>
 
-        <span className="px-3 py-1 rounded-full bg-[#FAF0EE] border border-[#F3D2CC] text-xs font-mono font-bold text-[#B76F60] self-start sm:self-auto">
-          {hotspots.length} Flagged Corridors
-        </span>
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <span className="px-3 py-1 rounded-full bg-[#FAF0EE] border border-[#F3D2CC] text-xs font-mono font-bold text-[#B76F60]">
+            {hotspots.length} Flagged Corridors
+          </span>
+          {role === 'CITIZEN' && (
+            <Link
+              href="/citizen/map"
+              className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#FAF9F5] hover:bg-[#E5E9E3] border border-[#DDDCD3] text-xs font-semibold text-[#355858] transition-colors"
+            >
+              <span>Explore all issues on Map View</span>
+              <ExternalLink className="w-3 h-3 text-[#527B7A]" />
+            </Link>
+          )}
+        </div>
       </div>
 
       {hotspots.length === 0 ? (

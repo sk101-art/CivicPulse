@@ -86,14 +86,14 @@ export function RepairWindowBadge({
       <div
         data-testid="repair-window-card"
         title={`Best repair window: ${bestWindow.display}${conditionText ? ` · ${conditionText}` : ''} (${sampleCount} samples)`}
-        className={`w-full rounded-lg bg-[#FAF9F5] border border-[#DDDCD3] px-2.5 py-1.5 text-[11px] leading-tight text-[#293732] space-y-0.5 ${className}`}
+        className={`w-full min-w-0 rounded-lg bg-[#FAF9F5] border border-[#DDDCD3] px-2.5 py-1.5 text-[11px] leading-snug text-[#293732] space-y-1 ${className}`}
       >
-        <div className="flex items-center justify-between gap-1.5 min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
+        <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0">
             <CalendarClock className="w-3.5 h-3.5 text-[#527B7A] shrink-0" />
-            <span className="font-semibold text-[#355858] shrink-0">Best repair window</span>
-            <span className="text-[#929B92] shrink-0">·</span>
-            <span className="font-mono font-semibold text-[#293732] truncate">
+            <span className="font-semibold text-[#355858] whitespace-nowrap">Best repair window</span>
+            <span className="text-[#929B92]">·</span>
+            <span className="font-mono font-semibold text-[#293732] break-words">
               {bestWindow.display}
             </span>
           </div>
@@ -107,7 +107,7 @@ export function RepairWindowBadge({
           )}
         </div>
         {conditionText && (
-          <div className="text-[10px] text-[#65736B] truncate pl-5">
+          <div className="text-[10px] text-[#65736B] leading-snug break-words pl-5">
             {conditionText}
           </div>
         )}

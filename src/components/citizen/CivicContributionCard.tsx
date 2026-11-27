@@ -1,39 +1,46 @@
 'use client';
 
 import React from 'react';
-import { Info } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowRight, Award } from 'lucide-react';
 import { Tier } from '@prisma/client';
+import { TIER_THRESHOLDS, nextTierProgress } from '@/lib/citizen/statsPure';
 
 interface CivicContributionCardProps {
-  tier?: Tier | string;
-  points?: number;
-  reportsCount?: number;
-  verificationsCount?: number;
+  tier?: Tier | string | null;
+  points?: number | null;
+  hasProfile?: boolean;
 }
 
-export function CivicContributionCard({
-  tier = 'CONTRIBUTOR',
-  points = 1280,
-  reportsCount = 24,
-  verificationsCount = 17,
-}: CivicContributionCardProps) {
-  const maxPoints = 1500;
-  const progressPercent = Math.min(100, Math.round((points / maxPoints) * 100));
+const TIER_LABELS: Record<string, string> = {
+  CITIZEN: 'Civic Member',
+  CONTRIBUTOR: 'Civic Contributor',
+  GUARDIAN: 'Civic Guardian',
+  AMBASSADOR: 'Civic Ambassador',
+};
 
-  const displayTier = 
-    tier === 'AMBASSADOR' ? 'Civic Ambassador' :
-    tier === 'GUARDIAN' ? 'Civic Guardian' : 'Civic Contributor';
-  
-  const displayLevel = 
-    tier === 'AMBASSADOR' ? 'Level 4' :
-    tier === 'GUARDIAN' ? 'Level 3' : 'Level 3';
+export function CivicContributionCard({
+  tier,
+  points,
+  hasProfile = false,
+}: CivicContributionCardProps) {
+  const actualPoints = Math.max(0, Math.floor(points ?? 0));
+  const progress = nextTierProgress(actualPoints);
+  const resolvedTier = (tier && TIER_LABELS[tier] ? tier : progress.tier) as string;
+  const displayTier = TIER_LABELS[resolvedTier] || 'Civic Member';
+  const nextThreshold = progress.next
+    ? TIER_THRESHOLDS.find((t) => t.tier === progress.next)?.min ?? null
+    : null;
+  const nextTierLabel = progress.next ? TIER_LABELS[progress.next] : null;
 
   return (
-    <div className="bg-white rounded-2xl p-5 border border-[#DDDCD3] shadow-[0_4px_14px_-2px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.03),inset_0_1px_0_rgba(255,255,255,1)] relative overflow-hidden space-y-4">
-      {/* Background Architectural Watermark of Capitol / Civic Hall */}
+    <div
+      data-testid="civic-contribution-card"
+      className="bg-white rounded-2xl p-5 border border-[#DDDCD3] shadow-[0_4px_14px_-2px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.03),inset_0_1px_0_rgba(255,255,255,1)] relative overflow-hidden space-y-4"
+    >
+      {/* Background Architectural Watermark */}
       <div className="absolute right-3 top-2 w-36 h-28 opacity-15 pointer-events-none select-none">
         <svg viewBox="0 0 200 140" fill="none" stroke="#293732" strokeWidth="1.2">
-          {/* Classical Dome */}
           <path d="M75,55 C75,20 125,20 125,55 Z" fill="#DDDCD3" fillOpacity="0.4" />
           <line x1="100" y1="20" x2="100" y2="12" strokeWidth="1.5" />
           <polygon points="60,65 100,45 140,65" fill="#DDDCD3" fillOpacity="0.5" />
@@ -46,63 +53,63 @@ export function CivicContributionCard({
       </div>
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <h3 className="font-display font-semibold text-base text-[#293732] tracking-tight">
-            Your Contribution
-          </h3>
-          <Info className="w-3.5 h-3.5 text-[#929B92]" />
-        </div>
+      <div className="flex items-center justify-between relative z-10">
+        <h3 className="font-display font-semibold text-base text-[#293732] tracking-tight">
+          Your Contribution
+        </h3>
+        <Link
+          href="/citizen/profile"
+          className="text-xs font-semibold text-[#527B7A] hover:underline flex items-center gap-1 cursor-pointer shrink-0"
+        >
+          <span>Profile</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
 
-      {/* Level Badge and Description */}
-      <div className="flex items-center gap-3.5 pt-1 relative z-10">
-        {/* Golden Medal Seal with Laurel Wreath */}
-        <div className="w-13 h-13 rounded-full overflow-hidden shadow-[0_4px_10px_rgba(158,115,51,0.25)] shrink-0 bg-[#C9984E]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/images/seal-contributor.png"
-            alt="Civic Contributor Seal"
-            className="w-full h-full object-cover"
-          />
+      {/* Tier & Points */}
+      <div className="flex items-center gap-3.5 relative z-10">
+        <div className="w-12 h-12 rounded-full overflow-hidden shadow-[0_4px_10px_rgba(158,115,51,0.22)] shrink-0 bg-[#E5E9E3] border border-[#DDDCD3] flex items-center justify-center">
+          {hasProfile || actualPoints > 0 ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src="/images/seal-contributor.png"
+              alt={displayTier}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <Award className="w-5 h-5 text-[#527B7A]" />
+          )}
         </div>
 
-        <div>
+        <div className="min-w-0">
           <h4 className="font-semibold text-sm text-[#293732] leading-tight">
             {displayTier}
           </h4>
-          <span className="text-xs text-[#65736B] font-medium">
-            {displayLevel}
+          <span className="text-xs font-mono text-[#65736B]">
+            {actualPoints.toLocaleString()} pts
           </span>
         </div>
       </div>
 
-      {/* Progress Bar */}
-      <div className="space-y-1.5 pt-1 relative z-10">
-        <div className="flex justify-end text-[11px] font-mono text-[#65736B]">
-          <span>{points.toLocaleString()} / {maxPoints.toLocaleString()} pts</span>
+      {/* Real Tier Progression Bar */}
+      <div className="space-y-1.5 relative z-10">
+        <div className="flex items-center justify-between text-[11px] font-mono text-[#65736B]">
+          <span>
+            {nextTierLabel
+              ? `${progress.pointsToNext.toLocaleString()} pts to ${nextTierLabel}`
+              : 'Highest contributor tier reached'}
+          </span>
+          {nextThreshold !== null && (
+            <span>
+              {actualPoints.toLocaleString()} / {nextThreshold.toLocaleString()} pts
+            </span>
+          )}
         </div>
         <div className="w-full h-2 rounded-full bg-[#E9ECE6] p-0.5 shadow-[inset_0_1px_2px_rgba(41,55,50,0.1)]">
           <div
             className="h-full rounded-full bg-gradient-to-r from-[#527B7A] to-[#355858] transition-all duration-500 shadow-sm"
-            style={{ width: `${progressPercent}%` }}
+            style={{ width: `${progress.pct}%` }}
           />
-        </div>
-      </div>
-
-      {/* 3 Metrics Columns */}
-      <div className="grid grid-cols-3 gap-2 pt-2 border-t border-[#E5E9E3] text-center relative z-10">
-        <div className="p-2 rounded-xl bg-[#F6F7F4]">
-          <div className="font-mono font-bold text-base text-[#293732]">{reportsCount}</div>
-          <div className="text-[11px] text-[#65736B] font-medium">Reports</div>
-        </div>
-        <div className="p-2 rounded-xl bg-[#F6F7F4]">
-          <div className="font-mono font-bold text-base text-[#293732]">{verificationsCount}</div>
-          <div className="text-[11px] text-[#65736B] font-medium">Verifications</div>
-        </div>
-        <div className="p-2 rounded-xl bg-[#F6F7F4]">
-          <div className="font-mono font-bold text-base text-[#293732]">{points.toLocaleString()}</div>
-          <div className="text-[11px] text-[#65736B] font-medium">Points</div>
         </div>
       </div>
     </div>
