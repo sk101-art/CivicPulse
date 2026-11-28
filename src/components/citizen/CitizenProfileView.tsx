@@ -361,6 +361,7 @@ export function CitizenProfileView({
 
             <div className="bg-[#F9FAF8] rounded-2xl p-4 border border-[#E5E9E3] space-y-1 text-center sm:text-left shadow-[inset_0_1px_0_rgba(255,255,255,1)]">
               <div
+                id="profile-reputation"
                 data-testid="stat-points"
                 className="font-display font-bold text-2xl sm:text-3xl text-[#355858]"
               >
@@ -382,7 +383,7 @@ export function CitizenProfileView({
                 <div className="w-8 h-8 rounded-full bg-[#EAF2F0] border border-[#D0E2DF] flex items-center justify-center text-[#355858]">
                   <Award className="w-4 h-4" />
                 </div>
-                <h3 className="font-semibold text-sm sm:text-base text-[#293732]">
+                <h3 id="profile-tier" className="font-semibold text-sm sm:text-base text-[#293732]">
                   {dataUnavailable ? 'Contribution data unavailable' : displayTier}
                 </h3>
               </div>
@@ -625,7 +626,7 @@ export function CitizenProfileView({
 
           {/* Tab 2: Real City-Wide Leaderboard */}
           {activeTab === 'leaderboard' && (
-            <div className="space-y-3">
+            <div id="leaderboard" className="space-y-3">
               {!dataUnavailable && myRank !== null && (
                 <div className="bg-[#EAF2F0] rounded-2xl px-4 py-3 border border-[#D0E2DF] flex items-center justify-between text-xs sm:text-sm">
                   <div className="flex items-center gap-2 font-semibold text-[#293732]">

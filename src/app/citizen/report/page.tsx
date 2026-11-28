@@ -659,7 +659,7 @@ function FileReportContent() {
                 placeholder="Describe visible damage, safety hazards, or landmarks nearby."
                 className="w-full p-4 bg-[#F6F7F4] border border-[#DDDCD3] rounded-xl text-sm text-[#293732] shadow-[inset_0_2px_4px_rgba(41,55,50,0.06)] focus:bg-white focus:border-[#527B7A] focus:ring-2 focus:ring-[#527B7A]/20 outline-none transition-all placeholder:text-[#929B92] resize-none"
               />
-              <div className="text-right text-[11px] font-mono text-[#929B92]">
+              <div id="note-counter" className="text-right text-[11px] font-mono text-[#929B92]">
                 {note.length} / {TEXT_LIMITS.description}
               </div>
             </div>

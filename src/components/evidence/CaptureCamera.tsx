@@ -10,7 +10,6 @@ import {
   Check,
   Signal,
   Zap,
-  Image as ImageIcon,
   RotateCcw,
   ShieldCheck,
   CheckCircle2,
@@ -46,7 +45,6 @@ const ReportPickerMap = dynamic(() => import('@/components/citizen/ReportPickerM
   ),
 });
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const PIN_RADIUS_METERS = MAX_EVIDENCE_DISTANCE_METERS;
 
 export interface CapturedEvidence {
@@ -76,7 +74,6 @@ export function CaptureCamera({
   overrideNonce,
 }: CaptureCameraProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const hasManualPinAdjustRef = useRef<boolean>(false);
@@ -162,8 +159,8 @@ export function CaptureCamera({
         (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError');
       setCameraError(
         isDenied
-          ? 'Camera permission was denied. Enable camera access or upload an authentic photo from your gallery.'
-          : 'Camera could not be started on this device. You can upload an authentic photo from your gallery.'
+          ? 'Camera permission was denied. Enable camera access to capture evidence.'
+          : 'Camera could not be started on this device. Enable camera access to capture evidence.'
       );
     }
   }, []);
@@ -412,41 +409,12 @@ export function CaptureCamera({
     });
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file || isProcessing) return;
-
-    setEvidenceError(null);
-    if (!file.type.startsWith('image/')) {
-      setEvidenceError('Unsupported file type. Please select a valid JPEG, PNG, or WebP image.');
-      return;
-    }
-    if (file.size === 0) {
-      setEvidenceError('Selected image file is empty. Please choose another photograph.');
-      return;
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      setEvidenceError('Image exceeds the 10 MB size limit. Please choose a smaller photograph.');
-      return;
-    }
-
-    setIsProcessing(true);
-    try {
-      await signAndEmitBlob(file);
-    } catch (err) {
-      setEvidenceError(err instanceof Error ? err.message : 'Could not process uploaded image.');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const handleCapture = async () => {
     if (isProcessing) return;
     setEvidenceError(null);
 
     if (!videoRef.current || !cameraActive) {
-      setEvidenceError('Live camera is not active. Enable camera permissions or upload a photo from your device.');
+      setEvidenceError('Live camera is not active. Enable camera permissions to capture evidence.');
       return;
     }
 
@@ -558,16 +526,8 @@ export function CaptureCamera({
               <Camera className="w-10 h-10 mx-auto text-[#A8C6C3]" />
               <div className="text-sm font-semibold">Camera unavailable</div>
               <p className="text-xs text-white/75 leading-relaxed">
-                {cameraError || 'Allow camera access or upload an authentic photograph from your device.'}
+                {cameraError || 'Allow camera access to capture authentic photographic evidence.'}
               </p>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white text-[#293732] text-xs font-semibold shadow-sm hover:bg-[#FAF9F5] cursor-pointer"
-              >
-                <ImageIcon className="w-4 h-4 text-[#527B7A]" />
-                <span>Upload Photo</span>
-              </button>
             </div>
           )}
 
@@ -584,7 +544,7 @@ export function CaptureCamera({
                 }`}
               />
               <span>
-                {capturedPreview ? 'Evidence Attached' : cameraActive ? 'Live Camera' : 'Upload Mode'}
+                {capturedPreview ? 'Evidence Attached' : cameraActive ? 'Live Camera' : 'Camera Required'}
               </span>
             </div>
           </div>
@@ -646,26 +606,7 @@ export function CaptureCamera({
 
           {/* Bottom Controls Dock */}
           <div className="absolute bottom-5 inset-x-6 z-20 flex items-center justify-between pointer-events-none">
-            <div className="pointer-events-auto">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleFileUpload}
-                className="hidden"
-                data-testid="camera-file-upload"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isProcessing}
-                title="Upload Photo"
-                className="px-3.5 h-11 rounded-2xl bg-white/90 backdrop-blur-md border border-[#DDDCD3] flex items-center gap-2 text-xs font-semibold text-[#293732] hover:bg-white transition-all cursor-pointer shadow-sm disabled:opacity-60"
-              >
-                <ImageIcon className="w-4 h-4 text-[#527B7A]" />
-                <span>{capturedPreview ? 'Replace' : 'Gallery'}</span>
-              </button>
-            </div>
+            <div aria-hidden="true" className="w-16" />
 
             {!capturedPreview ? (
               <div className="pointer-events-auto">
