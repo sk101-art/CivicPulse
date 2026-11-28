@@ -210,7 +210,7 @@ const TRANSITION_RULES: TransitionRule[] = [
     from: [Status.VERIFIED_FIXED],
     action: "REOPEN_IN_WARRANTY",
     to: () => Status.REOPENED_IN_WARRANTY,
-    allowedRoles: ["SYSTEM"],
+    allowedRoles: ["SYSTEM", "AUTHORITY"],
   },
 
   // 9. Band Override (Desk, allowed in any non-terminal state, requires note)
@@ -269,6 +269,14 @@ export function transition(
       issue.status,
       action,
       `Actor role '${actor.role}' is not authorized to perform action '${action}' (allowed: ${rule.allowedRoles.join(", ")})`
+    );
+  }
+
+  if (action === "REOPEN_IN_WARRANTY" && actor.role === "AUTHORITY" && !context.note?.trim()) {
+    throw new InvalidStateTransitionError(
+      issue.status,
+      action,
+      "A written reason is required to reopen a work order during warranty"
     );
   }
 

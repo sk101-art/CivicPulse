@@ -77,11 +77,15 @@ export default function ReportPickerMap({ latitude, longitude, onChange }: Repor
 
   if (!isMounted) return <div className="w-full h-full bg-white/5 animate-pulse" />;
 
+  const hasValidCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude)
+    && Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180
+    && (latitude !== 0 || longitude !== 0);
+
   return (
     <div className="relative w-full h-full">
       <CartoConfigNotice />
-      <MapContainer
-        center={[latitude || 12.9716, longitude || 77.5946]}
+      {hasValidCoordinates ? <MapContainer
+        center={[latitude, longitude]}
         zoom={15}
         className="w-full h-full z-10"
         scrollWheelZoom
@@ -94,7 +98,7 @@ export default function ReportPickerMap({ latitude, longitude, onChange }: Repor
         {latitude !== 0 && longitude !== 0 && (
            <Marker position={[latitude, longitude]} icon={markerIcon} />
         )}
-      </MapContainer>
+      </MapContainer> : <div role="status" className="flex h-full min-h-[320px] items-center justify-center bg-[#F6F7F4] p-6 text-center text-sm text-[#65736B]">Location unavailable. Capture or select a valid report location before using the map.</div>}
     </div>
   );
 }

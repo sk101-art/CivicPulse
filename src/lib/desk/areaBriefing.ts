@@ -159,8 +159,20 @@ export async function loadAreaBriefingTelemetry(params: {
     ...(wardFilterIds ? { wardId: { in: wardFilterIds } } : {}),
     ...(startDate ? { createdAt: { gte: startDate } } : {}),
   };
+  const activeWhere: Prisma.IssueWhereInput = {
+    ...where,
+    status: { notIn: [Status.VERIFIED_FIXED, Status.REJECTED] },
+  };
+  const highOrCriticalWhere: Prisma.IssueWhereInput = {
+    ...activeWhere,
+    OR: [
+      { bandOverride: { in: [Band.CRITICAL, Band.HIGH] } },
+      { bandOverride: null, band: { in: [Band.CRITICAL, Band.HIGH] } },
+    ],
+  };
 
-  const [issues, allWards, agencies] = await Promise.all([
+  const [issues, allWards, agencies, totalActiveIssues, highCriticalPriority,
+    awaitingAssignment, slaAtRisk, slaBreached, recentlyResolved, totalInPeriod] = await Promise.all([
     prisma.issue.findMany({
       where,
       select: {
@@ -192,28 +204,38 @@ export async function loadAreaBriefingTelemetry(params: {
       select: { id: true, code: true, name: true },
       orderBy: { name: "asc" },
     }),
+    prisma.issue.count({ where: activeWhere }),
+    prisma.issue.count({ where: highOrCriticalWhere }),
+    prisma.issue.count({ where: {
+      ...activeWhere,
+      agencyId: null,
+      assignments: { none: {} },
+    } }),
+    prisma.issue.count({ where: {
+      ...activeWhere,
+      slaBreached: false,
+      slaDueAt: { gte: now, lte: new Date(now.getTime() + 12 * 3600 * 1000) },
+    } }),
+    prisma.issue.count({ where: {
+      ...activeWhere,
+      OR: [{ slaBreached: true }, { slaDueAt: { lt: now } }],
+    } }),
+    prisma.issue.count({ where: { ...where, status: Status.VERIFIED_FIXED } }),
+    prisma.issue.count({ where }),
   ]);
 
   const wardMap = new Map(allWards.map((w) => [w.id, w]));
 
   const isClosed = (s: Status) => s === Status.VERIFIED_FIXED || s === Status.REJECTED;
   const activeIssues = issues.filter((i) => !isClosed(i.status));
-  const atRiskCutoff = new Date(now.getTime() + 12 * 3600 * 1000);
 
   const kpis: AreaBriefingKpis = {
-    totalActiveIssues: activeIssues.length,
-    highCriticalPriority: activeIssues.filter((i) => {
-      const b = i.bandOverride ?? i.band;
-      return b === Band.CRITICAL || b === Band.HIGH;
-    }).length,
-    awaitingAssignment: activeIssues.filter(
-      (i) => i.agencyId === null && i.assignments.length === 0
-    ).length,
-    slaAtRisk: activeIssues.filter(
-      (i) => !i.slaBreached && i.slaDueAt >= now && i.slaDueAt <= atRiskCutoff
-    ).length,
-    slaBreached: activeIssues.filter((i) => i.slaBreached || i.slaDueAt < now).length,
-    recentlyResolved: issues.filter((i) => i.status === Status.VERIFIED_FIXED).length,
+    totalActiveIssues,
+    highCriticalPriority,
+    awaitingAssignment,
+    slaAtRisk,
+    slaBreached,
+    recentlyResolved,
   };
 
   // Category distribution across active issues
@@ -382,7 +404,7 @@ export async function loadAreaBriefingTelemetry(params: {
       awaitingVerification: issues.filter((i) => i.status === Status.CLAIMED_FIXED).length,
       reopenedIssues: issues.filter((i) => i.status === Status.REOPENED_IN_WARRANTY).length,
       disputedIssues: issues.filter((i) => i.status === Status.DISPUTED).length,
-      totalInPeriod: issues.length,
+      totalInPeriod,
     },
     hotspots: hotspots.slice(0, 8),
     issuesGeo: activeIssues

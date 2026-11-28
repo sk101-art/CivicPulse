@@ -118,7 +118,7 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
 
   const [personnels, setPersonnels] = useState<Personnel[]>([]);
   const [selectedPersonnelId, setSelectedPersonnelId] = useState<string>('');
-  const [issues, setIssues] = useState<IssueItem[]>(initialReports);
+  const issues = initialReports;
 
   // Work order filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -192,6 +192,8 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
   }, []);
 
   useEffect(() => {
+    // Load the external personnel directory and subscribe to server-side issue changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchPersonnel();
     const unsubscribe = subscribeIssueUpdates(() => {
       void fetchPersonnel();
@@ -199,10 +201,6 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
     });
     return () => unsubscribe();
   }, [fetchPersonnel, router]);
-
-  useEffect(() => {
-    setIssues(initialReports);
-  }, [initialReports]);
 
   // Filter work orders by ward scope, category, status, band, and search
   const filteredIssues = useMemo(() => {
@@ -232,6 +230,8 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
 
   // Pre-select top 5 filtered work orders when scope changes and nothing is selected
   useEffect(() => {
+    // Keep selection and cached route results consistent with the active filters.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedIssueIds((prev) => {
       const validSet = new Set(filteredIssues.map((i) => i.id));
       const kept = prev.filter((id) => validSet.has(id));
@@ -260,14 +260,14 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
         lng: optimizedRoute[0].longitude,
       };
     }
-    if (currentWard?.lat && currentWard?.lng) {
+    if (currentWard && Number.isFinite(currentWard.lat) && Number.isFinite(currentWard.lng) && (currentWard.lat !== 0 || currentWard.lng !== 0)) {
       return {
         label: `${currentWard.wardLabel || 'Ward'} Base`,
         lat: currentWard.lat,
         lng: currentWard.lng,
       };
     }
-    return { label: 'Bengaluru Central Base', lat: 12.9716, lng: 77.5946 };
+    return { label: 'Ward base unavailable', lat: 0, lng: 0 };
   }, [startMode, gpsStart, optimizedRoute, currentWard]);
 
   const requestGpsStart = () => {
@@ -365,6 +365,10 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
   const handleCalculateRoute = async () => {
     const selected = filteredIssues.filter((i) => selectedIssueIds.includes(i.id));
     if (selected.length === 0) return;
+    if (startMode === 'WARD_CENTER' && (!currentWard || !Number.isFinite(currentWard.lat) || !Number.isFinite(currentWard.lng) || (currentWard.lat === 0 && currentWard.lng === 0))) {
+      setRouteNotice('A verified ward starting location is unavailable. Choose the first stop or provide your GPS location.');
+      return;
+    }
 
     setIsOptimizing(true);
     setDispatchSuccess(null);
@@ -509,11 +513,15 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
     if (optimizedRoute.length > 0) {
       return [optimizedRoute[0].latitude, optimizedRoute[0].longitude];
     }
-    if (currentWard?.lat && currentWard?.lng) {
+    if (currentWard && Number.isFinite(currentWard.lat) && Number.isFinite(currentWard.lng) && (currentWard.lat !== 0 || currentWard.lng !== 0)) {
       return [currentWard.lat, currentWard.lng];
     }
-    return [12.9716, 77.5946];
-  }, [optimizedRoute, currentWard]);
+    if (filteredIssues.length > 0 && Number.isFinite(filteredIssues[0].latitude) && Number.isFinite(filteredIssues[0].longitude)) {
+      return [filteredIssues[0].latitude, filteredIssues[0].longitude];
+    }
+    return [0, 0];
+  }, [optimizedRoute, currentWard, filteredIssues]);
+  const hasMapCenter = optimizedRoute.length > 0 || Boolean(currentWard && Number.isFinite(currentWard.lat) && Number.isFinite(currentWard.lng) && (currentWard.lat !== 0 || currentWard.lng !== 0)) || filteredIssues.length > 0;
 
   const getStopPinIcon = useCallback((index: number) => {
     if (typeof window === 'undefined') return undefined;
@@ -672,7 +680,7 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
                   className="w-full bg-[#E9ECE6] border border-[#DDDCD3] rounded-xl px-3 py-2 text-xs text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
                 >
                   <option value="WARD_CENTER">
-                    {currentWard?.wardLabel || 'Ward'} Base ({startLocation.lat.toFixed(3)}, {startLocation.lng.toFixed(3)})
+                    {startLocation.label}
                   </option>
                   <option value="FIRST_STOP">First Highest-Priority Stop</option>
                   {gpsStart && <option value="GPS">Current GPS Location</option>}
@@ -926,7 +934,7 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
       {/* ── RIGHT MAP VIEW ── */}
       <div className="flex-1 relative w-full h-full min-h-[480px] bg-[#E9ECE6]">
         <CartoConfigNotice />
-        <MapContainer
+        {hasMapCenter ? <MapContainer
           center={mapCenter}
           zoom={14}
           scrollWheelZoom={true}
@@ -987,7 +995,7 @@ export function RouteOptimizerView({ initialReports }: RouteOptimizerViewProps) 
               </Popup>
             </Marker>
           ))}
-        </MapContainer>
+        </MapContainer> : <div role="status" className="flex h-full min-h-[480px] items-center justify-center p-8 text-center text-sm text-[#65736B]">Route map unavailable: no verified work-order or ward coordinates are available.</div>}
 
         {/* Floating Cartography Badge */}
         <div className="absolute top-4 right-4 z-20 pointer-events-none">

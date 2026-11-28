@@ -4,7 +4,8 @@ import { deskStatusFilter } from "@/lib/desk/queueFilter";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { DeskQueue } from "@/components/desk/DeskQueue";
-import { Band, Status } from "@prisma/client";
+import { LiveDataStatus } from "@/components/desk/LiveDataStatus";
+import { Band } from "@prisma/client";
 
 export const revalidate = 0;
 
@@ -64,6 +65,37 @@ export default async function DeskDashboardPage() {
   let rawIssues: Awaited<ReturnType<typeof loadDeskData>>[0] = [];
   let agencies: Awaited<ReturnType<typeof loadDeskData>>[1] = [];
   let wards: Awaited<ReturnType<typeof loadDeskData>>[2] = [];
+  let deskDataError: string | null = null;
+  const [weatherCoverageRows, trafficCoverageRows, profileStatus, jobRunRows] = await Promise.all([
+    prisma.$queryRaw<Array<{ latest: Date | null; freshPoints: number; totalPoints: number }>>`
+      SELECT COUNT(*)::int AS "totalPoints",
+             COUNT(*) FILTER (WHERE "latest" >= NOW() - INTERVAL '3 hours')::int AS "freshPoints",
+             MAX("latest") AS "latest"
+      FROM (
+        SELECT "pointKey", MAX("fetchedAt") AS "latest"
+        FROM "WeatherForecast"
+        GROUP BY "pointKey"
+      ) AS point_freshness
+    `.catch(() => null),
+    prisma.$queryRaw<Array<{ latest: Date | null; freshPoints: number; totalPoints: number }>>`
+      SELECT COUNT(*)::int AS "totalPoints",
+             COUNT(*) FILTER (WHERE "latest" >= NOW() - INTERVAL '4 hours')::int AS "freshPoints",
+             MAX("latest") AS "latest"
+      FROM (
+        SELECT COALESCE("issueId", "segmentId") AS "locationKey", MAX("sampledAt") AS "latest"
+        FROM "TrafficSample"
+        WHERE "isSeed" = false AND COALESCE("issueId", "segmentId") IS NOT NULL
+        GROUP BY COALESCE("issueId", "segmentId")
+      ) AS location_freshness
+    `.catch(() => null),
+    prisma.placeTrafficProfile.aggregate({ _max: { fetchedAt: true } }).catch(() => null),
+    prisma.scheduledJobRun.findMany({
+      where: { job: { in: ["weather", "traffic-sample", "traffic-profile"] } },
+      orderBy: { startedAt: "desc" },
+      distinct: ["job"],
+    }).catch(() => null),
+  ]);
+  const latestJobRuns = new Map((jobRunRows ?? []).map((run) => [run.job, run]));
 
   try {
     [rawIssues, agencies, wards] = await loadDeskData();
@@ -73,6 +105,7 @@ export default async function DeskDashboardPage() {
       [rawIssues, agencies, wards] = await loadDeskData();
     } catch (e) {
       console.error("Failed to load desk data:", e);
+      deskDataError = "The operations queue could not be loaded. Retrying from the live queue service.";
     }
   }
 
@@ -107,11 +140,21 @@ export default async function DeskDashboardPage() {
           </div>
         </div>
 
+        <LiveDataStatus
+          weatherCoverage={weatherCoverageRows?.[0] ?? null}
+          trafficCoverage={trafficCoverageRows?.[0] ?? null}
+          latestTrafficProfile={profileStatus?._max.fetchedAt ?? null}
+          latestWeatherRun={latestJobRuns.get("weather") ?? null}
+          latestTrafficRun={latestJobRuns.get("traffic-sample") ?? null}
+          latestTrafficProfileRun={latestJobRuns.get("traffic-profile") ?? null}
+        />
+
         {/* Desk Queue Component with 4 Stat Cards, Filters, and Swiss-grid Table */}
         <DeskQueue
           initialIssues={JSON.parse(JSON.stringify(issues))}
           agencies={agencies}
           wards={wards}
+          initialLoadError={deskDataError}
         />
       </div>
     </main>

@@ -259,6 +259,19 @@ describe("T24 Acceptance: Issue state machine", () => {
   });
 
   describe("Validation of required contexts", () => {
+    it("allows an authority to reopen a verified repair with a written reason", () => {
+      const result = transition(sampleIssue(Status.VERIFIED_FIXED), "REOPEN_IN_WARRANTY", deskActor, {
+        note: "Pothole has reappeared within the warranty period",
+      });
+      expect(result.toStatus).toBe(Status.REOPENED_IN_WARRANTY);
+    });
+
+    it("requires a written reason when an authority reopens a verified repair", () => {
+      expect(() =>
+        transition(sampleIssue(Status.VERIFIED_FIXED), "REOPEN_IN_WARRANTY", deskActor)
+      ).toThrow(InvalidStateTransitionError);
+    });
+
     it("REJECT requires non-empty note", () => {
       expect(() =>
         transition(sampleIssue(Status.OPEN), "REJECT", deskActor, { note: "" })

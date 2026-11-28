@@ -16,6 +16,7 @@ import { RoutePanel, VehicleMode } from "./RoutePanel";
 import { IssueClustersLayer, TrafficTilesLayer, LayerControl } from "./layers";
 import { CartoTileLayer, CartoConfigNotice } from "./CartoTileLayer";
 import { useGeoContext } from "@/context/GeoContext";
+import type { WardContextItem } from "@/context/GeoContext";
 
 export interface BaseMapProps {
   reports: ReportPoint[];
@@ -24,7 +25,7 @@ export interface BaseMapProps {
   showReportButton?: boolean;
   onReportLocation?: (lat: number, lng: number) => void;
   className?: string;
-  ward?: any;
+  ward?: WardContextItem | null;
 }
 
 export function BaseMap({

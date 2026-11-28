@@ -3,7 +3,6 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect, notFound } from "next/navigation";
 import { EvidenceRole } from "@prisma/client";
-import { formatDateIST } from "@/lib/time/ist";
 import { categoryLabel, displayLocation } from "@/lib/issues/display";
 import { buildIssueTimelineAndDetails } from "@/lib/issues/timeline";
 import { ReportDetailView } from "@/components/report/ReportDetailView";
@@ -22,10 +21,13 @@ export const revalidate = 0;
 
 export default async function ReportDetails({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams?: Promise<{ merged?: string }>;
 }) {
   const [{ id }, session] = await Promise.all([params, getServerSession(authOptions)]);
+  const merged = (await searchParams)?.merged === '1';
   if (!session) redirect('/login');
 
   // The id may be an issue id or (older links) a report id: look both up in parallel.
@@ -40,7 +42,7 @@ export default async function ReportDetails({
   }
 
   const primaryReport = issue.reports.find((r) => r.role === EvidenceRole.REPORT) ?? issue.reports[0] ?? null;
-  const photoUrl = [...issue.reports].reverse().find((r) => r.photoUrl)?.photoUrl ?? '/images/pothole-clean-evidence.jpg';
+  const photoUrl = [...issue.reports].reverse().find((r) => r.photoUrl)?.photoUrl ?? null;
 
   const reporterUser = primaryReport
     ? await prisma.user.findUnique({ where: { id: primaryReport.userId }, select: { name: true } }).catch(() => null)
@@ -61,13 +63,18 @@ export default async function ReportDetails({
   const status = issue.status;
   const category = issue.category;
   const location = displayLocation(issue.address, issue.lat, issue.lng);
-  const reportedDate = formatDateIST(issue.createdAt, { month: 'short', day: 'numeric', year: 'numeric' });
   const priorityScore = issue.priority;
   const priorityTier = priorityScore >= 70 ? 'HIGH' : priorityScore >= 40 ? 'MEDIUM' : 'LOW';
   const details = buildIssueTimelineAndDetails(issue, reporterName);
 
   return (
-    <ReportDetailView
+    <div className="flex-1">
+      {merged && (
+        <div role="status" data-testid="merged-notice" className="mx-auto mt-5 max-w-5xl rounded-xl border border-[#D0E2DF] bg-[#EAF2F0] px-4 py-3 text-sm text-[#355858]">
+          Added to an existing report nearby. Your submission is now part of that issue.
+        </div>
+      )}
+      <ReportDetailView
       id={issue.id}
       category={category}
       categoryLabel={categoryLabel(category)}
@@ -89,6 +96,7 @@ export default async function ReportDetails({
       auditLogs={details.auditLogs}
       verifications={details.verifications}
       backHref="/citizen/dashboard"
-    />
+      />
+    </div>
   );
 }

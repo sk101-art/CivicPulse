@@ -11,7 +11,7 @@ export interface WardViewportSyncProps {
     lat?: number | null;
     lng?: number | null;
     bbox?: [[number, number], [number, number]] | null;
-    boundaryGeoJson?: any;
+    boundaryGeoJson?: GeoJSON.GeoJsonObject | null;
     hasGeometry?: boolean;
   } | null;
   padding?: [number, number];

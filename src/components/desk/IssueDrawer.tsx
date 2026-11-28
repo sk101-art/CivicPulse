@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState, useTransition } from 'react';
+import React, { useEffect, useState, useSyncExternalStore, useTransition } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  X, AlertTriangle, Loader2, Camera, Sparkles, Shield, Users, CheckCircle2,
+  X, AlertTriangle, Loader2, Camera, Sparkles, Shield, Users, CheckCircle2, ImageOff,
 } from 'lucide-react';
 import { getAllowedActions, type IssueAction } from '@/lib/issues/stateMachine';
 import { Status, Band, Category } from '@prisma/client';
@@ -155,6 +156,10 @@ type DrawerTab =
   | 'AI Analysis'
   | 'Action History';
 
+const subscribeToPortalRoot = () => () => {};
+const getPortalRootSnapshot = () => document.body;
+const getServerPortalRootSnapshot = () => null;
+
 export function formatEvidenceCount(issue: { _count?: { reports?: number }; reports?: unknown[] }): string {
   const count = issue._count?.reports ?? issue.reports?.length ?? 0;
   if (count <= 0) return 'No evidence yet';
@@ -188,27 +193,31 @@ export function IssueDrawer({
   onClose,
   onActionComplete,
 }: IssueDrawerProps) {
+  const portalRoot = useSyncExternalStore(
+    subscribeToPortalRoot,
+    getPortalRootSnapshot,
+    getServerPortalRootSnapshot
+  );
+
   const [activeTab, setActiveTab] = useState<DrawerTab>('Overview');
   const [logs, setLogs] = useState<ActionLogEntry[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [analystSummary, setAnalystSummary] = useState<AnalystData | null>(null);
   const [loadingAnalyst, setLoadingAnalyst] = useState(false);
   const [personnels, setPersonnels] = useState<PersonnelOption[]>([]);
-  const [selectedPersonnelId, setSelectedPersonnelId] = useState('');
+  const [selectedPersonnelId, setSelectedPersonnelId] = useState(issue?.assignments?.[0]?.personnel?.id || '');
   const [personnelSearch, setPersonnelSearch] = useState('');
   const [personnelNote, setPersonnelNote] = useState('');
   const [assigningPersonnel, setAssigningPersonnel] = useState(false);
   const [personnelNotice, setPersonnelNotice] = useState<string | null>(null);
 
   const [activeForm, setActiveForm] = useState<IssueAction | null>(null);
-  const [quickStatus, setQuickStatus] = useState<Status>(issue?.status || Status.OPEN);
-  const [updatingStatus, setUpdatingStatus] = useState(false);
   const [note, setNote] = useState('');
-  const [selectedAgencyId, setSelectedAgencyId] = useState('');
+  const [selectedAgencyId, setSelectedAgencyId] = useState(issue?.agencyId || agencies[0]?.id || '');
   const [agencySearch, setAgencySearch] = useState('');
   const [reassignReason, setReassignReason] = useState('Repair quality unsatisfactory');
   const [reassignOtherReason, setReassignOtherReason] = useState('');
-  const [selectedBand, setSelectedBand] = useState<Band>('MEDIUM');
+  const [selectedBand, setSelectedBand] = useState<Band>(issue?.bandOverride || issue?.band || 'MEDIUM');
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [capturedFixEvidence, setCapturedFixEvidence] = useState<CapturedEvidence | null>(null);
@@ -218,34 +227,8 @@ export function IssueDrawer({
   const [tenderId, setTenderId] = useState(issue?.tenderId || '');
   const [liabilityClauseRef, setLiabilityClauseRef] = useState(issue?.liabilityClauseRef || '');
   const [isPending, startTransition] = useTransition();
-  const prevIssueIdRef = React.useRef<string | null>(null);
-
   useEffect(() => {
     if (!issue) return;
-    const isNewIssue = prevIssueIdRef.current !== issue.id;
-    prevIssueIdRef.current = issue.id;
-
-    setContractorName(issue.contractorName || '');
-    setTenderId(issue.tenderId || '');
-    setLiabilityClauseRef(issue.liabilityClauseRef || '');
-    setSelectedBand(issue.bandOverride || issue.band || 'MEDIUM');
-    setSelectedAgencyId(issue.agencyId || (agencies[0]?.id ?? ''));
-    setSelectedPersonnelId(issue.assignments?.[0]?.personnel?.id || '');
-    setQuickStatus(issue.status);
-
-    if (isNewIssue) {
-      setActionError(null);
-      setActionSuccess(null);
-      setPersonnelNotice(null);
-      setAnalystSummary(null);
-      setActiveForm(null);
-      setClaimConfirmStep(false);
-      setCapturedFixEvidence(null);
-      setShowFixCamera(false);
-      setPersonnelSearch('');
-      setAgencySearch('');
-    }
-
     const fetchLogs = async () => {
       setLoadingLogs(true);
       try {
@@ -287,6 +270,8 @@ export function IssueDrawer({
   useEffect(() => {
     if (!issue || activeTab !== 'AI Analysis' || analystSummary || loadingAnalyst) return;
     let cancelled = false;
+    // Mark the request pending before synchronizing the selected tab with the API.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingAnalyst(true);
     fetch(`/api/issues/${issue.id}/analyst`)
       .then((res) => (res.ok ? res.json() : null))
@@ -304,7 +289,7 @@ export function IssueDrawer({
     };
   }, [issue, activeTab, analystSummary, loadingAnalyst]);
 
-  if (!issue) return null;
+  if (!issue || !portalRoot) return null;
 
   const pri = formatPriority(issue.priority);
   const effectiveBand = issue.bandOverride || issue.band || pri.band;
@@ -315,7 +300,7 @@ export function IssueDrawer({
     .toLowerCase()
     .replace(/\b\w/g, (c) => c.toUpperCase());
   const latestReport = issue.reports?.[0];
-  const photoUrl = latestReport?.photoUrl || '/images/pothole-clean-evidence.jpg';
+  const photoUrl = latestReport?.photoUrl || null;
   const reporterDisplay =
     latestReport?.user?.name ||
     latestReport?.user?.email?.split('@')[0] ||
@@ -369,37 +354,6 @@ export function IssueDrawer({
         setActionError(err instanceof Error ? err.message : 'Something went wrong');
       }
     });
-  };
-
-  const handleQuickStatusUpdate = async () => {
-    if (!quickStatus || quickStatus === issue.status) return;
-    setUpdatingStatus(true);
-    setActionError(null);
-    setActionSuccess(null);
-    try {
-      const res = await fetch(`/api/issues/${issue.id}/actions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'SET_STATUS',
-          targetStatus: quickStatus,
-          note: note.trim() || undefined,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.message || data.error || 'Failed to update status');
-      }
-      setActionSuccess(`Status updated to ${quickStatus.replace(/_/g, ' ')}.`);
-      setNote('');
-      await refreshLogs();
-      notifyIssueUpdated(issue.id);
-      onActionComplete(data.issue);
-    } catch (err: unknown) {
-      setActionError(err instanceof Error ? err.message : 'Failed to update status');
-    } finally {
-      setUpdatingStatus(false);
-    }
   };
 
   const handleAssignPersonnel = async (e?: React.FormEvent) => {
@@ -602,9 +556,9 @@ export function IssueDrawer({
     'Action History',
   ];
 
-  return (
+  return createPortal((
     <div
-      className="fixed inset-0 z-50 overflow-hidden bg-black/40 backdrop-blur-[2px] flex justify-end animate-in fade-in duration-200"
+      className="fixed inset-0 z-[60] overflow-hidden bg-black/40 backdrop-blur-[2px] flex justify-end animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
@@ -618,6 +572,11 @@ export function IssueDrawer({
             <h2 className="text-xl font-mono font-bold text-[#293732] tracking-tight">
               {displayId}
             </h2>
+            {issue.isSeed && (
+              <span data-testid="seed-tag" className="px-2 py-0.5 rounded-md bg-[#F3F2EB] border border-[#DDDCD3] text-[10px] font-semibold uppercase tracking-wide text-[#65736B]">
+                Seed data
+              </span>
+            )}
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-[#E9ECE6] text-[#293732] border border-[#DDDCD3]">
                 {categoryLabel}
@@ -686,7 +645,14 @@ export function IssueDrawer({
               <div className="space-y-5 animate-in fade-in duration-150">
                 <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.04)] space-y-4">
                   <div className="relative w-full h-48 rounded-xl overflow-hidden border border-[#DDDCD3] bg-[#E9ECE6]">
-                    <Image src={photoUrl} alt="Defect Evidence" fill className="object-cover" />
+                    {photoUrl ? (
+                      <Image src={photoUrl} alt="Defect evidence" fill className="object-cover" />
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-xs text-[#65736B]" role="status">
+                        <ImageOff className="w-6 h-6" aria-hidden="true" />
+                        <span>No evidence photo submitted</span>
+                      </div>
+                    )}
                     <div className="absolute top-2.5 right-2.5 bg-black/60 backdrop-blur-md px-2.5 py-1 rounded-md text-[10px] font-mono text-white flex items-center gap-1.5">
                       <Shield className="w-3 h-3 text-[#527B7A]" />
                       {formatEvidenceCount(issue)}
@@ -697,42 +663,9 @@ export function IssueDrawer({
                   <div className="space-y-3 pt-1 text-xs">
                     <div className="flex flex-wrap items-center justify-between gap-2 py-1.5 border-b border-[#DDDCD3]/60">
                       <span className="text-[#65736B] font-medium">Status</span>
-                      <div className="flex items-center gap-2">
-                        <select
-                          value={quickStatus}
-                          onChange={(e) => setQuickStatus(e.target.value as Status)}
-                          data-testid="quick-status-select"
-                          aria-label="Change report status"
-                          className="bg-[#E9ECE6] border border-[#DDDCD3] rounded-lg px-2.5 py-1 text-xs font-semibold text-[#293732] focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
-                        >
-                          {Object.values(Status).map((st) => (
-                            <option
-                              key={st}
-                              value={st}
-                              disabled={st === Status.CLAIMED_FIXED || st === Status.VERIFIED_FIXED}
-                            >
-                              {st.replace(/_/g, ' ')}
-                              {st === Status.CLAIMED_FIXED
-                                ? ' (Use Claim Repair)'
-                                : st === Status.VERIFIED_FIXED
-                                  ? ' (Citizen Audit Only)'
-                                  : ''}
-                            </option>
-                          ))}
-                        </select>
-                        {quickStatus !== issue.status && (
-                          <button
-                            type="button"
-                            disabled={updatingStatus}
-                            onClick={handleQuickStatusUpdate}
-                            data-testid="quick-status-save"
-                            className="px-2.5 py-1 rounded-lg bg-[#355858] hover:bg-[#293732] text-white text-[11px] font-semibold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1"
-                          >
-                            {updatingStatus && <Loader2 className="w-3 h-3 animate-spin" />}
-                            Save
-                          </button>
-                        )}
-                      </div>
+                      <span className="rounded-lg bg-[#E9ECE6] border border-[#DDDCD3] px-2.5 py-1 text-xs font-semibold text-[#293732]">
+                        {issue.status.replace(/_/g, ' ')}
+                      </span>
                     </div>
 
                     <div className="flex items-center justify-between py-1.5 border-b border-[#DDDCD3]/60">
@@ -1421,5 +1354,5 @@ export function IssueDrawer({
         </div>
       </div>
     </div>
-  );
+  ), portalRoot);
 }

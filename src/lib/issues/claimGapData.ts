@@ -30,6 +30,7 @@ export interface ClaimIssueItem {
   code: string;
   category: string;
   status: Status;
+  isSeed: boolean;
   description: string;
   location: string;
   lat: number;
@@ -323,6 +324,7 @@ export async function loadClaimGapData(
       code: codeStr,
       category: iss.category || "OTHER",
       status: iss.status,
+      isSeed: iss.isSeed,
       description: originalReport?.note || iss.piText || `${(iss.category || "OTHER").replace(/_/g, " ")} civic defect`,
       location: locationStr,
       lat: iss.lat,

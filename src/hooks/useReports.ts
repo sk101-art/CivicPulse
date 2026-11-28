@@ -18,6 +18,7 @@ export interface Report {
   voteCount?: number;
   commentCount?: number;
   isSeed?: boolean;
+  photoUrl?: string | null;
 }
 
 export interface RawReportInput {
@@ -36,6 +37,7 @@ export interface RawReportInput {
   voteCount?: number;
   commentCount?: number;
   isSeed?: boolean;
+  photoUrl?: string | null;
 }
 
 function normalizeReport(item: RawReportInput): Report {

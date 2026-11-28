@@ -22,9 +22,17 @@ interface ChatMessage {
   engine?: string;
 }
 
+let nextChatMessageId = 0;
+
+function createChatMessageId(): string {
+  nextChatMessageId += 1;
+  return String(nextChatMessageId);
+}
+
 export function DeskAnalystPanel() {
   const [isOpen, setIsOpen] = useState(true);
   const [brief, setBrief] = useState<WardBriefData | null>(null);
+  const [briefUnavailable, setBriefUnavailable] = useState(false);
   const [loadingBrief, setLoadingBrief] = useState(false);
   const [query, setQuery] = useState('');
   const [isAsking, setIsAsking] = useState(false);
@@ -39,30 +47,14 @@ export function DeskAnalystPanel() {
         if (res.ok) {
           const data = await res.json();
           if (isMounted) setBrief(data);
-        } else {
-          // Fallback initial brief
-          if (isMounted) {
-            setBrief({
-              wardCode: '150',
-              wardName: 'Bellandur / Pilot Corridor',
-              headline: 'Morning Brief: Pavement Intelligence Active',
-              brief: 'Pilot corridor traffic profiles and pavement deterioration monitoring active. Dispatch asphalt crews during recommended night repair windows.',
-              recommendedActions: [
-                'Inspect drainage outlets along Outer Ring Road before forecast rain.',
-                'Prioritize high-delay arterial potholes in next 24h repair window.',
-              ],
-            });
-          }
+        } else if (isMounted) {
+          setBrief(null);
+          setBriefUnavailable(true);
         }
       } catch {
         if (isMounted) {
-          setBrief({
-            wardCode: '150',
-            wardName: 'Bellandur / Pilot Corridor',
-            headline: 'Morning Brief: Pavement Intelligence Active',
-            brief: 'Pilot corridor traffic profiles and pavement deterioration monitoring active.',
-            recommendedActions: ['Monitor open critical issues on arterial segments.'],
-          });
+          setBrief(null);
+          setBriefUnavailable(true);
         }
       } finally {
         if (isMounted) setLoadingBrief(false);
@@ -80,7 +72,7 @@ export function DeskAnalystPanel() {
     if (!q || isAsking) return;
 
     const userMsg: ChatMessage = {
-      id: String(Date.now()),
+      id: createChatMessageId(),
       sender: 'user',
       text: q,
     };
@@ -98,7 +90,7 @@ export function DeskAnalystPanel() {
       if (res.ok) {
         const data = await res.json();
         const botMsg: ChatMessage = {
-          id: String(Date.now() + 1),
+          id: createChatMessageId(),
           sender: 'analyst',
           text: data.answer,
           citedIssueIds: data.citedIssueIds,
@@ -108,7 +100,7 @@ export function DeskAnalystPanel() {
         setMessages((prev) => [...prev, botMsg]);
       } else {
         const errMsg: ChatMessage = {
-          id: String(Date.now() + 1),
+          id: createChatMessageId(),
           sender: 'analyst',
           text: 'Unable to query analyst. All priority issues remain visible in your operations queue.',
         };
@@ -116,7 +108,7 @@ export function DeskAnalystPanel() {
       }
     } catch {
       const errMsg: ChatMessage = {
-        id: String(Date.now() + 1),
+        id: createChatMessageId(),
         sender: 'analyst',
         text: 'Network error communicating with analyst. Rules-based queue remains available.',
       };
@@ -206,6 +198,11 @@ export function DeskAnalystPanel() {
                 </div>
               )}
             </div>
+          )}
+          {!brief && briefUnavailable && (
+            <p role="status" className="text-xs text-purple-200/80">
+              Live briefing is unavailable right now. Refresh to try again.
+            </p>
           )}
 
           {/* Chat Messages Log */}

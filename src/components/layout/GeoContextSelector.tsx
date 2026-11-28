@@ -83,9 +83,15 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
     };
   }, [isOpen]);
 
-  useEffect(() => {
+  const changeCorporation = (id: string) => {
+    setSelectedCorpId(id);
     setVisibleLimit(PAGE_SIZE);
-  }, [searchQuery, selectedCorpId]);
+  };
+
+  const changeSearch = (value: string) => {
+    setSearchQuery(value);
+    setVisibleLimit(PAGE_SIZE);
+  };
 
   const handleSelect = (ward: WardContextItem) => {
     selectWard(ward);
@@ -132,23 +138,23 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
     () => [...jurisdictionEntries, ...municipalWards],
     [jurisdictionEntries, municipalWards]
   );
+  const activeHighlightedId = highlightedId && flatSelectableWards.some((ward) => ward.id === highlightedId)
+    ? highlightedId
+    : currentWard?.id ?? flatSelectableWards[0]?.id ?? null;
 
   // Auto-focus search input when popover opens
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => searchInputRef.current?.focus(), 20);
-      setHighlightedId(currentWard?.id ?? flatSelectableWards[0]?.id ?? null);
-    }
-  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (isOpen) setTimeout(() => searchInputRef.current?.focus(), 20);
+  }, [isOpen]);
 
   // Scroll highlighted option into view
   useEffect(() => {
-    if (!highlightedId) return;
-    const el = optionRefs.current.get(highlightedId);
+    if (!activeHighlightedId) return;
+    const el = optionRefs.current.get(activeHighlightedId);
     if (el) {
       el.scrollIntoView({ block: 'nearest' });
     }
-  }, [highlightedId]);
+  }, [activeHighlightedId]);
 
   const handleTypeAheadChar = useCallback(
     (char: string) => {
@@ -165,7 +171,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
         typeAheadRef.current.lastChar = '';
       }, 700);
 
-      const currentIdx = flatSelectableWards.findIndex((w) => w.id === highlightedId);
+      const currentIdx = flatSelectableWards.findIndex((w) => w.id === activeHighlightedId);
       const matchIdx = findTypeAheadWardIndex(flatSelectableWards, nextText, currentIdx, isRepeated);
       if (matchIdx >= 0) {
         if (matchIdx >= jurisdictionEntries.length + visibleLimit) {
@@ -174,7 +180,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
         setHighlightedId(flatSelectableWards[matchIdx].id);
       }
     },
-    [flatSelectableWards, highlightedId, jurisdictionEntries.length, visibleLimit]
+    [flatSelectableWards, activeHighlightedId, jurisdictionEntries.length, visibleLimit]
   );
 
   const handleSelectorKeyDown = (e: React.KeyboardEvent, fromInput = false) => {
@@ -186,7 +192,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
       return;
     }
 
-    const currentIdx = flatSelectableWards.findIndex((w) => w.id === highlightedId);
+    const currentIdx = flatSelectableWards.findIndex((w) => w.id === activeHighlightedId);
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -640,7 +646,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
               <div className="flex items-center gap-1 overflow-x-auto pb-1">
                 <button
                   type="button"
-                  onClick={() => setSelectedCorpId('ALL')}
+                  onClick={() => changeCorporation('ALL')}
                   className={`px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap border transition-colors cursor-pointer ${
                     selectedCorpId === 'ALL'
                       ? 'bg-[#355858] text-white border-[#355858]'
@@ -653,7 +659,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
                   <button
                     key={c.id}
                     type="button"
-                    onClick={() => setSelectedCorpId(c.id)}
+                    onClick={() => changeCorporation(c.id)}
                     className={`px-2 py-1 rounded-lg text-[10px] font-semibold whitespace-nowrap border transition-colors cursor-pointer ${
                       selectedCorpId === c.id
                         ? 'bg-[#355858] text-white border-[#355858]'
@@ -677,7 +683,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
                 value={searchQuery}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setSearchQuery(val);
+                  changeSearch(val);
                   if (!val.trim()) {
                     setHighlightedId(currentWard?.id ?? null);
                   } else {
@@ -695,7 +701,7 @@ export function GeoContextSelector({ className = '' }: GeoContextSelectorProps) 
                 <button
                   type="button"
                   onClick={() => {
-                    setSearchQuery('');
+                    changeSearch('');
                     setHighlightedId(currentWard?.id ?? null);
                     searchInputRef.current?.focus();
                   }}

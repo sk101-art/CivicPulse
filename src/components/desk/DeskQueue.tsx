@@ -2,15 +2,11 @@
 
 import React, { useState, useTransition, useMemo, useEffect, useCallback } from 'react';
 import { 
-  Search, AlertTriangle, Building2, 
-  Clock, RefreshCw, ChevronRight,
-  ShieldAlert, CheckCircle2, SlidersHorizontal, Eye,
-  MapPin, Inbox, Loader2
+  Search, AlertTriangle, ChevronRight, MapPin, Inbox
 } from 'lucide-react';
 import { IssueDrawer, type DeskIssueItem } from './IssueDrawer';
 import { RepairWindowBadge } from './RepairWindowBadge';
-import { Status, Category, Band } from '@prisma/client';
-import { formatPriority } from '@/lib/priority';
+import { Status, Band } from '@prisma/client';
 import { useGeoContext } from '@/context/GeoContext';
 import { subscribeIssueUpdates } from '@/lib/map/statusPresentation';
 
@@ -18,6 +14,7 @@ interface DeskQueueProps {
   initialIssues: DeskIssueItem[];
   agencies: Array<{ id: string; code: string; name: string }>;
   wards?: Array<{ id: string; code: string; name: string }>;
+  initialLoadError?: string | null;
 }
 
 const BAND_PRIORITY: Record<Band, number> = {
@@ -120,19 +117,19 @@ function getSlaStatusInfo(slaDueAt: string | Date, slaBreached: boolean, status?
   };
 }
 
-export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProps) {
+export function DeskQueue({ initialIssues, agencies, wards = [], initialLoadError = null }: DeskQueueProps) {
   const { currentWard, availableWards } = useGeoContext();
 
   const [issues, setIssues] = useState<DeskIssueItem[]>(initialIssues);
   const [selectedIssue, setSelectedIssue] = useState<DeskIssueItem | null>(null);
-  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(initialLoadError);
 
   // Filters state
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [agencyFilter, setAgencyFilter] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [isRefreshing, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const wardLookup = useMemo(() => {
     const map = new Map<string, { id: string; code: string; name: string }>();
@@ -273,7 +270,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
         {/* Open Issues */}
         <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.04)] relative overflow-hidden transition-all hover:shadow-md">
           <div className="text-3xl lg:text-4xl font-display font-bold text-[#293732] tracking-tight">
-            {totalOpen}
+            {fetchError ? '—' : totalOpen}
           </div>
           <div className="text-xs font-medium text-[#65736B] mt-1">
             Open Tickets ({currentWard?.wardLabel || 'Ward'})
@@ -284,7 +281,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
         {/* Critical / High */}
         <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.04)] relative overflow-hidden transition-all hover:shadow-md">
           <div className="text-3xl lg:text-4xl font-display font-bold text-[#B76F60] tracking-tight">
-            {criticalCount}
+            {fetchError ? '—' : criticalCount}
           </div>
           <div className="text-xs font-medium text-[#65736B] mt-1">
             High / Critical Priority
@@ -295,7 +292,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
         {/* In Progress */}
         <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.04)] relative overflow-hidden transition-all hover:shadow-md">
           <div className="text-3xl lg:text-4xl font-display font-bold text-[#355858] tracking-tight">
-            {inProgressCount}
+            {fetchError ? '—' : inProgressCount}
           </div>
           <div className="text-xs font-medium text-[#65736B] mt-1">
             Active in Field
@@ -306,7 +303,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
         {/* SLA Breaches */}
         <div className="bg-[#FFFFFF] rounded-2xl p-5 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.04)] relative overflow-hidden transition-all hover:shadow-md">
           <div className="text-3xl lg:text-4xl font-display font-bold text-[#B68B63] tracking-tight">
-            {breachedCount}
+            {fetchError ? '—' : breachedCount}
           </div>
           <div className="text-xs font-medium text-[#65736B] mt-1">
             SLA Breaches
@@ -443,10 +440,10 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                   <div className="flex flex-col items-center justify-center space-y-2">
                     <Inbox className="w-8 h-8 text-[#929B92]" />
                     <div className="font-semibold text-[#293732]">
-                      No issues found in {currentWard?.wardLabel || 'selected ward'}
+                      {fetchError ? 'Queue results unavailable' : `No issues found in ${currentWard?.wardLabel || 'selected ward'}`}
                     </div>
                     <p className="text-xs text-[#65736B] max-w-sm">
-                      There are no active municipal issues matching the current filters in this geographical scope.
+                      {fetchError ? 'The live issue query failed. Use Retry above to load current results.' : 'There are no active municipal issues matching the current filters in this geographical scope.'}
                     </p>
                   </div>
                 </div>
@@ -456,18 +453,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
                   const displayIssueId = formatIssueId(issue.id);
                   const locationText = formatLocationLabel(issue.address, issue.lat, issue.lng);
                   const slaInfo = getSlaStatusInfo(issue.slaDueAt, issue.slaBreached, issue.status);
-                  const rw = issue.bestRepairWindow as any;
-                  const rwResult = rw
-                    ? rw.bestWindow
-                      ? rw
-                      : {
-                          bestWindow: rw,
-                          basis: rw.basis || 'estimated',
-                          sampleCount: rw.sampleCount || 0,
-                          windows: [rw],
-                          allSlots: [rw],
-                        }
-                    : null;
+                  const rwResult = issue.bestRepairWindow ?? null;
 
                   return (
                     <div
@@ -588,10 +574,10 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
               <div className="flex flex-col items-center justify-center space-y-2">
                 <Inbox className="w-8 h-8 text-[#929B92]" />
                 <div className="font-semibold text-[#293732]">
-                  No issues found in {currentWard?.wardLabel || 'selected ward'}
+                  {fetchError ? 'Queue results unavailable' : `No issues found in ${currentWard?.wardLabel || 'selected ward'}`}
                 </div>
                 <p className="text-xs text-[#65736B] max-w-sm">
-                  There are no active municipal issues matching the current filters in this geographical scope.
+                  {fetchError ? 'The live issue query failed. Use Retry above to load current results.' : 'There are no active municipal issues matching the current filters in this geographical scope.'}
                 </p>
               </div>
             </div>
@@ -601,18 +587,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
               const displayIssueId = formatIssueId(issue.id);
               const locationText = formatLocationLabel(issue.address, issue.lat, issue.lng);
               const slaInfo = getSlaStatusInfo(issue.slaDueAt, issue.slaBreached, issue.status);
-              const rw = issue.bestRepairWindow as any;
-              const rwResult = rw
-                ? rw.bestWindow
-                  ? rw
-                  : {
-                      bestWindow: rw,
-                      basis: rw.basis || 'estimated',
-                      sampleCount: rw.sampleCount || 0,
-                      windows: [rw],
-                      allSlots: [rw],
-                    }
-                : null;
+              const rwResult = issue.bestRepairWindow ?? null;
 
               return (
                 <div
@@ -704,6 +679,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [] }: DeskQueueProp
       {/* Slide-Over Drawer for Selected Issue */}
       {selectedIssue && (
         <IssueDrawer
+          key={selectedIssue.id}
           issue={selectedIssue}
           agencies={agencies}
           onClose={() => setSelectedIssue(null)}

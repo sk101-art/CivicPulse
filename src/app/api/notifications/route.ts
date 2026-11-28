@@ -5,6 +5,9 @@ import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
+const categoryLabel = (category: string | null | undefined) =>
+  (category || 'Civic issue').replace(/_/g, ' ');
+
 export interface AppNotificationItem {
   id: string;
   title: string;
@@ -169,7 +172,7 @@ export async function GET() {
           notifications.push({
             id: `sla-${iss.id}`,
             title: `SLA Breached • ${iss.id}`,
-            description: `${iss.category.replace(/_/g, ' ')} at ${iss.address || 'assigned sector'} overdue`,
+            description: `${categoryLabel(iss.category)} at ${iss.address || 'assigned sector'} overdue`,
             timestamp: iss.slaDueAt.toISOString(),
             issueId: iss.id,
             link: '/desk',
@@ -201,7 +204,7 @@ export async function GET() {
           notifications.push({
             id: `crit-${iss.id}`,
             title: `Critical Hazard • ${iss.id}`,
-            description: `${iss.category.replace(/_/g, ' ')} logged at ${iss.address || 'ORR corridor'}`,
+            description: `${categoryLabel(iss.category)} logged at ${iss.address || 'ORR corridor'}`,
             timestamp: iss.createdAt.toISOString(),
             issueId: iss.id,
             link: '/desk',

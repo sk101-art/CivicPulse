@@ -51,6 +51,28 @@ describe("Scheduled job endpoint (/api/jobs/[name])", () => {
     expect(res.status).toBe(404);
   });
 
+  it("records scheduled job skip outcomes with timestamps", async () => {
+    const { prisma } = await import("@/lib/db/prisma");
+    const createSpy = vi.spyOn(prisma.scheduledJobRun, "create").mockResolvedValue({ id: "run-test" } as never);
+    const updateSpy = vi.spyOn(prisma.scheduledJobRun, "update").mockResolvedValue({} as never);
+
+    const res = await call("ai-queue", "test-job-secret-123");
+    const update = updateSpy.mock.calls[0]?.[0];
+
+    expect(res.status).toBe(200);
+    expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ job: "ai-queue", status: "RUNNING" }),
+    }));
+    expect(update?.data).toEqual(expect.objectContaining({
+      status: "SKIPPED",
+      finishedAt: expect.any(Date),
+      skipped: expect.stringContaining("No LLM key"),
+    }));
+
+    createSpy.mockRestore();
+    updateSpy.mockRestore();
+  });
+
   it("ai-queue leaves jobs queued when no LLM key is configured", async () => {
     const result = await runJob("ai-queue");
     expect(result.processed).toBe(0);

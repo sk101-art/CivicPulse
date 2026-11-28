@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
-import { DayType } from "@prisma/client";
+import { DayType, Prisma } from "@prisma/client";
 import { getHourOfWeekIST } from "./congestion";
 import { getISTComponents } from "@/lib/time/ist";
 import {
@@ -536,7 +536,7 @@ export function computeMultiFactorRepairWindows(options: {
         ? `no rain (0 mm, ${avgTemp} C)`
         : `${maxPrecip.toFixed(1)} mm rain (${maxProb}% prob, ${avgTemp} C)`;
 
-    let closureText = `Recommended closure: ${blockedLaneDesc}; ${remainingLanes} of ${totalLanes} lanes remain open, estimated queue delay ${queueDelayMin}.`;
+    const closureText = `Recommended closure: ${blockedLaneDesc}; ${remainingLanes} of ${totalLanes} lanes remain open, estimated queue delay ${queueDelayMin}.`;
 
     const surroundingParts: string[] = [];
     if (schoolStatusText) surroundingParts.push(schoolStatusText);
@@ -914,7 +914,7 @@ export async function recomputeAndSaveBestRepairWindow(
   await prisma.issue.update({
     where: { id: issueId },
     data: {
-      bestRepairWindow: bestWindowData as any,
+      bestRepairWindow: bestWindowData as unknown as Prisma.InputJsonValue,
       ...(options?.inputHash ? { repairWindowInputHash: options.inputHash } : {}),
     },
   }).catch((err) => {

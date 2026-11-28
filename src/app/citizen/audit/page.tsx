@@ -176,6 +176,8 @@ export default function CitizenAuditPage() {
   }, []);
 
   useEffect(() => {
+    // Browser geolocation is an external API; its async callback owns location state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     requestUserLocation();
   }, [requestUserLocation]);
 
@@ -231,6 +233,8 @@ export default function CitizenAuditPage() {
 
   useEffect(() => {
     if (discoveryMode === 'NEARBY' && locStatus === 'detecting') return;
+    // This effect synchronizes the current discovery mode with the network request.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchNearbyTasks();
   }, [discoveryMode, locStatus, fetchNearbyTasks]);
 

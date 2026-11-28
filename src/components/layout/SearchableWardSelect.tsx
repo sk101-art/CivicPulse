@@ -62,6 +62,9 @@ export function SearchableWardSelect({
     () => (value === 'ALL' ? allEntry : wards.find((w) => w.id === value) ?? allEntry),
     [value, wards, allEntry]
   );
+  const activeHighlightedIndex = highlightedIndex >= 0
+    ? highlightedIndex
+    : Math.max(0, filteredOptions.findIndex((option) => option.id === value));
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -78,16 +81,14 @@ export function SearchableWardSelect({
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => searchInputRef.current?.focus(), 10);
-      const selectedIdx = filteredOptions.findIndex((o) => o.id === value);
-      setHighlightedIndex(selectedIdx >= 0 ? selectedIdx : 0);
     }
-  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   useEffect(() => {
-    if (highlightedIndex >= 0 && optionRefs.current[highlightedIndex]) {
-      optionRefs.current[highlightedIndex]?.scrollIntoView({ block: 'nearest' });
+    if (activeHighlightedIndex >= 0 && optionRefs.current[activeHighlightedIndex]) {
+      optionRefs.current[activeHighlightedIndex]?.scrollIntoView({ block: 'nearest' });
     }
-  }, [highlightedIndex]);
+  }, [activeHighlightedIndex]);
 
   const commitSelection = useCallback(
     (opt: SearchableWardOption) => {
@@ -112,12 +113,12 @@ export function SearchableWardSelect({
         bufferRef.current.lastChar = '';
       }, TYPEAHEAD_TIMEOUT_MS);
 
-      const idx = findTypeAheadWardIndex(filteredOptions, nextText, highlightedIndex, isRepeated);
+      const idx = findTypeAheadWardIndex(filteredOptions, nextText, activeHighlightedIndex, isRepeated);
       if (idx >= 0) {
         setHighlightedIndex(idx);
       }
     },
-    [filteredOptions, highlightedIndex]
+    [filteredOptions, activeHighlightedIndex]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent, fromInput = false) => {
@@ -164,8 +165,8 @@ export function SearchableWardSelect({
     }
     if (e.key === 'Enter') {
       e.preventDefault();
-      if (highlightedIndex >= 0 && filteredOptions[highlightedIndex]) {
-        commitSelection(filteredOptions[highlightedIndex]);
+      if (activeHighlightedIndex >= 0 && filteredOptions[activeHighlightedIndex]) {
+        commitSelection(filteredOptions[activeHighlightedIndex]);
       }
       return;
     }
@@ -239,7 +240,7 @@ export function SearchableWardSelect({
             ) : (
               filteredOptions.map((opt, idx) => {
                 const isSelected = opt.id === value;
-                const isHighlighted = idx === highlightedIndex;
+                const isHighlighted = idx === activeHighlightedIndex;
                 return (
                   <button
                     key={opt.id}

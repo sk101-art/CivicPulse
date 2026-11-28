@@ -38,6 +38,19 @@ interface TileCacheEntry {
   timestamp: number;
 }
 
+interface PilotOsmElement {
+  type?: string;
+  id: number;
+  lat?: number;
+  lon?: number;
+  center?: { lat: number; lon: number };
+  tags?: Record<string, string | undefined>;
+}
+
+interface PilotOsmData {
+  elements?: PilotOsmElement[];
+}
+
 const tileCache = new Map<string, TileCacheEntry>();
 const CACHE_TTL_MS = 30 * 24 * 3600 * 1000; // 30 days
 
@@ -86,15 +99,15 @@ export function parseLanes(highway?: string, lanesTag?: string): number {
 }
 
 // Lazy-loaded pilot JSON cache
-let pilotOsmData: any = null;
+let pilotOsmData: PilotOsmData | null = null;
 
-function loadPilotOsm(): any {
+function loadPilotOsm(): PilotOsmData | null {
   if (pilotOsmData) return pilotOsmData;
   try {
     const filePath = path.join(process.cwd(), "data", "osm", "pilot.json");
     if (fs.existsSync(filePath)) {
       const content = fs.readFileSync(filePath, "utf-8");
-      pilotOsmData = JSON.parse(content);
+      pilotOsmData = JSON.parse(content) as PilotOsmData;
       return pilotOsmData;
     }
   } catch (err) {

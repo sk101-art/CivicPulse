@@ -12,6 +12,21 @@ import { loadClaimGapData } from "@/lib/issues/claimGapData";
 
 export { formatAiEngineName };
 
+interface AssessEnrichmentIssue {
+  category: string;
+  reports?: Array<{
+    role: string;
+    aiTriage: unknown;
+    photoUrl: string | null;
+    createdAt: Date;
+  }>;
+  auditTasks?: Array<{
+    status: string;
+    createdAt: Date;
+    votes: Array<{ observed: string }>;
+  }>;
+}
+
 // Quota constants (Free tier budget protection)
 export const MAX_ANALYST_DAILY_CALLS = 250;
 export const MAX_ANALYST_MONTHLY_CALLS = 7500;
@@ -242,14 +257,14 @@ function roadClassLabel(rc: string | null | undefined): string {
 }
 
 function enrichAssessOutput(
-  issue: any,
+  issue: AssessEnrichmentIssue,
   rawOutput: AssessOutput,
   engine: string,
   assessedAt: Date,
   stageEngines: StageEngines
 ): AssessOutput {
   // 1. G1 Photo Triage
-  const reportReport = issue.reports?.find((r: any) => r.role === "REPORT") || issue.reports?.[0];
+  const reportReport = issue.reports?.find((r) => r.role === "REPORT") || issue.reports?.[0];
   let triageMeta: {
     result: string;
     engine: string;
@@ -319,7 +334,7 @@ function enrichAssessOutput(
   }
 
   // 2. G2 Fix Check
-  const claimReport = issue.reports?.find((r: any) => r.role === "CLAIM_FIX");
+  const claimReport = issue.reports?.find((r) => r.role === "CLAIM_FIX");
   let fixCheckMeta: {
     result: string;
     engine: string;
@@ -371,8 +386,8 @@ function enrichAssessOutput(
 
   if (auditTask) {
     const votes = auditTask.votes || [];
-    const damaged = votes.filter((v: any) => v.observed === "DAMAGED").length;
-    const intact = votes.filter((v: any) => v.observed === "INTACT").length;
+    const damaged = votes.filter((v) => v.observed === "DAMAGED").length;
+    const intact = votes.filter((v) => v.observed === "INTACT").length;
     const flags: string[] = [];
     if (damaged > 0 && intact > 0) {
       flags.push("Mixed citizen audit votes; inspector review advised");

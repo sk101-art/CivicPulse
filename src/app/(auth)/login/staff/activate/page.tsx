@@ -31,11 +31,9 @@ function StaffActivationContent() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
-    if (!token) {
-      setError('Missing invitation token. Please use the activation link provided in your administrative invitation.');
-    }
-  }, [token]);
+  const displayedError = error ?? (!token
+    ? 'Missing invitation token. Please use the activation link provided in your administrative invitation.'
+    : null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,10 +113,10 @@ function StaffActivationContent() {
           </div>
         ) : (
           <>
-            {error && (
+            {displayedError && (
               <div className="p-3.5 rounded-xl bg-[#FBECE8] border border-[#F2D2CC] text-xs text-[#B76F60] flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <span>{displayedError}</span>
               </div>
             )}
 

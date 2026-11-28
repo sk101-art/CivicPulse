@@ -4,7 +4,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { EvidenceRole } from "@prisma/client";
 import { categoryLabel, displayLocation } from "@/lib/issues/display";
-import { formatDateIST } from "@/lib/time/ist";
 import { buildIssueTimelineAndDetails } from "@/lib/issues/timeline";
 import { ReportDetailView } from "@/components/report/ReportDetailView";
 import { GlobalHeader } from "@/components/layout/GlobalHeader";
@@ -55,14 +54,28 @@ export default async function PublicIssuePage({
     REJECTED: "Rejected",
   };
 
-  const status = issue.status;
+  const activeAuditTask = Boolean(session?.user?.id && issue.auditTasks.some(
+    (task) => task.assigneeId === session.user.id && task.kind === "CLAIM_CHECK" && task.status === "OPEN"
+  ));
+  const status = activeAuditTask ? "IN_PROGRESS" : issue.status;
   const category = issue.category;
   const location = displayLocation(issue.address, issue.lat, issue.lng);
-  const reportedDate = formatDateIST(issue.createdAt, { month: "short", day: "numeric", year: "numeric" });
   const priorityScore = issue.priority;
   const priorityTier = priorityScore >= 70 ? "HIGH" : priorityScore >= 40 ? "MEDIUM" : "LOW";
-  const photoUrl = [...issue.reports].reverse().find((r) => r.photoUrl)?.photoUrl ?? "/images/pothole-clean-evidence.jpg";
-  const details = buildIssueTimelineAndDetails(issue, reporterName);
+  const primaryEvidence = issue.reports.find((r) => r.role === EvidenceRole.REPORT) ?? issue.reports[0] ?? null;
+  const photoUrl = activeAuditTask
+    ? primaryEvidence?.photoUrl ?? null
+    : [...issue.reports].reverse().find((r) => r.photoUrl)?.photoUrl ?? null;
+  const detailIssue = activeAuditTask
+    ? {
+        ...issue,
+        status: "IN_PROGRESS" as const,
+        contractorName: null,
+        reports: issue.reports.filter((report) => report.role !== EvidenceRole.CLAIM_FIX),
+        actions: issue.actions.filter((action) => action.action !== "CLAIM_FIX" && action.toStatus !== "CLAIMED_FIXED"),
+      }
+    : issue;
+  const details = buildIssueTimelineAndDetails(detailIssue, reporterName);
 
   const backLink =
     session?.user?.role === "CITIZEN"
@@ -94,8 +107,14 @@ export default async function PublicIssuePage({
           signature={details.signature}
           gpsAccuracyM={details.gpsAccuracyM}
           timelineSteps={details.timelineSteps}
-          auditLogs={details.auditLogs}
-          verifications={details.verifications}
+          auditNotice={session?.user?.role === "CITIZEN" && issue.status === "CLAIMED_FIXED"
+            ? activeAuditTask
+              ? "This repair is being independently audited. Action log is temporarily withheld while you have an active independent audit assignment for this location."
+              : "This repair is being independently audited."
+            : null}
+          withholdAuditLog={activeAuditTask}
+          auditLogs={activeAuditTask ? [] : details.auditLogs}
+          verifications={activeAuditTask ? [] : details.verifications}
           backHref={backLink}
         />
       </div>

@@ -21,6 +21,7 @@ import * as authModule from "@/lib/api/auth";
 import { prisma } from "@/lib/db/prisma";
 import { DayType, ProfileSource } from "@prisma/client";
 import * as tomtomModule from "@/lib/external/tomtom";
+import * as trafficProfileModule from "@/lib/traffic/profile";
 
 describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
   beforeEach(async () => {
@@ -306,10 +307,16 @@ describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
 
   describe("Scheduled Job: traffic-profile", () => {
     it("runs traffic-profile job up to 25 open issues ordered by highest priority", async () => {
+      const buildProfile = vi.spyOn(trafficProfileModule, "buildPlaceProfile").mockResolvedValue({
+        points: [],
+        source: ProfileSource.ESTIMATED,
+        fromCache: false,
+      });
       const result = await runTrafficProfileJob(Date.now(), 40_000);
       expect(result).toBeDefined();
       expect(result.processed).toBeGreaterThanOrEqual(0);
       expect(typeof result.failed).toBe("number");
+      expect(buildProfile.mock.calls.length).toBeLessThanOrEqual(25);
     }, 30000);
   });
 

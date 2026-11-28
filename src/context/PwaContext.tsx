@@ -69,6 +69,8 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       /iphone|ipad|ipod/.test(userAgent) ||
       (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1);
 
+    // Browser platform detection is available only after client hydration.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setIsIOS(isIOSDevice);
 
     if (runningStandalone) {

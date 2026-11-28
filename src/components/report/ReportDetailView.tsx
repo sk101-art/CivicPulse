@@ -12,6 +12,7 @@ import {
   Check, 
   Copy,
   AlertTriangle,
+  ImageOff,
 } from 'lucide-react';
 import type {
   TimelineStepItem,
@@ -40,6 +41,8 @@ export interface ReportDetailViewProps {
   timelineSteps?: TimelineStepItem[];
   auditLogs?: AuditLogItem[];
   verifications?: VerificationItem[];
+  auditNotice?: string | null;
+  withholdAuditLog?: boolean;
   backHref?: string;
 }
 
@@ -61,6 +64,8 @@ export function ReportDetailView({
   timelineSteps: propTimelineSteps,
   auditLogs = [],
   verifications = [],
+  auditNotice = null,
+  withholdAuditLog = false,
   backHref = '/citizen/dashboard',
 }: ReportDetailViewProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'timeline' | 'evidence' | 'verifications'>('overview');
@@ -122,6 +127,12 @@ export function ReportDetailView({
           <span className="text-[#929B92]">/</span>
           <span className="font-mono font-bold text-[#293732]">{formattedId}</span>
         </div>
+
+        {auditNotice && (
+          <div role="status" className="rounded-xl border border-[#D0E2DF] bg-[#EAF2F0] px-4 py-3 text-sm text-[#355858]">
+            {auditNotice}
+          </div>
+        )}
 
         {/* ── RECORD HEADER ROW ── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -206,12 +217,15 @@ export function ReportDetailView({
               {/* Left Column: Photo Thumbnail & Metadata Card */}
               <div className="md:col-span-5 space-y-4">
                 <div className="aspect-[4/3] rounded-2xl overflow-hidden border border-[#DDDCD3] bg-[#F6F7F4] shadow-sm relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={photoUrl || '/images/pothole-clean-evidence.jpg'}
-                    alt={categoryLabel}
-                    className="w-full h-full object-cover"
-                  />
+                  {photoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={photoUrl} alt={`${categoryLabel} evidence`} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-sm text-[#65736B]" role="status">
+                      <ImageOff className="w-7 h-7" aria-hidden="true" />
+                      <span>No evidence photo submitted</span>
+                    </div>
+                  )}
                   {/* Viewfinder reticles */}
                   <div className="absolute inset-3 pointer-events-none">
                     <div className="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-white/90 rounded-tl" />
@@ -327,7 +341,11 @@ export function ReportDetailView({
               Cryptographic Audit Log
             </h3>
             <div className="space-y-3">
-              {auditLogs.length === 0 ? (
+              {withholdAuditLog ? (
+                <div role="status" className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] text-xs text-[#65736B]">
+                  Action log is temporarily withheld while you have an active independent audit assignment for this location.
+                </div>
+              ) : auditLogs.length === 0 ? (
                 <div className="p-4 rounded-xl bg-[#F9FAF8] border border-[#E5E9E3] flex items-center justify-between text-xs">
                   <div>
                     <div className="font-semibold text-[#293732]">Report Ingested into Civic Ledger</div>

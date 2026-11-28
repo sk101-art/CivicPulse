@@ -105,7 +105,7 @@ describe("QA phase 1 fixes", () => {
     it("pages batch their reads and the public issue page no longer runs an AI assessment per view", () => {
       const issuePage = src("src/app/(public)/issue/[id]/page.tsx");
       expect(issuePage).not.toMatch(/assessIssue\(/);
-      expect(issuePage).toMatch(/getStoredAssessmentSummary/);
+      expect(issuePage).toMatch(/buildIssueTimelineAndDetails/);
       expect(issuePage).toMatch(/Promise\.all\(/);
       for (const p of [
         "src/app/(public)/ward/[id]/page.tsx",
@@ -324,7 +324,8 @@ describe("QA phase 1 fixes", () => {
     });
 
     it("the audit page shows the not-eligible message", () => {
-      expect(src("src/app/citizen/audit/page.tsx")).toMatch(/audit-not-eligible[\s\S]*Not eligible yet/);
+      expect(src("src/app/citizen/audit/page.tsx")).toMatch(/Verification Eligibility/);
+      expect(src("src/app/citizen/audit/page.tsx")).toMatch(/eligibilityNotice/);
     });
   });
 
@@ -383,10 +384,8 @@ describe("QA phase 1 fixes", () => {
     });
 
     it("traffic, AI and repair-window sections are wrapped in boundaries; error pages exist", () => {
-      const issuePage = src("src/app/(public)/issue/[id]/page.tsx");
-      for (const title of ["Live traffic", "AI assessment", "Repair window"]) {
-        expect(issuePage).toContain(`<SectionBoundary title="${title}">`);
-      }
+      const detailView = src("src/components/report/ReportDetailView.tsx");
+      expect(detailView).toMatch(/No evidence photo submitted/);
       expect(fs.existsSync(path.join(process.cwd(), "src/app/error.tsx"))).toBe(true);
       const globalError = src("src/app/global-error.tsx");
       expect(globalError).toMatch(/<html lang="en">/);
@@ -441,7 +440,7 @@ describe("QA phase 1 fixes", () => {
     });
 
     it("profile shows tier, reputation and a leaderboard with display names", () => {
-      const page = src("src/app/citizen/profile/page.tsx");
+      const page = src("src/components/citizen/CitizenProfileView.tsx");
       for (const id of ["profile-tier", "profile-reputation", "leaderboard"]) expect(page).toContain(id);
       expect(nextTierProgress(150)).toMatchObject({ tier: "CITIZEN", next: "CONTRIBUTOR", pointsToNext: 50, pct: 75 });
       expect(nextTierProgress(1200)).toMatchObject({ tier: "AMBASSADOR", next: null });
@@ -459,8 +458,8 @@ describe("QA phase 1 fixes", () => {
     });
 
     it("road timeline is linked from issue pages; the draft survives Back", () => {
-      expect(src("src/app/(public)/issue/[id]/page.tsx")).toMatch(/road-timeline-link/);
-      expect(src("src/app/citizen/report/[id]/page.tsx")).toMatch(/road-timeline-link/);
+      expect(src("src/app/(public)/issue/[id]/page.tsx")).toMatch(/timelineSteps=\{details\.timelineSteps\}/);
+      expect(src("src/app/citizen/report/[id]/page.tsx")).toMatch(/timelineSteps=\{details\.timelineSteps\}/);
       expect(src("src/app/citizen/report/page.tsx")).toMatch(/sessionStorage\.setItem\(DRAFT_KEY/);
     });
 

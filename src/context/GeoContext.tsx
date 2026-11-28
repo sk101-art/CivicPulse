@@ -63,7 +63,7 @@ export interface WardIssueItem {
   priorityScore: number;
   slaBreached: boolean;
   slaDueAt: string;
-  photoUrl: string;
+  photoUrl: string | null;
   note: string | null;
   reportCount: number;
   commentCount: number;
@@ -209,9 +209,11 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
   const [operationalArea, setOperationalArea] = useState<OperationalAreaInfo | null>(null);
 
   const selectionModeRef = React.useRef<GeoSelectionMode>('MANUAL');
-  selectionModeRef.current = selectionMode;
   const roleRef = React.useRef<'CITIZEN' | 'AUTHORITY' | null>(null);
-  roleRef.current = role;
+  useEffect(() => {
+    selectionModeRef.current = selectionMode;
+    roleRef.current = role;
+  }, [selectionMode, role]);
   const userIdRef = React.useRef<string | null>(null);
   const lastResolvedCoordsRef = React.useRef<{ lat: number; lng: number; at: number } | null>(null);
   const autoAttemptedRef = React.useRef(false);

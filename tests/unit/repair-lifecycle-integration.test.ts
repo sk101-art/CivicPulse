@@ -16,7 +16,7 @@ describe("Municipal Repair Lifecycle -> Citizen Verification Integration", () =>
     vi.restoreAllMocks();
   });
 
-  it("SET_STATUS blocks jumping directly to CLAIMED_FIXED or VERIFIED_FIXED", async () => {
+  it("rejects legacy SET_STATUS requests instead of bypassing lifecycle rules", async () => {
     vi.spyOn(authModule, "withAuth").mockResolvedValue({
       user: { id: "desk-1", email: "desk@civicpulse.local", role: Role.AUTHORITY },
       error: null,
@@ -141,6 +141,7 @@ describe("Municipal Repair Lifecycle -> Citizen Verification Integration", () =>
             status: Status.CLAIMED_FIXED,
           }),
         },
+        assignment: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
         actionLog: { create: vi.fn().mockResolvedValue({ id: "log-claim-1" }) },
       })
     );

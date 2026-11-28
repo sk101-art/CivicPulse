@@ -253,7 +253,7 @@ describe("T26 Acceptance: Shared desk dashboard & queue", () => {
     expect(assignedActions).toContain("REASSIGN_AGENCY");
 
     const terminalActions = getAllowedActions(Status.VERIFIED_FIXED, "AUTHORITY");
-    expect(terminalActions).toHaveLength(0);
+    expect(terminalActions).toEqual(["REOPEN_IN_WARRANTY"]);
   });
 
   it("Acceptance scenario: Desk A confirms an issue, and Desk B sees 'Confirmed by Desk A'", async () => {

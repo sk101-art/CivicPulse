@@ -101,6 +101,14 @@ describe("Page 6 — Area Briefing Data Integrity, AI Grounding & Authorization"
     vi.spyOn(prisma.agency, "findMany").mockResolvedValue([
       { id: "ag-1", code: "BBMP", name: "BBMP" },
     ] as never);
+    vi.spyOn(prisma.issue, "count")
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(2)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(3);
 
     const telemetry = await loadAreaBriefingTelemetry({ wardCode: "ALL", period: "30d" });
 

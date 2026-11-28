@@ -130,7 +130,8 @@ export function ClaimGapDashboard({
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [selectedRecord, setSelectedRecord] = useState<ClaimIssueItem | null>(null);
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
+  const selectedRecord = records.find((record) => record.id === selectedRecordId) ?? null;
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
   const [personnels, setPersonnels] = useState<PersonnelOption[]>([]);
@@ -172,17 +173,8 @@ export function ClaimGapDashboard({
       .catch(() => {});
   }, [isStaffView, selectedRecord]);
 
-  // Keep open detail modal synchronized with refreshed Claim Gap records
-  useEffect(() => {
-    if (!selectedRecord) return;
-    const fresh = records.find((r) => r.id === selectedRecord.id);
-    if (fresh) {
-      setSelectedRecord(fresh);
-    }
-  }, [records, selectedRecord?.id]);
-
   const openRecordDetail = (rec: ClaimIssueItem) => {
-    setSelectedRecord(rec);
+    setSelectedRecordId(rec.id);
     setLightboxIndex(null);
     setFailedImages({});
     setReviewMode(null);
@@ -312,13 +304,12 @@ export function ClaimGapDashboard({
     setActionNotice(null);
     try {
       const rec = selectedRecord;
-      const actionType = rec?.status === 'REJECTED' ? 'REOPEN' : 'SET_STATUS';
+      const actionType = rec?.status === 'REJECTED' ? 'REOPEN' : 'REOPEN_IN_WARRANTY';
       const res = await fetch(`/api/issues/${issueId}/actions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: actionType,
-          ...(actionType === 'SET_STATUS' ? { targetStatus: 'REOPENED_IN_WARRANTY' } : {}),
           note: `Reopen Work Order (Penalty): ${actionNote.trim()}`,
         }),
       });
@@ -679,6 +670,11 @@ export function ClaimGapDashboard({
                       >
                         <td className="py-3 px-4">
                           <div className="font-mono font-bold text-[#355858]">{rec.code}</div>
+                          {rec.isSeed && (
+                            <span className="mt-1 inline-flex rounded-full border border-[#F2DFCA] bg-[#FDF7F0] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-[#8A6544]">
+                              seed
+                            </span>
+                          )}
                           <div className="text-[11px] text-[#65736B]">{rec.category.replace(/_/g, ' ')}</div>
                         </td>
                         <td className="py-3 px-4 max-w-xs">
@@ -795,6 +791,11 @@ export function ClaimGapDashboard({
               <div>
                 <div className="text-[11px] font-mono font-bold text-[#527B7A] uppercase">
                   {selectedRecord.code} · {selectedRecord.category.replace(/_/g, ' ')}
+                  {selectedRecord.isSeed && (
+                    <span className="ml-2 rounded-full border border-[#F2DFCA] bg-[#FDF7F0] px-2 py-0.5 text-[9px] font-bold tracking-wide text-[#8A6544]">
+                      seed data
+                    </span>
+                  )}
                 </div>
                 <h2 className="font-display font-bold text-xl text-[#293732] mt-0.5">
                   {selectedRecord.location}
@@ -807,7 +808,7 @@ export function ClaimGapDashboard({
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedRecord(null)}
+                onClick={() => setSelectedRecordId(null)}
                 className="p-2 rounded-xl bg-white border border-[#DDDCD3] text-[#65736B] hover:text-[#293732] cursor-pointer"
                 aria-label="Close detail drawer"
               >
@@ -985,11 +986,15 @@ export function ClaimGapDashboard({
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <button
                           type="button"
+                          disabled={!['REJECTED', 'VERIFIED_FIXED'].includes(selectedRecord.status)}
+                          title={selectedRecord.status === 'REJECTED' || selectedRecord.status === 'VERIFIED_FIXED'
+                            ? 'Reopen this work order with a written reason'
+                            : 'Citizen verification or an existing dispute must finish before reopening'}
                           onClick={() => {
                             setReviewMode(reviewMode === 'reopen' ? null : 'reopen');
                             setActionNotice(null);
                           }}
-                          className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#B76F60] hover:bg-[#A05B4D] text-white text-xs font-semibold transition-colors cursor-pointer"
+                          className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-[#B76F60] hover:bg-[#A05B4D] text-white text-xs font-semibold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-45"
                         >
                           <RotateCcw className="w-3.5 h-3.5" />
                           <span>Reopen Work Order</span>
