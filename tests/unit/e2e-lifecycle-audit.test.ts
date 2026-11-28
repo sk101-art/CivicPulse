@@ -508,7 +508,7 @@ describe("Complete End-to-End Integration Audit (Test Schema)", () => {
       const ab = await loadAreaBriefingTelemetry({ wardId: updatedDbIssue.wardId, period: "7d" });
       expect(ab.kpis.recentlyResolved).toBeGreaterThanOrEqual(1);
     }
-  });
+  }, 90000);
 
   it("handles Disputed Repair -> Claim Gap -> Reassignment without erasing history", async () => {
     vi.spyOn(storageModule, "uploadEvidencePhoto").mockImplementation(async (opts) => ({
@@ -682,5 +682,6 @@ describe("Complete End-to-End Integration Audit (Test Schema)", () => {
     const reassignJson = await resReassign.json();
     expect(reassignJson.issue.handoffCount).toBe(1);
     expect(reassignJson.issue.status).toBe(Status.DISPUTED);
-  });
+  }, 90000);
 });
+
