@@ -45,6 +45,7 @@ Live release gate: [PR #2 checks](https://github.com/sk101-art/CivicPulse/pull/2
 ## External requirements still open
 
 - TomTom allowance confirmed by owner dashboard and reconciled per product; no shared-cap increase is needed. Continue checking provider dashboard against local reservations.
+- Open risk (unverified): CI run 46143877253 showed a connection opened without a search_path option reporting current_schema `test` through the Supabase transaction pooler, so pooled backends may carry another client's search_path. App raw SQL uses unqualified tables ("Issue", "Ward", "ApiUsage", "LoginAttemptBucket"). If production and test share that pooler and role, schema-qualify raw SQL or give test its own role/project. Not yet confirmed either way.
 - Deploy this branch and independently confirm the production database target. Login-protection migration status is now up-to-date on the configured public and test schemas.
 - Confirm production-domain release SHA and scheduled job history; /api/health now exposes release identity after deployment.
 - Automated email recovery and notification delivery require a configured delivery service/account. The implemented recovery path is administrator-assisted; it does not promise an email or OTP.
@@ -68,3 +69,5 @@ The earlier "20,000 shared quota exhausted" blocker is resolved by product accou
 - Feed monitoring reports partial bounded batches explicitly; a partial batch with fresh readings and no failures is a warning, not a fabricated outage. Stale data and actual failures still return 503. Per-location completeness remains visible in the desk panel.
 
 - Analyst numeric grounding now uses the complete actual input snapshot plus only output-schema constants. A regression check accepts the recorded score, its /100 denominator and zero adjustment while rejecting an invented score of 97; 12 analyst checks passed. This also removes a swallowed-error assertion from the earlier test.
+
+- CI run 46143877253 on 869a376: lint, typecheck, test migration and seeding passed; 556 of 557 tests passed. The one failure was the seed guard's refusal check, which assumed a bare pooled connection always lands in `public`; it received `test` instead. The guard code was correct. The refusal check now uses connections that report public/missing-table/valid states, and the real-database acceptance check is kept. Full-suite result for the fix is the linked release gate.

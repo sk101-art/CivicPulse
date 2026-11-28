@@ -82,13 +82,16 @@ describe("seed DB targeting", () => {
       await good.end();
     }
 
-    // A bare Pool ignores ?schema=test and resolves to public: this is exactly the old bug.
-    const bare = new Pool({ connectionString: url });
-    try {
-      await expect(assertDbTarget(bare, target)).rejects.toThrow(/Refusing to continue/);
-    } finally {
-      await bare.end();
-    }
+    // Refusal is asserted against the schema a connection reports, not against which pooled
+    // backend a bare Pool happens to receive: through Supabase's transaction pooler a bare
+    // connection can be handed a backend whose search_path another client already changed,
+    // so "bare Pool lands in public" is not deterministic (CI run 46143877253).
+    const reporting = (schema: string, issue: string | null) =>
+      ({ query: async () => ({ rows: [{ schema, issue }] }) }) as unknown as Pool;
+    await expect(assertDbTarget(reporting("public", null), target)).rejects.toThrow(/schema "public".*Refusing to continue/);
+    await expect(assertDbTarget(reporting("public", 'test."Issue"'), target)).rejects.toThrow(/Refusing to continue/);
+    await expect(assertDbTarget(reporting("test", null), target)).rejects.toThrow(/missing\). Refusing to continue/);
+    await expect(assertDbTarget(reporting("test", 'test."Issue"'), target)).resolves.toBeUndefined();
   });
 
   it("seed scripts and e2e specs no longer reload .env.local with override", () => {
