@@ -410,7 +410,7 @@ export async function buildPlaceProfile(
   const nextTue = getNextTargetDate(2, now); // Tuesday
   const nextSun = getNextTargetDate(0, now); // Sunday
 
-  const dailyUsage = await getDailyTomTomCallCount().catch(() => 0);
+  const dailyUsage = await getDailyTomTomCallCount(undefined, "routing").catch(() => 0);
   const canUseTomTom = isConfigured("TOMTOM_API_KEY") && dailyUsage + 48 <= MAX_DAILY_QUOTA;
 
   const tasksToQuery: Array<{ dayType: DayType; hour: number; targetDate: Date }> = [];

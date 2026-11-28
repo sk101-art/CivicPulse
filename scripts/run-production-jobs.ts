@@ -30,12 +30,9 @@ async function main() {
   const { assessIssue } = await import('../src/lib/ai/analyst');
   const { prisma } = await import('../src/lib/db/prisma');
 
-  const { resetDailyTomTomCallCount } = await import('../src/lib/external/tomtom');
 
   console.log('\n--- 1. Traffic Profile Job ---');
   try {
-    // Reset daily TomTom quota tracking for testing so demo issues get TOMTOM_HISTORIC profiles
-    await resetDailyTomTomCallCount();
     // Clear demo profiles so they are freshly built with fixed TomTom parameters
     await prisma.placeTrafficProfile.deleteMany({
       where: { issueId: { startsWith: 'seed-demo-' } },

@@ -38,7 +38,7 @@ describe("Traffic Sample Job & Budget Limiting", () => {
     vi.mocked(tomtom.getMonthlyTomTomCallCount).mockResolvedValue(tomtom.MAX_MONTHLY_QUOTA);
     const flow = vi.spyOn(tomtom, "getFlowSegment");
     const result = await runTrafficSample(Date.now());
-    expect(result.skipped).toContain("Monthly TomTom application budget reached");
+    expect(result.skipped).toContain("Monthly TomTom Traffic Flow application budget reached");
     expect(flow).not.toHaveBeenCalled();
   });
 

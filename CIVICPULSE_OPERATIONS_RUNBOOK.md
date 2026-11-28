@@ -14,7 +14,7 @@ Run `node scripts/reliability-snapshot.mjs` for read-only aggregate evidence fro
 
 Weather is a forecast, not a rain sensor. Traffic samples are provider observations. Historical traffic and estimated planning baselines must never be called live. Weather is delayed after 3h, traffic after 4h; per-location coverage remains visible in the desk dashboard. These are freshness thresholds, not guarantees that every location has data.
 
-The application monthly TomTom budget defaults to 20,000 via TOMTOM_MONTHLY_CALL_CAP; this is not a statement about the account plan. Verify the provider allowance before changing it. Do not reset API quotas or seed demo data to make health indicators green. If a job processes zero rows, inspect provider and eligibility results. Preserve the actual reading time.
+TomTom allowances are tracked separately by product: Routing, Traffic Flow and Reverse Geocoding use the confirmed 20,000 limits; Incidents uses 2,500. TOMTOM_MONTHLY_CALL_CAP can lower the common application cap; never raise it beyond the provider allowance. Local reservations are added to a dated provider-dashboard baseline, which is not a live billing meter. Keep the old aggregate for audit. Use scripts/reconcile-tomtom-usage.mjs to record a verified monthly dashboard baseline once, without resetting counters. Do not reset API quotas or seed demo data to make health indicators green. If a job processes zero rows, inspect provider and eligibility results. Preserve the actual reading time.
 
 ## Account recovery and staff departure
 

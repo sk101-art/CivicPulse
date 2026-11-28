@@ -14,7 +14,7 @@ const serverSchema = z.object({
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
   SUPABASE_EVIDENCE_BUCKET: z.string().default("evidence"),
   TOMTOM_API_KEY: z.string().optional(),
-  TOMTOM_MONTHLY_CALL_CAP: z.coerce.number().int().positive().default(20000),
+  TOMTOM_MONTHLY_CALL_CAP: z.coerce.number().int().positive().max(20000).default(20000),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().optional(),
   GEMINI_MODELS: z.string().optional(),

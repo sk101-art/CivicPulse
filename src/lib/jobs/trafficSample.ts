@@ -50,9 +50,9 @@ export async function runTrafficSample(
     };
   }
 
-  const monthlyUsage = await getMonthlyTomTomCallCount();
+  const monthlyUsage = await getMonthlyTomTomCallCount("flow");
   if (monthlyUsage >= MAX_MONTHLY_QUOTA) {
-    return { processed: 0, skipped: `Monthly TomTom application budget reached (${monthlyUsage}/${MAX_MONTHLY_QUOTA}); confirm provider allowance before increasing the cap` };
+    return { processed: 0, skipped: `Monthly TomTom Traffic Flow application budget reached (${monthlyUsage}/${MAX_MONTHLY_QUOTA}); confirm provider allowance before increasing the cap` };
   }
 
   const remainingDailyBudget = DAILY_TOMTOM_BUDGET - samplesToday;
