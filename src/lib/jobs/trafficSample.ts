@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { Status } from "@prisma/client";
-import { getFlowSegment } from "@/lib/external/tomtom";
+import { getFlowSegment, getMonthlyTomTomCallCount, MAX_MONTHLY_QUOTA } from "@/lib/external/tomtom";
 import { calculateCongestionR, getHourOfWeekIST } from "@/lib/traffic/congestion";
 import { isConfigured } from "@/lib/env";
 import { startOfDayIST, nowIST } from "@/lib/time/ist";
@@ -17,7 +17,7 @@ export interface TrafficSampleJobResult {
  * Scheduled job: traffic-sample
  * Samples top 40 open issues by Priority Index plus any ASSIGNED or CLAIMED issues.
  * Stays strictly within daily budget of 1,500 TomTom calls.
- * Skips issues already sampled for the current hourOfWeek in the last 7 days.
+ * Skips only observations fetched within the last 90 minutes.
  */
 export async function runTrafficSample(
   startedAt: number,
@@ -48,6 +48,11 @@ export async function runTrafficSample(
       processed: 0,
       skipped: `Daily TomTom budget reached (${samplesToday}/${DAILY_TOMTOM_BUDGET})`,
     };
+  }
+
+  const monthlyUsage = await getMonthlyTomTomCallCount();
+  if (monthlyUsage >= MAX_MONTHLY_QUOTA) {
+    return { processed: 0, skipped: `Monthly TomTom application budget reached (${monthlyUsage}/${MAX_MONTHLY_QUOTA}); confirm provider allowance before increasing the cap` };
   }
 
   const remainingDailyBudget = DAILY_TOMTOM_BUDGET - samplesToday;
@@ -102,16 +107,16 @@ export async function runTrafficSample(
     return { processed: 0, skipped: "No open or claimed/assigned issues found" };
   }
 
-  // 3. Skip issues sampled for the same hourOfWeek in the last 7 days
+  // 3. Avoid duplicate observations during the same sampling window.
   const currentHourOfWeek = getHourOfWeekIST(now);
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+  const recentSince = new Date(now.getTime() - 90 * 60 * 1000);
 
   const candidateIds = candidates.map((c) => c.id);
   const recentlySampled = await prisma.trafficSample.findMany({
     where: {
       issueId: { in: candidateIds },
-      hourOfWeek: currentHourOfWeek,
-      sampledAt: { gte: sevenDaysAgo },
+      isSeed: false,
+      sampledAt: { gte: recentSince },
     },
     select: { issueId: true },
   });
@@ -135,7 +140,8 @@ export async function runTrafficSample(
     try {
       const flow = await getFlowSegment(issue.lat, issue.lng);
       if (!flow) {
-        // Missing key, quota hit, or outside India
+        // A provider miss is a failed refresh, not a successful zero-row job.
+        failed++;
         continue;
       }
 

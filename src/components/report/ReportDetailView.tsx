@@ -2,14 +2,14 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { 
-  ArrowLeft, 
-  MapPin, 
-  Clock, 
-  Crosshair, 
-  ShieldCheck, 
-  CheckCircle2, 
-  Check, 
+import {
+  ArrowLeft,
+  MapPin,
+  Clock,
+  Crosshair,
+  ShieldCheck,
+  CheckCircle2,
+  Check,
   Copy,
   AlertTriangle,
   ImageOff,
@@ -22,6 +22,7 @@ import type {
 
 export interface ReportDetailViewProps {
   id: string;
+  isSeed?: boolean;
   category: string;
   categoryLabel: string;
   location: string;
@@ -47,11 +48,13 @@ export interface ReportDetailViewProps {
 }
 
 export function ReportDetailView({
-  id = 'CP-2025-0184',
+  id,
+  isSeed = false,
   categoryLabel = 'Pothole',
   location = 'Bengaluru',
-  coordinates = { lat: 12.9716, lng: 77.5946 },
+  coordinates,
   reportedAt = '—',
+  status,
   statusLabel = 'Reported',
   priorityLabel = 'Medium Priority',
   photoUrl,
@@ -72,7 +75,18 @@ export function ReportDetailView({
   const [copiedHash, setCopiedHash] = useState(false);
 
   // Safe technical ID formatting
-  const formattedId = id.startsWith('CP-') ? id : `CP-2025-${id.slice(-4).padStart(4, '0')}`;
+  const formattedId = id;
+  const nextStep: Record<string, string> = {
+    OPEN: 'The operations desk needs to review your report and identify the responsible team.',
+    CONFIRMED: 'The responsible team needs to assign personnel for this issue.',
+    ASSIGNED: 'Assigned personnel need to carry out the work and submit repair evidence.',
+    IN_PROGRESS: 'Work is underway. The team needs to submit repair evidence when complete.',
+    CLAIMED_FIXED: 'The team has claimed a repair. Independent citizen verification is still required.',
+    VERIFIED_FIXED: 'Independent verification has confirmed this repair. Report new damage if it recurs.',
+    DISPUTED: 'Citizen checks disputed the repair. The operations desk needs to review and reassign it.',
+    REOPENED_IN_WARRANTY: 'Damage recurred within the warranty period. The operations desk needs to review the contractor and assign repair work.',
+    REJECTED: 'The report was closed without a repair. Review the recorded reason in the timeline before submitting further evidence.',
+  };
 
   const copyHash = () => {
     if (!photoSha256) return;
@@ -114,10 +128,10 @@ export function ReportDetailView({
   return (
     <div className="flex-1 overflow-y-auto flex flex-col font-body bg-[#F3F2EB] text-[#293732] w-full pb-24 lg:pb-12">
       <div className="p-6 md:p-8 lg:p-10 space-y-6 max-w-[1040px] mx-auto w-full">
-        
+
         {/* Breadcrumb Navigation (Matching Image 1 Row 3 Col 2: "← Reports / CP-2025-0184") */}
         <div className="flex items-center gap-2 text-xs text-[#65736B] font-medium">
-          <Link 
+          <Link
             href={backHref}
             className="inline-flex items-center gap-1.5 hover:text-[#293732] transition-colors group cursor-pointer"
           >
@@ -133,6 +147,8 @@ export function ReportDetailView({
             {auditNotice}
           </div>
         )}
+
+        {isSeed && <p role="note" className="rounded border border-[#DDDCD3] bg-white p-3 text-sm">Demonstration record · excluded from real civic impact claims.</p>}
 
         {/* ── RECORD HEADER ROW ── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -157,6 +173,13 @@ export function ReportDetailView({
             </span>
           </div>
         </div>
+
+        <section aria-label="Next step" className="rounded-xl border border-[#DDDCD3] bg-white p-4 text-sm text-[#293732]">
+          <h2 className="font-semibold">What happens next</h2>
+          <p className="mt-1">{nextStep[status] ?? 'The operations desk needs to review the current record.'}</p>
+          <p className="mt-2 text-xs text-[#65736B]">Responsible team: {agencyName}.</p>
+          <Link href="/citizen/profile" className="mt-2 inline-block underline">View your reports and recorded updates</Link>
+        </section>
 
         {/* ── 4 TABS SEGMENTED BAR (Overview / Timeline / Evidence / Verifications) ── */}
         <div className="flex items-center gap-2 pt-1 border-b border-[#DDDCD3] pb-3 overflow-x-auto">
@@ -213,7 +236,7 @@ export function ReportDetailView({
         {activeTab === 'overview' && (
           <div className="bg-white rounded-[26px] p-6 sm:p-8 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.03),inset_0_1px_0_rgba(255,255,255,1)]">
             <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-start">
-              
+
               {/* Left Column: Photo Thumbnail & Metadata Card */}
               <div className="md:col-span-5 space-y-4">
                 <div className="aspect-[4/3] rounded-2xl overflow-hidden border border-[#DDDCD3] bg-[#F6F7F4] shadow-sm relative">
@@ -280,7 +303,7 @@ export function ReportDetailView({
                         <div key={idx} className="relative group">
                           {/* Dot / Icon */}
                           <div className={`absolute -left-6 top-0.5 w-5 h-5 rounded-full flex items-center justify-center ${
-                            isDone 
+                            isDone
                               ? 'bg-[#537C60] text-white shadow-sm'
                               : isDisputed
                               ? 'bg-[#B76F60] text-white shadow-sm'

@@ -75,6 +75,7 @@ export default async function ReportDetails({
         </div>
       )}
       <ReportDetailView
+        isSeed={issue.isSeed}
       id={issue.id}
       category={category}
       categoryLabel={categoryLabel(category)}

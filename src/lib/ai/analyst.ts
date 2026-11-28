@@ -89,6 +89,7 @@ export async function tryIncrementAnalystQuota(): Promise<boolean> {
 
 // 1. G-ASSESS Schemas & Method
 export const AssessOutputSchema = z.object({
+  dataContext: z.record(z.string(), z.unknown()).optional(),
   summary: z.string(),
   priorityAdjustmentRecommended: z.number().min(-10).max(10),
   reasoning: z.string(),
@@ -455,7 +456,7 @@ export async function assessIssueWithMeta(
         },
       },
       trafficProfiles: {
-        select: { delayRatio: true, hour: true, dayType: true },
+        select: { delayRatio: true, hour: true, dayType: true, source: true, fetchedAt: true },
       },
       reports: {
         select: { id: true, photoUrl: true, photoSha256: true, note: true, role: true, aiTriage: true, createdAt: true },
@@ -471,38 +472,38 @@ export async function assessIssueWithMeta(
     throw new Error(`Issue not found: ${issueId}`);
   }
 
-  // Calculate profile peak delay
-  const peakDelayRatio = issue.trafficProfiles?.length
-    ? Math.max(...issue.trafficProfiles.map((p) => p.delayRatio))
-    : 0.25;
-  const peakDelayPct = Math.min(100, Math.round(peakDelayRatio * 100));
-
-  // Calculate live congestion matching LiveTrafficCard
-  let liveCongestionPct = 0;
-  try {
-    const flow = await getFlowSegment(issue.lat, issue.lng);
-    if (flow && flow.freeFlowSpeed > 0 && flow.currentSpeed < flow.freeFlowSpeed) {
-      liveCongestionPct = Math.round(((flow.freeFlowSpeed - flow.currentSpeed) / flow.freeFlowSpeed) * 100);
-    }
-  } catch {
-    liveCongestionPct = Math.min(peakDelayPct, 30);
-  }
-
-  const busesPerHour = issue.segment?.busesPerHour ?? 0;
-  const detScore = issue.deteriorationScore ?? 35;
-  const priority = issue.priority ?? 50;
+  // Missing telemetry is unknown, never a measured zero or a default score.
+  const profiles = issue.trafficProfiles ?? [];
+  const peakDelayPct = profiles.length
+    ? Math.round(Math.max(...profiles.map((p) => p.delayRatio)) * 100)
+    : null;
+  const flow = await getFlowSegment(issue.lat, issue.lng).catch(() => null);
+  const liveCongestionPct = flow && flow.freeFlowSpeed > 0
+    ? Math.max(0, Math.round(((flow.freeFlowSpeed - flow.currentSpeed) / flow.freeFlowSpeed) * 100))
+    : null;
+  const busesPerHour = issue.segment?.busesPerHour ?? null;
+  const detScore = issue.deteriorationScore ?? null;
+  const priority = issue.priority ?? null;
+  const known = (value: number | null, suffix = "") => value === null ? "Not available" : `${value}${suffix}`;
 
   const inputPayload = {
     issueId: issue.id,
     category: issue.category,
-    priority: Math.round(priority),
-    sizeClass: issue.sizeClass ?? "MEDIUM",
-    lanePosition: issue.lanePosition ?? "CURB",
+    priority: priority === null ? null : Math.round(priority),
+    sizeClass: issue.sizeClass ?? null,
+    lanePosition: issue.lanePosition ?? null,
     deteriorationScore: detScore,
     expectedDaysToWorsen: issue.expectedDaysToWorsen,
-    busesPerHour: Math.round(busesPerHour),
+    busesPerHour,
     liveCongestionPct,
     peakDelayPct,
+    provenance: {
+      priority: "CivicPulse recorded priority score",
+      deterioration: detScore === null ? "unavailable" : "CivicPulse model estimate, not a field measurement",
+      traffic: flow ? "TomTom flow response (may be cached up to 15 minutes)" : "unavailable",
+      profileSources: [...new Set(profiles.map((p) => p.source))],
+      profileFetchedAt: profiles.map((p) => p.fetchedAt?.toISOString()).filter(Boolean).sort().at(-1) ?? null,
+    },
     roadName: issue.address || issue.segment?.name || "Corridor Segment",
     roadClass: issue.segment?.roadClass || "",
     contractorName: issue.contractorName,
@@ -511,9 +512,9 @@ export async function assessIssueWithMeta(
   const factsForGrounding = [
     String(issue.id),
     String(issue.category),
-    String(Math.round(priority)),
+    String(priority),
     String(detScore),
-    String(Math.round(busesPerHour)),
+    String(busesPerHour),
     String(liveCongestionPct),
     String(peakDelayPct),
     inputPayload.roadName,
@@ -521,13 +522,12 @@ export async function assessIssueWithMeta(
     String(issue.lng),
     issue.lat.toFixed(4),
     issue.lng.toFixed(4),
-    // Standard numerical scales
-    ...Array.from({ length: 101 }, (_, i) => String(i)),
+    // Adjustment range only; observations must come from the supplied snapshot.
     "-10", "-9", "-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1",
   ];
 
   // Check cache hit before consuming quota or calling LLM
-  const inputHash = computeInputHash("G-ASSESS", "v1.2", inputPayload);
+  const inputHash = computeInputHash("G-ASSESS", "v1.3", inputPayload);
   if (!options?.skipCache) {
     const cachedRun = await prisma.aiRun.findFirst({
       where: {
@@ -556,7 +556,7 @@ export async function assessIssueWithMeta(
           .catch(() => {});
 
         return {
-          output: enrichAssessOutput(issue, parsed.data, engine, cachedRun.createdAt, await resolveStageEngines(issue)),
+          output: { ...enrichAssessOutput(issue, parsed.data, engine, cachedRun.createdAt, await resolveStageEngines(issue)), dataContext: inputPayload.provenance },
           cached: true,
         };
       }
@@ -567,23 +567,24 @@ export async function assessIssueWithMeta(
   if (!quotaOk) {
     const fallback = getRulesFallback("G-ASSESS", inputPayload) as AssessOutput;
     return {
-      output: enrichAssessOutput(issue, fallback, RULES_ENGINE, new Date(), await resolveStageEngines(issue)),
+      output: { ...enrichAssessOutput(issue, fallback, RULES_ENGINE, new Date(), await resolveStageEngines(issue)), dataContext: inputPayload.provenance },
       cached: false,
     };
   }
 
   const prompt = `Assess civic issue ${issue.id} (${issue.category}):
 - Location: ${inputPayload.roadName}
-- Pavement Deterioration Score: ${detScore}/100
-- Priority Index: ${Math.round(priority)}
-- Road Class: ${roadClassLabel(issue.segment?.roadClass)} — ${issue.segment?.name || issue.address || "segment"} (${Math.round(busesPerHour)} buses/h)
-- Live Congestion: ${liveCongestionPct}% slower than free-flow (liveCongestionPct=${liveCongestionPct})
-- Historical Peak Delay: ${peakDelayPct}% (peakDelayPct=${peakDelayPct})
+- Pavement Deterioration Score: ${known(detScore, "/100")}
+- Priority Index: ${known(priority)}
+- Road Class: ${roadClassLabel(issue.segment?.roadClass)} — ${issue.segment?.name || issue.address || "segment"} (${known(busesPerHour, " buses/h")})
+- Live Congestion: ${known(liveCongestionPct, "% slower than free-flow")}
+- Historical Peak Delay: ${known(peakDelayPct, "%")} (profile sources: ${inputPayload.provenance.profileSources.join(", ") || "unavailable"})
+Treat null/missing readings as unavailable. Estimates and historical profiles are not live observations. Never infer rain, traffic, contractor or deterioration facts that are absent.
 Recommend a priority adjustment (-10 to +10), summarize risks, and suggest actionable desk next steps.`;
 
   const aiResult = await runAi<AssessOutput>({
     feature: "G-ASSESS",
-    promptVer: "v1.2",
+    promptVer: "v1.3",
     userPrompt: prompt,
     schema: AssessOutputSchema,
     jsonSchema: assessJsonSchema,
@@ -605,7 +606,7 @@ Recommend a priority adjustment (-10 to +10), summarize risks, and suggest actio
 
   const engine = formatAiEngineName(aiResult.provider, aiResult.model);
   return {
-    output: enrichAssessOutput(issue, aiResult.data, engine, new Date(), await resolveStageEngines(issue)),
+    output: { ...enrichAssessOutput(issue, aiResult.data, engine, new Date(), await resolveStageEngines(issue)), dataContext: inputPayload.provenance },
     cached: aiResult.cached,
   };
 }
@@ -877,12 +878,12 @@ function calculateMedian(values: number[]): number | null {
 }
 
 function formatBestWindow(bw: unknown): string {
-  if (!bw) return "Off-peak";
+  if (!bw) return "Repair window not calculated";
   if (typeof bw === "string") return bw;
   if (typeof bw === "object" && "display" in (bw as Record<string, unknown>)) {
     return String((bw as Record<string, unknown>).display);
   }
-  return "Off-peak";
+  return "Repair window not calculated";
 }
 
 export async function askDeskAnalyst(
@@ -1055,16 +1056,16 @@ export async function askDeskAnalyst(
     const w = i.wardId ? wardMap.get(i.wardId) : null;
     return {
       id: i.id,
-      title: `${i.category} on ${i.address || i.segment?.name || "ORR Corridor"}`,
-      address: i.address || i.segment?.name || "ORR Corridor",
+      title: `${i.category} on ${i.address || i.segment?.name || "Location not recorded"}`,
+      address: i.address || i.segment?.name || "Location not recorded",
       category: i.category,
       band: i.bandOverride || i.band,
       priority: Math.round(i.priority),
-      deterioration: i.deteriorationScore ?? 35,
-      risk: i.deteriorationRisk || "LOW",
+      deterioration: i.deteriorationScore ?? null,
+      risk: i.deteriorationRisk ?? null,
       bestWindow: formatBestWindow(i.bestRepairWindow),
-      contractor: i.contractorName || "Cauvery Infrastructure Ltd.",
-      ward: w ? `${w.name} (${w.code})` : "ORR Pilot Corridor",
+      contractor: i.contractorName ?? null,
+      ward: w ? `${w.name} (${w.code})` : null,
     };
   });
 

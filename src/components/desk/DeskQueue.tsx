@@ -177,26 +177,10 @@ export function DeskQueue({ initialIssues, agencies, wards = [], initialLoadErro
     });
   }, [currentWard, fetchFilteredIssues]);
 
-  // Keep Operations Queue synced with new citizen reports/updates across tabs and sessions
-  useEffect(() => {
-    const syncQueue = () => {
-      if (document.visibilityState === 'visible') {
-        void fetchFilteredIssues();
-      }
-    };
-    const unsubscribe = subscribeIssueUpdates(() => {
-      void fetchFilteredIssues();
-    });
-    window.addEventListener('focus', syncQueue);
-    document.addEventListener('visibilitychange', syncQueue);
-    const interval = window.setInterval(syncQueue, 15000);
-    return () => {
-      unsubscribe();
-      window.removeEventListener('focus', syncQueue);
-      document.removeEventListener('visibilitychange', syncQueue);
-      window.clearInterval(interval);
-    };
-  }, [fetchFilteredIssues]);
+  // Shared subscription handles visible-page polling, focus and cross-tab events.
+  useEffect(() => subscribeIssueUpdates(() => {
+    void fetchFilteredIssues();
+  }), [fetchFilteredIssues]);
 
   const displayIssues = useMemo(() => {
     let list = [...issues];
@@ -229,6 +213,9 @@ export function DeskQueue({ initialIssues, agencies, wards = [], initialLoadErro
       return item;
     });
   }, [issues, statusFilter, categoryFilter, agencyFilter, searchQuery, wardLookup]);
+
+  const [visibleCount, setVisibleCount] = useState(50);
+  const visibleIssues = displayIssues.slice(0, visibleCount);
 
   const handleApplyFilters = () => {
     startTransition(() => {
@@ -448,7 +435,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [], initialLoadErro
                   </div>
                 </div>
               ) : (
-                displayIssues.map((issue) => {
+                visibleIssues.map((issue) => {
                   const currentBand = issue.bandOverride || issue.band;
                   const displayIssueId = formatIssueId(issue.id);
                   const locationText = formatLocationLabel(issue.address, issue.lat, issue.lng);
@@ -582,7 +569,7 @@ export function DeskQueue({ initialIssues, agencies, wards = [], initialLoadErro
               </div>
             </div>
           ) : (
-            displayIssues.map((issue) => {
+            visibleIssues.map((issue) => {
               const currentBand = issue.bandOverride || issue.band;
               const displayIssueId = formatIssueId(issue.id);
               const locationText = formatLocationLabel(issue.address, issue.lat, issue.lng);
@@ -674,6 +661,11 @@ export function DeskQueue({ initialIssues, agencies, wards = [], initialLoadErro
             })
           )}
         </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 text-sm text-[#65736B]">
+        <p aria-live="polite">Showing {visibleIssues.length} of {displayIssues.length} matching issues</p>
+        {visibleIssues.length < displayIssues.length && <button type="button" className="rounded border border-[#DDDCD3] bg-white px-4 py-2 text-[#293732]" onClick={() => setVisibleCount((count) => count + 50)}>Show 50 more</button>}
       </div>
 
       {/* Slide-Over Drawer for Selected Issue */}

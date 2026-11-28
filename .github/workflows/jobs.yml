@@ -79,3 +79,10 @@ jobs:
             echo
           done
           exit $status
+
+      - name: Check stored feed freshness
+        if: steps.check.outputs.ready == 'true'
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          JOB_SECRET: ${{ secrets.JOB_SECRET }}
+        run: curl --fail-with-body --max-time 30 -H "x-job-secret: $JOB_SECRET" "$APP_URL/api/health/feeds"

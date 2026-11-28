@@ -70,7 +70,7 @@ describe("Ranking Explanations Consistency (Tie & Non-Tie)", () => {
     expect(explanation).not.toContain("Runner-up undefined");
   });
 
-  it("G-ASSESS rules fallback states 'no adjustment required' on tie/zero adjustment, and explicit +/- on difference", () => {
+  it("G-ASSESS unavailable assessment preserves priority and requires review instead of asserting observed safety", () => {
     // Zero adjustment case
     const zeroAdjOutput = getRulesFallback("G-ASSESS", {
       priority: 50,
@@ -79,16 +79,16 @@ describe("Ranking Explanations Consistency (Tie & Non-Tie)", () => {
       delayRatio: 0.10,
     });
     expect(zeroAdjOutput.priorityAdjustmentRecommended).toBe(0);
-    expect(zeroAdjOutput.reasoning).toBe("Defect priority matches observed conditions; no adjustment required.");
+    expect(zeroAdjOutput.reasoning).toContain("pending staff review");
 
-    // Elevated adjustment case (+5 for high deterioration score >= 70)
+    // A recorded model estimate alone must not become an automatic AI recommendation.
     const elevatedOutput = getRulesFallback("G-ASSESS", {
       priority: 60,
       deteriorationScore: 75,
       busesPerHour: 35,
       delayRatio: 0.25,
     });
-    expect(elevatedOutput.priorityAdjustmentRecommended).toBeGreaterThan(0);
-    expect(elevatedOutput.reasoning).toContain(`Adjustment +${elevatedOutput.priorityAdjustmentRecommended} points recommended`);
+    expect(elevatedOutput.priorityAdjustmentRecommended).toBe(0);
+    expect(elevatedOutput.reasoning).toContain("pending staff review");
   });
 });

@@ -595,3 +595,11 @@ model AdminAudit {
   details   Json?
   createdAt DateTime @default(now())
 }
+
+// Shared login attempt budget. Identifiers are SHA-256 hashes, never raw email addresses.
+model LoginAttemptBucket {
+  key       String   @id
+  attempts  Int      @default(1)
+  expiresAt DateTime
+  @@index([expiresAt])
+}

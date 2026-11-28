@@ -78,8 +78,8 @@ interface CacheEntry {
 const routeCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Request quota tracking (20,000 / month free tier cap, 1,200 / day job cap, persisted in ApiUsage)
-export const MAX_MONTHLY_QUOTA = 20000;
+// Application budgets, not a claim about the provider plan. Confirm allowance before increasing.
+export const MAX_MONTHLY_QUOTA = env.TOMTOM_MONTHLY_CALL_CAP ?? 20000;
 export const MAX_DAILY_QUOTA = 1200;
 const PROVIDER_NAME = "tomtom";
 const PROVIDER_DAILY_NAME = "tomtom_daily";

@@ -40,6 +40,11 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Migrate isolated test database
+        run: npx prisma migrate deploy
+        env:
+          PRISMA_TARGET: test
+
       - name: Seed isolated test database
         run: npm run db:seed
         env:

@@ -89,6 +89,7 @@ export default async function PublicIssuePage({
       {session && <GlobalHeader role={session.user.role} />}
       <div className="flex-1">
         <ReportDetailView
+        isSeed={issue.isSeed}
           id={issue.id}
           category={category}
           categoryLabel={categoryLabel(category)}

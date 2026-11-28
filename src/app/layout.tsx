@@ -82,7 +82,8 @@ export default function RootLayout({
       className={`${newsreader.variable} ${dmSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[#F3F2EB] text-[#293732] font-body selection:bg-[#D4E3DF] selection:text-[#293732]">
-        <Providers>{children}</Providers>
+        <a href="#main-content" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[9999] focus:bg-white focus:p-3 focus:underline">Skip to content</a>
+        <div id="main-content" tabIndex={-1} className="contents"><Providers>{children}</Providers></div>
         <Toaster position="bottom-right" richColors theme="light" />
       </body>
     </html>

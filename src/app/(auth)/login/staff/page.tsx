@@ -82,6 +82,7 @@ export default function MunicipalStaffLoginPage() {
               src="/images/auth/staff-office-scene.jpg"
               alt="City municipal office building illustration"
               fill
+              sizes="(max-width: 1024px) 100vw, 42vw"
               className="object-cover"
               priority
             />
@@ -218,13 +219,7 @@ export default function MunicipalStaffLoginPage() {
 
               {/* Forgot Password Link */}
               <div className="flex justify-end pt-0.5 text-xs">
-                <button
-                  type="button"
-                  onClick={() => alert('Staff credential assistance: Contact your municipal IT administrator or field operations supervisor.')}
-                  className="text-xs text-[#527B7A] hover:text-[#355858] font-medium transition-colors"
-                >
-                  Forgot password?
-                </button>
+                  <Link href="/account/recovery" className="text-xs text-[#527B7A] underline hover:text-[#355858]">Forgot password?</Link>
               </div>
 
               {/* Submit Button */}
