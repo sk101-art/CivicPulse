@@ -23,8 +23,8 @@ export async function GET(req: Request) {
     const feeds = readings.map((reading) => {
       const job = jobs.find((run) => run.job === reading.source);
       const stale = !reading.observedAt || now - reading.observedAt.getTime() > reading.maxAgeMs;
-      const jobUnhealthy = !job || job.failed > 0 || job.partial || Boolean(job.skipped) || !["SUCCEEDED", "RUNNING"].includes(job.status) || (job.status === "RUNNING" && now - job.startedAt.getTime() > 120000);
-      return { ...reading, stale, jobUnhealthy, latestJobStatus: job?.status ?? null, processed: job?.processed ?? null };
+      const jobUnhealthy = !job || job.failed > 0 || Boolean(job.skipped) || !["SUCCEEDED", "PARTIAL", "RUNNING"].includes(job.status) || (job.status === "RUNNING" && now - job.startedAt.getTime() > 120000);
+      return { ...reading, stale, jobUnhealthy, latestJobStatus: job?.status ?? null, partialRefresh: job?.partial ?? null, processed: job?.processed ?? null };
     });
     const healthy = feeds.every((feed) => !feed.stale && !feed.jobUnhealthy);
     return NextResponse.json({ healthy, checkedAt: new Date().toISOString(), scope: "Latest stored source observations; consult dashboard for per-location coverage", feeds }, { status: healthy ? 200 : 503, headers: { "Cache-Control": "no-store" } });

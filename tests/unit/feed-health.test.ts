@@ -23,3 +23,12 @@ it("reports recent observations with successful jobs as healthy", async () => {
   vi.spyOn(prisma.scheduledJobRun, "findMany").mockResolvedValue(["weather", "traffic-sample"].map((job) => ({ job, status: "SUCCEEDED", startedAt: new Date(), processed: 5, failed: 0, partial: false, skipped: null })) as never);
   const result = await GET(request()); expect(result.status).toBe(200);
 });
+
+it("reports bounded partial refreshes explicitly without treating fresh observations as an outage", async () => {
+  vi.spyOn(prisma.weatherForecast, "aggregate").mockResolvedValue({ _max: { fetchedAt: new Date() } } as never);
+  vi.spyOn(prisma.trafficSample, "aggregate").mockResolvedValue({ _max: { sampledAt: new Date() } } as never);
+  vi.spyOn(prisma.scheduledJobRun, "findMany").mockResolvedValue(["weather", "traffic-sample"].map((job) => ({ job, status: "PARTIAL", startedAt: new Date(), processed: 5, failed: 0, partial: true, skipped: null })) as never);
+  const result = await GET(request()); const body = await result.json();
+  expect(result.status).toBe(200);
+  expect(body.feeds.every((feed: { partialRefresh: boolean }) => feed.partialRefresh)).toBe(true);
+});

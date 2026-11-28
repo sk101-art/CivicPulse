@@ -62,3 +62,5 @@ Status means verified evidence, not an assurance about untested production behav
 The earlier "20,000 shared quota exhausted" blocker is resolved by product accounting and reconciliation. The application caps have not been raised above the supplied product allowances.
 
 - Production routing no longer emits synthetic route fixtures when its key is missing; those fixtures are restricted to isolated tests. An empty route response no longer claims a direct route was computed.
+
+- Feed monitoring reports partial bounded batches explicitly; a partial batch with fresh readings and no failures is a warning, not a fabricated outage. Stale data and actual failures still return 503. Per-location completeness remains visible in the desk panel.
