@@ -29,11 +29,21 @@ jobs:
       - name: Copy env template for CI
         run: cp .env.example .env.local
 
+      - name: Generate ephemeral test seed password
+        run: >-
+          node -e "require('node:fs').appendFileSync(process.env.GITHUB_ENV,
+          'SEED_DESK_PASSWORD=' + require('node:crypto').randomBytes(24).toString('base64url') + '\\n')"
+
       - name: Lint
         run: npm run lint
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Seed isolated test database
+        run: npm run db:seed
+        env:
+          SEED_TARGET: test
 
       - name: Unit and Contract Tests
         run: npm test
@@ -43,4 +53,5 @@ jobs:
         env:
           APP_DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
           DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL_TEST }}
+
 

@@ -180,6 +180,38 @@ describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
       roadClass: "primary",
     };
 
+    async function seedCompleteHistoricProfile(issueId: string) {
+      await prisma.issue.upsert({
+        where: { id: issueId },
+        create: {
+          id: issueId,
+          category: "POTHOLES",
+          lat: testIssue.lat,
+          lng: testIssue.lng,
+          segmentId: testIssue.segmentId,
+          slaDueAt: new Date(),
+          isSeed: true,
+        },
+        update: {},
+      });
+      await prisma.placeTrafficProfile.deleteMany({ where: { issueId } });
+      const fetchedAt = new Date();
+      await prisma.placeTrafficProfile.createMany({
+        data: [DayType.WEEKDAY, DayType.WEEKEND].flatMap((dayType) =>
+          Array.from({ length: 24 }, (_, hour) => ({
+            issueId,
+            segmentId: testIssue.segmentId,
+            direction: "BOTH",
+            dayType,
+            hour,
+            delayRatio: hour === 9 ? 0.55 : 0.2,
+            source: ProfileSource.TOMTOM_HISTORIC,
+            fetchedAt,
+          }))
+        ),
+      });
+    }
+
     it("builds 48 hourly profile slots (24 weekday + 24 weekend)", async () => {
       // Ensure issue exists in test database
       await prisma.issue.upsert({
@@ -209,6 +241,8 @@ describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
     });
 
     it("reuses cached profile on second call within 14 days without rebuilding", async () => {
+      // Use explicit historical-profile fixtures so the cache test does not need a live TomTom key.
+      await seedCompleteHistoricProfile(testIssueId);
       const first = await buildPlaceProfile(testIssue, false);
       expect(first.points.length).toBe(48);
       const second = await buildPlaceProfile(testIssue, false);
@@ -219,6 +253,7 @@ describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
 
     it("shares profiles between issues within 150 metres on the same segment", async () => {
       const nearbyIssueId = "test-issue-nearby-100m";
+      await seedCompleteHistoricProfile(testIssueId);
       // 100m away on same segment
       const nearbyPoint = offsetCoordinate(
         { latitude: testIssue.lat, longitude: testIssue.lng },
@@ -391,3 +426,4 @@ describe("Phase 1: Real Per-Place Traffic Profile & Live Traffic Flow", () => {
     });
   });
 });
+
