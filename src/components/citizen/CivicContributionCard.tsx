@@ -10,6 +10,7 @@ interface CivicContributionCardProps {
   tier?: Tier | string | null;
   points?: number | null;
   hasProfile?: boolean;
+  dataUnavailable?: boolean;
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -23,6 +24,7 @@ export function CivicContributionCard({
   tier,
   points,
   hasProfile = false,
+  dataUnavailable = false,
 }: CivicContributionCardProps) {
   const actualPoints = Math.max(0, Math.floor(points ?? 0));
   const progress = nextTierProgress(actualPoints);
@@ -69,7 +71,7 @@ export function CivicContributionCard({
       {/* Tier & Points */}
       <div className="flex items-center gap-3.5 relative z-10">
         <div className="w-12 h-12 rounded-full overflow-hidden shadow-[0_4px_10px_rgba(158,115,51,0.22)] shrink-0 bg-[#E5E9E3] border border-[#DDDCD3] flex items-center justify-center">
-          {hasProfile || actualPoints > 0 ? (
+          {dataUnavailable ? <Award className="w-5 h-5 text-[#527B7A]" /> : hasProfile || actualPoints > 0 ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
               src="/images/seal-contributor.png"
@@ -83,10 +85,10 @@ export function CivicContributionCard({
 
         <div className="min-w-0">
           <h4 className="font-semibold text-sm text-[#293732] leading-tight">
-            {displayTier}
+            {dataUnavailable ? 'Contribution data unavailable' : displayTier}
           </h4>
           <span className="text-xs font-mono text-[#65736B]">
-            {actualPoints.toLocaleString()} pts
+            {dataUnavailable ? '—' : `${actualPoints.toLocaleString()} pts`}
           </span>
         </div>
       </div>
@@ -95,22 +97,22 @@ export function CivicContributionCard({
       <div className="space-y-1.5 relative z-10">
         <div className="flex items-center justify-between text-[11px] font-mono text-[#65736B]">
           <span>
-            {nextTierLabel
+            {dataUnavailable ? 'Contribution progress unavailable' : nextTierLabel
               ? `${progress.pointsToNext.toLocaleString()} pts to ${nextTierLabel}`
               : 'Highest contributor tier reached'}
           </span>
-          {nextThreshold !== null && (
+          {!dataUnavailable && nextThreshold !== null && (
             <span>
               {actualPoints.toLocaleString()} / {nextThreshold.toLocaleString()} pts
             </span>
           )}
         </div>
-        <div className="w-full h-2 rounded-full bg-[#E9ECE6] p-0.5 shadow-[inset_0_1px_2px_rgba(41,55,50,0.1)]">
+        {!dataUnavailable && <div className="w-full h-2 rounded-full bg-[#E9ECE6] p-0.5 shadow-[inset_0_1px_2px_rgba(41,55,50,0.1)]">
           <div
             className="h-full rounded-full bg-gradient-to-r from-[#527B7A] to-[#355858] transition-all duration-500 shadow-sm"
             style={{ width: `${progress.pct}%` }}
           />
-        </div>
+        </div>}
       </div>
     </div>
   );

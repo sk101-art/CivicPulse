@@ -43,7 +43,7 @@ export default async function CitizenProfile(props: {
           },
         },
       })
-      .catch(() => 0),
+      .catch(() => null),
   ]);
 
   const user = overview?.user || {
@@ -89,12 +89,13 @@ export default async function CitizenProfile(props: {
       profile={{
         reputation: profile.reputation,
         tier: profile.tier,
-        reportsFiled: overview?.reportsFiled ?? 0,
-        verifiedFixedCount: overview?.verifiedFixedCount ?? 0,
-        verificationsCount: overview?.votesCast ?? 0,
+        reportsFiled: overview?.reportsFiled ?? null,
+        verifiedFixedCount: overview?.verifiedFixedCount ?? null,
+        verificationsCount: overview?.votesCast ?? null,
       }}
+      dataUnavailable={overview === null || totalDistinctIssues === null}
       initialReports={initialReports}
-      initialTotalReports={totalDistinctIssues}
+      initialTotalReports={totalDistinctIssues ?? 0}
       leaderboard={leaderboardResult.rows.map((r) => ({
         rank: r.rank,
         name: r.name,
@@ -102,7 +103,7 @@ export default async function CitizenProfile(props: {
         reputation: r.reputation,
         isUser: r.isMe,
       }))}
-      myRank={leaderboardResult.myRank}
+      myRank={overview ? leaderboardResult.myRank : null}
     />
   );
 }

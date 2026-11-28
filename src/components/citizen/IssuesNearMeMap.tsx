@@ -123,6 +123,7 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
 
   useEffect(() => {
     if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- viewport-dependent UI is initialized after hydration to avoid markup mismatch.
       setSidebarOpen(true);
     }
   }, []);
@@ -155,6 +156,7 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
         lng >= -180 &&
         lng <= 180
       ) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- URL deep links initialize the map state after hydration.
         setViewMode('map');
         setDeepLinkTarget({ lat, lng, issueId: rawIssueId || undefined });
         if (rawIssueId) setSelectedIssueId(rawIssueId);
@@ -213,12 +215,14 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
     };
   }, [mapInstance]);
 
-  const centerCoords: [number, number] = useMemo(() => {
-    if (currentWard?.lat && currentWard?.lng) {
-      return [currentWard.lat, currentWard.lng];
-    }
-    return [12.9716, 77.5946];
-  }, [currentWard]);
+  const hasValidWardCoordinates = Boolean(currentWard)
+    && Number.isFinite(currentWard?.lat) && Number.isFinite(currentWard?.lng)
+    && Math.abs(currentWard!.lat) <= 90 && Math.abs(currentWard!.lng) <= 180
+    && (currentWard!.lat !== 0 || currentWard!.lng !== 0);
+  const centerCoords: [number, number] = useMemo(
+    () => hasValidWardCoordinates && currentWard ? [currentWard.lat, currentWard.lng] : [0, 0],
+    [hasValidWardCoordinates, currentWard]
+  );
 
   const wardIssues: IssueItem[] = useMemo(() => {
     if (wardData.issues && wardData.issues.length > 0) {
@@ -244,7 +248,7 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
           repairClaimedAt: i.repairClaimedAt ?? null,
           agencyName: i.agencyName ?? null,
           assignedPersonnel: i.assignedPersonnel ?? null,
-          photoUrl: i.photoUrl,
+          photoUrl: i.photoUrl ?? undefined,
           note: i.note ?? null,
         };
       });
@@ -991,7 +995,7 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
       {/* Real Leaflet Map Canvas */}
       <div className="w-full h-full">
         <CartoConfigNotice />
-        <MapContainer
+        {hasValidWardCoordinates ? <MapContainer
           center={centerCoords}
           zoom={14}
           zoomControl={false}
@@ -1139,7 +1143,7 @@ export function IssuesNearMeMap({ initialIssues }: IssuesNearMeMapProps) {
               </Marker>
             );
           })}
-        </MapContainer>
+        </MapContainer> : <div role="status" className="flex h-full min-h-[360px] items-center justify-center rounded-xl border border-[#DDDCD3] bg-[#FAF9F5] p-8 text-center text-sm text-[#65736B]">Ward map unavailable: no valid location coordinates are recorded for the selected area.</div>}
       </div>
     </div>
   );

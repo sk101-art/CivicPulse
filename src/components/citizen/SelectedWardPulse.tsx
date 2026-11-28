@@ -8,9 +8,9 @@ import { useGeoContext } from '@/context/GeoContext';
 export function SelectedWardPulse() {
   const { currentWard, wardData } = useGeoContext();
 
-  const total = wardData.stats?.totalReported ?? 0;
-  const resolved = wardData.stats?.resolvedCount ?? 0;
-  const activeUnresolved = Math.max(0, total - resolved);
+  const total = wardData.stats?.totalReported;
+  const resolved = wardData.stats?.resolvedCount;
+  const activeUnresolved = Math.max(0, (total ?? 0) - (resolved ?? 0));
 
   return (
     <div
@@ -42,7 +42,7 @@ export function SelectedWardPulse() {
               {wardData.isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin mx-auto text-[#527B7A]" />
               ) : (
-                total
+                total ?? '—'
               )}
             </div>
             <div className="text-[10px] text-[#65736B] font-medium uppercase tracking-wider leading-tight">
@@ -55,7 +55,7 @@ export function SelectedWardPulse() {
               {wardData.isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin mx-auto text-[#B68B63]" />
               ) : (
-                activeUnresolved
+                total === undefined || resolved === undefined ? '—' : activeUnresolved
               )}
             </div>
             <div className="text-[10px] text-[#B68B63] font-medium uppercase tracking-wider leading-tight">
@@ -68,7 +68,7 @@ export function SelectedWardPulse() {
               {wardData.isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin mx-auto text-[#537C60]" />
               ) : (
-                resolved
+                resolved ?? '—'
               )}
             </div>
             <div className="text-[10px] text-[#537C60] font-medium uppercase tracking-wider leading-tight">

@@ -214,8 +214,13 @@ export async function GET(req: Request) {
       REOPENED_IN_WARRANTY: 'Reopened',
     };
 
-    const formattedIssues = issues.map((iss: any) => {
+    const formattedIssues = issues.map((iss) => {
       const latestReport = iss.reports[0] || null;
+      const latestPersonnel = isAuthority
+        ? (iss as typeof iss & {
+            assignments?: Array<{ personnel: { name: string; role: string } | null }>;
+          }).assignments?.[0]?.personnel
+        : null;
       return {
         id: iss.id,
         category: iss.category ?? 'OTHER',
@@ -241,8 +246,8 @@ export async function GET(req: Request) {
           ? {
               agencyName: iss.agency?.name || null,
               contractorName: iss.contractorName || null,
-              assignedPersonnel: iss.assignments?.[0]?.personnel
-                ? `${iss.assignments[0].personnel.name} (${iss.assignments[0].personnel.role})`
+              assignedPersonnel: latestPersonnel
+                ? `${latestPersonnel.name} (${latestPersonnel.role})`
                 : null,
             }
           : {}),

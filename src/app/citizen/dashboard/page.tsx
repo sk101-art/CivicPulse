@@ -34,10 +34,11 @@ export default async function CitizenDashboard() {
   const profile = overview?.profile ?? null;
   const userReports = overview?.reports ?? [];
 
-  const reportedCount = overview?.reportsFiled ?? 0;
-  const verifiedFixedCount = overview?.verifiedFixedCount ?? 0;
-  const verificationsCount = overview?.votesCast ?? 0;
-  const pendingCount = overview?.pendingCount ?? 0;
+  const overviewUnavailable = overview === null;
+  const reportedCount = overview?.reportsFiled ?? null;
+  const verifiedFixedCount = overview?.verifiedFixedCount ?? null;
+  const verificationsCount = overview?.votesCast ?? null;
+  const pendingCount = overview?.pendingCount ?? null;
   const eligibleAuditCount = auditListing.eligible ? auditListing.tasks.length : 0;
 
   const formattedReports: HomeReportItem[] = userReports.map((r) => ({
@@ -45,6 +46,7 @@ export default async function CitizenDashboard() {
     issueId: r.issueId,
     title: issueTitle(r.issue.category, r.issue.address, r.issue.lat, r.issue.lng),
     category: r.issue.category,
+    photoUrl: r.photoUrl,
     status: r.issue.status,
     createdAt: r.createdAt,
     address: displayLocation(r.issue.address, r.issue.lat, r.issue.lng),
@@ -92,7 +94,7 @@ export default async function CitizenDashboard() {
                 data-testid="kpi-reports-submitted"
                 className="font-mono font-bold text-2xl text-[#293732] leading-none mb-1"
               >
-                {reportedCount}
+                {reportedCount ?? '—'}
               </div>
               <div className="text-xs text-[#65736B] font-medium leading-tight">
                 Reports Submitted
@@ -110,7 +112,7 @@ export default async function CitizenDashboard() {
                 data-testid="kpi-verified-fixed"
                 className="font-mono font-bold text-2xl text-[#293732] leading-none mb-1"
               >
-                {verifiedFixedCount}
+                {verifiedFixedCount ?? '—'}
               </div>
               <div className="text-xs text-[#65736B] font-medium leading-tight">
                 Verified Fixed
@@ -128,7 +130,7 @@ export default async function CitizenDashboard() {
                 data-testid="kpi-verifications"
                 className="font-mono font-bold text-2xl text-[#293732] leading-none mb-1"
               >
-                {verificationsCount}
+                {verificationsCount ?? '—'}
               </div>
               <div className="text-xs text-[#65736B] font-medium leading-tight">
                 Verifications
@@ -146,7 +148,7 @@ export default async function CitizenDashboard() {
                 data-testid="kpi-pending"
                 className="font-mono font-bold text-2xl text-[#293732] leading-none mb-1"
               >
-                {pendingCount}
+                {pendingCount ?? '—'}
               </div>
               <div className="text-xs text-[#65736B] font-medium leading-tight">
                 Pending
@@ -170,8 +172,9 @@ export default async function CitizenDashboard() {
           <div className="lg:col-span-5 space-y-6">
             <CivicContributionCard
               tier={profile?.tier ?? null}
-              points={profile?.reputation ?? 0}
+              points={profile?.reputation ?? null}
               hasProfile={Boolean(profile)}
+              dataUnavailable={overviewUnavailable || !profile}
             />
 
             <SelectedWardPulse />

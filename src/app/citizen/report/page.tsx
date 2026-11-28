@@ -187,6 +187,8 @@ function FileReportContent() {
     | null
   >(null);
 
+  // Draft restoration must run after hydration because sessionStorage exists only in the browser.
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     const d = readDraft();
     if (d.category && Object.values(Category).includes(d.category)) setCategory(d.category);
@@ -196,6 +198,7 @@ function FileReportContent() {
     setClientReportId(d.clientReportId || newClientReportId());
     setDraftLoaded(true);
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!draftLoaded) return;

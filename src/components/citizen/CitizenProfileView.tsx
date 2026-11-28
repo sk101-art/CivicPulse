@@ -46,9 +46,9 @@ export interface CitizenProfileViewProps {
   profile: {
     reputation: number;
     tier: string;
-    reportsFiled: number;
-    verifiedFixedCount: number;
-    verificationsCount: number;
+    reportsFiled: number | null;
+    verifiedFixedCount: number | null;
+    verificationsCount: number | null;
   };
   initialReports: ProfileReportItem[];
   initialTotalReports: number;
@@ -60,6 +60,7 @@ export interface CitizenProfileViewProps {
     isUser: boolean;
   }>;
   myRank: number | null;
+  dataUnavailable?: boolean;
 }
 
 const TIER_LABELS: Record<string, string> = {
@@ -115,6 +116,7 @@ export function CitizenProfileView({
   initialTotalReports,
   leaderboard,
   myRank,
+  dataUnavailable = false,
   initialTab = 'reports',
 }: CitizenProfileViewProps) {
   const router = useRouter();
@@ -129,9 +131,9 @@ export function CitizenProfileView({
 
   // Report History pagination, search & filter state
   const [reports, setReports] = useState<ProfileReportItem[]>(initialReports);
-  const [totalReports, setTotalReports] = useState<number>(initialTotalReports);
+  const [totalReports, setTotalReports] = useState<number | null>(initialTotalReports);
   const [page, setPage] = useState<number>(1);
-  const [hasMore, setHasMore] = useState<boolean>(initialReports.length < initialTotalReports);
+  const [hasMore, setHasMore] = useState<boolean>(initialReports.length < (initialTotalReports ?? 0));
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
   const [loadingReports, setLoadingReports] = useState<boolean>(false);
@@ -280,6 +282,7 @@ export function CitizenProfileView({
 
         {/* ── SECTION A: IDENTITY AND STATISTICS ── */}
         <div className="bg-white rounded-[26px] p-6 sm:p-8 border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.06),0_1px_3px_rgba(41,55,50,0.03),inset_0_1px_0_rgba(255,255,255,1)] space-y-6">
+          {dataUnavailable && <p role="status" className="rounded-xl border border-[#F4E3CB] bg-[#FDF6ED] px-3 py-2 text-xs text-[#8A6846]">Profile statistics could not be loaded. Refresh this page to try again.</p>}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-full overflow-hidden border-2 border-white shadow-[0_4px_12px_rgba(41,55,50,0.12)] shrink-0 bg-[#D4E3DF] text-[#355858] font-display font-semibold text-2xl flex items-center justify-center select-none">
@@ -331,7 +334,7 @@ export function CitizenProfileView({
                 data-testid="stat-reports"
                 className="font-display font-bold text-2xl sm:text-3xl text-[#293732]"
               >
-                {profile.reportsFiled}
+                {dataUnavailable ? '—' : profile.reportsFiled ?? '—'}
               </div>
               <div className="text-xs text-[#65736B] font-medium">Reports</div>
             </div>
@@ -341,7 +344,7 @@ export function CitizenProfileView({
                 data-testid="stat-verified-fixed"
                 className="font-display font-bold text-2xl sm:text-3xl text-[#537C60]"
               >
-                {profile.verifiedFixedCount}
+                {dataUnavailable ? '—' : profile.verifiedFixedCount ?? '—'}
               </div>
               <div className="text-xs text-[#65736B] font-medium">Verified Fixed</div>
             </div>
@@ -351,7 +354,7 @@ export function CitizenProfileView({
                 data-testid="stat-verifications"
                 className="font-display font-bold text-2xl sm:text-3xl text-[#293732]"
               >
-                {profile.verificationsCount}
+                {dataUnavailable ? '—' : profile.verificationsCount ?? '—'}
               </div>
               <div className="text-xs text-[#65736B] font-medium">Verifications</div>
             </div>
@@ -361,7 +364,7 @@ export function CitizenProfileView({
                 data-testid="stat-points"
                 className="font-display font-bold text-2xl sm:text-3xl text-[#355858]"
               >
-                {actualPoints.toLocaleString()}
+                {dataUnavailable ? '—' : actualPoints.toLocaleString()}
               </div>
               <div className="text-xs text-[#65736B] font-medium">
                 Contribution Points
@@ -380,30 +383,30 @@ export function CitizenProfileView({
                   <Award className="w-4 h-4" />
                 </div>
                 <h3 className="font-semibold text-sm sm:text-base text-[#293732]">
-                  {displayTier}
+                  {dataUnavailable ? 'Contribution data unavailable' : displayTier}
                 </h3>
               </div>
 
               <span className="font-mono text-xs font-semibold text-[#65736B]">
-                {nextThreshold !== null
+                {dataUnavailable ? '—' : nextThreshold !== null
                   ? `${actualPoints.toLocaleString()} / ${nextThreshold.toLocaleString()} pts`
                   : `${actualPoints.toLocaleString()} pts`}
               </span>
             </div>
 
-            <div className="h-3 w-full bg-[#E9ECE6] rounded-full overflow-hidden p-0.5 border border-[#DDDCD3] shadow-[inset_0_1px_2px_rgba(41,55,50,0.08)]">
+            {!dataUnavailable && <div className="h-3 w-full bg-[#E9ECE6] rounded-full overflow-hidden p-0.5 border border-[#DDDCD3] shadow-[inset_0_1px_2px_rgba(41,55,50,0.08)]">
               <div
                 className="h-full bg-[#355858] rounded-full transition-all duration-500 shadow-sm"
                 style={{ width: `${progress.pct}%` }}
               />
-            </div>
+            </div>}
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-[#65736B]">
               <span>
-                {displayTier} ({currentThreshold.toLocaleString()} pts)
+                {dataUnavailable ? 'Contribution progress unavailable' : `${displayTier} (${currentThreshold.toLocaleString()} pts)`}
               </span>
               <span className="font-medium text-[#355858]">
-                {nextTierLabel
+                {dataUnavailable ? 'Contribution progress unavailable' : nextTierLabel
                   ? `${progress.pointsToNext.toLocaleString()} pts to ${nextTierLabel}`
                   : 'Highest contributor tier reached'}
               </span>
@@ -426,7 +429,7 @@ export function CitizenProfileView({
                   Verification Activity
                 </h3>
                 <p className="text-xs text-[#65736B]">
-                  {profile.verificationsCount}{' '}
+                {dataUnavailable ? '—' : profile.verificationsCount ?? '—'}{' '}
                   {profile.verificationsCount === 1
                     ? 'repair verification submitted'
                     : 'repair verifications submitted'}
@@ -456,7 +459,7 @@ export function CitizenProfileView({
                   : 'bg-white/80 hover:bg-white text-[#65736B] border border-[#DDDCD3]'
               }`}
             >
-              Report History ({totalReports})
+              Report History ({dataUnavailable ? '—' : totalReports ?? '—'})
             </button>
 
             <button
@@ -623,7 +626,7 @@ export function CitizenProfileView({
           {/* Tab 2: Real City-Wide Leaderboard */}
           {activeTab === 'leaderboard' && (
             <div className="space-y-3">
-              {myRank !== null && (
+              {!dataUnavailable && myRank !== null && (
                 <div className="bg-[#EAF2F0] rounded-2xl px-4 py-3 border border-[#D0E2DF] flex items-center justify-between text-xs sm:text-sm">
                   <div className="flex items-center gap-2 font-semibold text-[#293732]">
                     <Trophy className="w-4 h-4 text-[#355858]" />

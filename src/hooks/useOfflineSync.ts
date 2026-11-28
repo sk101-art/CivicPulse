@@ -275,9 +275,9 @@ export function useOfflineSync() {
   );
 
   useEffect(() => {
-    if (isOnline && db) {
-      void syncReports();
-    }
+    if (!isOnline || !db) return;
+    const retryTimer = window.setTimeout(() => void syncReports(), 0);
+    return () => window.clearTimeout(retryTimer);
   }, [isOnline, db, syncReports]);
 
   return { isOnline, pendingCount, isSyncing, lastSyncError, lastSyncedCount, queueReport, syncReports };

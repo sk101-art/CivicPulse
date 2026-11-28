@@ -218,6 +218,8 @@ export function CaptureCamera({
 
   useEffect(() => {
     let isMounted = true;
+    // Camera acquisition must begin after mount so browser media APIs are available.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void startCamera();
 
     let watchId: number | null = null;

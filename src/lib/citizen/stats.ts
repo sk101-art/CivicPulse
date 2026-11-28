@@ -36,18 +36,14 @@ export async function loadCitizenOverview(userId: string, opts: { reportLimit?: 
       where: { userId, role: { in: [EvidenceRole.REPORT, EvidenceRole.CONFIRM] } },
       orderBy: { createdAt: "desc" },
       take: (opts.reportLimit ?? 10) * 3,
-      include: {
+      select: {
+        id: true, userId: true, issueId: true, role: true, createdAt: true,
+        photoUrl: true, photoSha256: true, gpsAccuracyM: true, capturedAt: true,
+        lat: true, lng: true, isSeed: true,
         issue: {
           select: {
-            id: true,
-            category: true,
-            status: true,
-            address: true,
-            lat: true,
-            lng: true,
-            priority: true,
-            isSeed: true,
-            _count: { select: { comments: true } },
+            id: true, category: true, status: true, address: true, lat: true, lng: true,
+            priority: true, isSeed: true, _count: { select: { comments: true } },
           },
         },
       },

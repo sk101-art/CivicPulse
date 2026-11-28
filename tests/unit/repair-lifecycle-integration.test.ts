@@ -141,7 +141,6 @@ describe("Municipal Repair Lifecycle -> Citizen Verification Integration", () =>
             status: Status.CLAIMED_FIXED,
           }),
         },
-        assignment: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
         actionLog: { create: vi.fn().mockResolvedValue({ id: "log-claim-1" }) },
       })
     );

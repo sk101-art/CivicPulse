@@ -11,10 +11,14 @@ import {
   Plus,
   Loader2,
   AlertCircle,
+  ImageOff,
 } from 'lucide-react';
 import { useReports } from '@/hooks/useReports';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { formatDateTimeIST } from '@/lib/time/ist';
+
+// Evidence URLs come from runtime uploads whose storage host is configured per environment.
+/* eslint-disable @next/next/no-img-element */
 
 export interface HomeReportItem {
   id: string;
@@ -30,6 +34,7 @@ export interface HomeReportItem {
   latitude: number;
   longitude: number;
   isSeed?: boolean;
+  photoUrl?: string | null;
 }
 
 interface ActiveReportsProps {
@@ -37,21 +42,6 @@ interface ActiveReportsProps {
   eligibleAuditCount?: number;
   isAuditEligible?: boolean;
 }
-
-const categoryPlaceholders: Record<string, string> = {
-  POTHOLES: '/images/evidence-pothole-clean.jpg',
-  DRAINAGE: '/images/evidence-drainage-clean.jpg',
-  WATERLOGGING: '/images/evidence-drainage-clean.jpg',
-  STREETLIGHTS: '/images/evidence-streetlight-clean.jpg',
-  SIDEWALKS: '/images/placeholders/demo-evidence-sidewalks.jpg',
-  FOOTPATH: '/images/placeholders/demo-evidence-sidewalks.jpg',
-  TRAFFIC_SIGNS: '/images/placeholders/demo-evidence-traffic_signs.jpg',
-  ROAD_CUT: '/images/placeholders/demo-evidence-road_cut.jpg',
-  TREE_FALL: '/images/placeholders/demo-evidence-other.jpg',
-  GRAFFITI: '/images/placeholders/demo-evidence-graffiti.jpg',
-  TRASH: '/images/placeholders/demo-evidence-trash.jpg',
-  OTHER: '/images/placeholders/demo-evidence-other.jpg',
-};
 
 function getStatusBadge(status: string) {
   switch (status) {
@@ -220,8 +210,6 @@ export function ActiveReports({
             {displayMyReports.map((report) => {
               const categoryKey = String(report.category || 'OTHER').toUpperCase();
               const categoryLabel = categoryKey.replace(/_/g, ' ');
-              const imageSrc =
-                categoryPlaceholders[categoryKey] || '/images/placeholders/demo-evidence-other.jpg';
               const dateStr = report.createdAt ? formatDateTimeIST(report.createdAt) : '';
 
               return (
@@ -231,13 +219,8 @@ export function ActiveReports({
                   className="py-3.5 first:pt-1 last:pb-1 flex items-center justify-between gap-4 group hover:bg-[#FAF9F5] -mx-2 px-2 rounded-xl transition-colors cursor-pointer"
                 >
                   <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-13 h-13 rounded-xl overflow-hidden border border-[#DDDCD3] shrink-0 relative bg-[#E9ECE6]">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={imageSrc}
-                        alt={report.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                      />
+                    <div className="w-13 h-13 rounded-xl overflow-hidden border border-[#DDDCD3] shrink-0 relative bg-[#E9ECE6] flex items-center justify-center">
+                      {report.photoUrl ? <><span className="sr-only">Evidence photo attached</span><img src={report.photoUrl} alt="" aria-hidden="true" className="w-full h-full object-cover" /></> : <ImageOff className="w-5 h-5 text-[#929B92]" aria-label="No evidence photo attached" />}
                     </div>
 
                     <div className="space-y-0.5 min-w-0">
@@ -250,7 +233,7 @@ export function ActiveReports({
                         {report.title}
                       </h4>
                       <div className="text-xs text-[#65736B] truncate">
-                        {report.address || 'Bengaluru'}
+                        {report.address || 'Location unavailable'}
                         {dateStr ? ` • ${dateStr}` : ''}
                       </div>
                     </div>

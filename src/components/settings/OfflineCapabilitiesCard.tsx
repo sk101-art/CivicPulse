@@ -97,6 +97,7 @@ export function OfflineCapabilitiesCard() {
   }, []);
 
   // Read-only browser permissions query (never calls getCurrentPosition or getUserMedia)
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.permissions?.query) {
       setGeoPermission('unavailable');
@@ -137,6 +138,7 @@ export function OfflineCapabilitiesCard() {
       }
     };
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const keyInfo = deviceKeyBadge(keyStatus);
   const geoInfo = permissionBadge(geoPermission);

@@ -32,10 +32,6 @@ const MapContainer = dynamic(
   () => import('react-leaflet').then((mod) => mod.MapContainer),
   { ssr: false }
 );
-const TileLayer = dynamic(
-  () => import('react-leaflet').then((mod) => mod.TileLayer),
-  { ssr: false }
-);
 const Marker = dynamic(
   () => import('react-leaflet').then((mod) => mod.Marker),
   { ssr: false }
@@ -107,9 +103,13 @@ export function GeoIntelligenceMap({
   const [mapInstance, setMapInstance] = useState<LeafletType.Map | null>(null);
 
   // Center coordinates
-  const centerCoords: [number, number] = useMemo(() => {
-    return [ward.lat || 12.9716, ward.lng || 77.5946];
-  }, [ward.lat, ward.lng]);
+  const hasValidWardCoordinates = Number.isFinite(ward.lat) && Number.isFinite(ward.lng)
+    && Math.abs(ward.lat) <= 90 && Math.abs(ward.lng) <= 180
+    && (ward.lat !== 0 || ward.lng !== 0);
+  const centerCoords: [number, number] = useMemo(
+    () => hasValidWardCoordinates ? [ward.lat, ward.lng] : [0, 0],
+    [hasValidWardCoordinates, ward.lat, ward.lng]
+  );
 
   // Filter issues according to ViewMode, StatusFilter, and SelectedCategory
   const filteredIssues = useMemo(() => {
@@ -344,7 +344,7 @@ export function GeoIntelligenceMap({
         )}
 
         <CartoConfigNotice />
-        <MapContainer
+        {hasValidWardCoordinates ? <MapContainer
           center={centerCoords}
           zoom={14}
           zoomControl={false}
@@ -442,7 +442,7 @@ export function GeoIntelligenceMap({
                 </Marker>
               );
             })}
-        </MapContainer>
+        </MapContainer> : <div role="status" className="rounded-xl border border-[#DDDCD3] bg-[#FAF9F5] p-8 text-center text-sm text-[#65736B]">Ward map unavailable: no valid location coordinates are recorded for this area.</div>}
       </div>
 
       {/* Status Legend & Filter Bar (Full Mode) / Compact Cluster Legend (Citizen Mode) */}
