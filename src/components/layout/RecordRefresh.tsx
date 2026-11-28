@@ -7,7 +7,7 @@ export function RecordRefresh() {
   const pathname = usePathname();
   const router = useRouter();
   useEffect(() => {
-    const recordPage = pathname === "/citizen/dashboard" ||
+    const recordPage = pathname === "/citizen/dashboard" || pathname === "/citizen/profile" ||
       pathname === "/citizen/audit" || pathname === "/desk/dashboard" ||
       pathname.startsWith("/citizen/report/") || pathname.startsWith("/issue/");
     if (!recordPage) return;
