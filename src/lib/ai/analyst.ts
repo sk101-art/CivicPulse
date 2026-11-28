@@ -510,20 +510,10 @@ export async function assessIssueWithMeta(
   };
 
   const factsForGrounding = [
-    String(issue.id),
-    String(issue.category),
-    String(priority),
-    String(detScore),
-    String(busesPerHour),
-    String(liveCongestionPct),
-    String(peakDelayPct),
-    inputPayload.roadName,
-    String(issue.lat),
-    String(issue.lng),
-    issue.lat.toFixed(4),
-    issue.lng.toFixed(4),
-    // Adjustment range only; observations must come from the supplied snapshot.
-    "-10", "-9", "-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1",
+    inputPayload,
+    // Output schema constants: signed adjustment range and score denominator.
+    // All observations must come from the actual snapshot above.
+    "0", "100", "-10", "-9", "-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1",
   ];
 
   // Check cache hit before consuming quota or calling LLM
