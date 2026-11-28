@@ -10,6 +10,9 @@ jobs:
   verify:
     name: Lint, Typecheck, Test, Build
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL_TEST: ${{ secrets.DATABASE_URL_TEST }}
+      DIRECT_DATABASE_URL_TEST: ${{ secrets.DIRECT_DATABASE_URL_TEST }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,4 +39,8 @@ jobs:
         run: npm test
 
       - name: Build
-        run: npm run build
+        run: npx next build --webpack
+        env:
+          APP_DATABASE_URL: ${{ secrets.DATABASE_URL_TEST }}
+          DIRECT_DATABASE_URL: ${{ secrets.DIRECT_DATABASE_URL_TEST }}
+

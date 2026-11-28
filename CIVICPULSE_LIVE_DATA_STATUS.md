@@ -37,10 +37,10 @@ The configured database had 33 non-seed issues and 37 seed issues at this snapsh
 ## Remaining data operations work
 
 - [x] Add `ScheduledJobRun` tracking for start/end, processed/failed counts, skips, partial runs, duration, and sanitized summary; the authority feed panel reads the latest weather, traffic-sample, and traffic-profile runs.
-- [ ] Apply migration `20261128042000_scheduled_job_run_tracking` to the intended database before deploying this branch. The existing database snapshot predates this table, so job history is not populated until the migration is applied.
+- [x] Apply migration `20261128042000_scheduled_job_run_tracking` to the configured public database. Job history can now be recorded after the updated jobs are deployed.
 - [ ] Alert when a scheduled feed is stale or has repeated failures; do not treat HTTP 200 as a healthy data refresh.
 - [ ] Confirm the production deployment has valid TomTom and job credentials and targets the intended database. Local key presence is not production verification.
-- [ ] Deploy the `ui-redesign` feed-status UI and dashboard data-truth fixes; scheduled jobs currently run from `v2`.
+- [ ] Deploy the `ui-redesign` feed-status UI and dashboard data-truth fixes; until deployment finishes, scheduled jobs still run from `v2`.
 - [ ] Decide a traffic freshness contract the product can meet. If actual observations are not recent enough, show “last observed …” and use a clearly labelled historical/estimated planning profile rather than “live.”
 - [ ] Decide which public data can be shown without exposing exact citizen coordinates or identity; aggregate to ward/area where appropriate.
 
@@ -58,5 +58,8 @@ The configured database had 33 non-seed issues and 37 seed issues at this snapsh
 - Profile and ward telemetry show unavailable states when their queries fail, so a database error cannot be mistaken for zero civic activity.
 - Citizen/authority ward maps do not place missing-coordinate wards at a guessed Bengaluru center. Route planning refuses to calculate from an invented depot.
 - Repair-window scores appear only when supplied by the underlying recommendation data.
-- These safeguards keep the interface truthful, but cannot create provider availability. When a source is unavailable, the screen says so; the deployed `v2` workflow and pending migration still block proving fresh live weather/traffic on the jury deployment.
+- These safeguards keep the interface truthful, but cannot create provider availability. When a source is unavailable, the screen says so; the pending production deployment still blocks proving fresh live weather/traffic on the jury deployment.
+- `ui-redesign` commit `9105b2f` is pushed; PR #1 targets `v2`. Latest local verification: 536 tests passed, lint error check passed, typecheck passed, production build passed, and migration status is up-to-date. GitHub CI exposed that its workflow omitted the required isolated test database setting; the workflow now maps the corresponding Actions secrets and awaits rerun.
+- The production site has not yet been updated. Continue to call existing production readings stale until PR CI succeeds, deployment completes, and the deployed weather/traffic timestamps and job-run records are checked.
 - Latest follow-up checks: typecheck passed; 35 focused tests passed across 5 files; full lint passed with 0 errors and 60 repository warnings. Focused ESLint for the edited citizen/authority files reports no warnings.
+

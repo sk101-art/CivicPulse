@@ -36,7 +36,7 @@ This checklist tracks only observed findings and completed verification. Update 
 
 ## Final verification
 
-- Full test run: 504 passed, 0 failed, 241 suites.
+- Full test run (latest): 536 passed, 0 failed, 97 suites.
 - TypeScript typecheck passed.
 - Browser journeys passed: 3 of 3 selected flows. Earlier camera capture E2E also passed with fake camera and GPS.
 - `git diff --check` passed; branch is `ui-redesign`.
@@ -53,7 +53,8 @@ This checklist tracks only observed findings and completed verification. Update 
 - [x] Removed fabricated citizen report cards and reputation/stat fallbacks; dashboard counts now use complete database counts and distinguish unavailable data from real zeroes.
 - [x] Added authority feed freshness by tracked location, plus scheduled-job outcome recording and a feed source/status reference document.
 - [x] Follow-up checks: `npx prisma validate`, `npm run typecheck`, full lint (0 errors, 80 warnings), and 34 focused tests passed.
-- [ ] Apply the new scheduled-job telemetry migration to the intended database, then deploy `ui-redesign`; scheduled GitHub jobs currently run `v2`.
+- [x] Apply scheduled-job telemetry migration `20261128042000_scheduled_job_run_tracking` to the configured public database; `prisma migrate status` reports up-to-date.
+- [ ] Deploy `ui-redesign` to production; PR #1 targets `v2`. The latest CI failure was the workflow omitting required `DATABASE_URL_TEST`; the workflow now maps isolated database secrets and is awaiting rerun.
 - [ ] Confirm traffic and weather freshness after deployment using persisted job-run results and per-location timestamps.
 - [ ] Add alerting for repeated failed/partial jobs or stale feeds.
 
@@ -67,5 +68,14 @@ This checklist tracks only observed findings and completed verification. Update 
 - [x] Route planning does not invent a Bengaluru depot; calculation requires a valid ward center, GPS start, or first-stop mode.
 - [x] Repair-window displays no longer invent missing recommendation scores.
 - [x] Latest `npm run typecheck` passed; focused tests passed (35 tests across 5 files); full `npm run lint` passed with 0 errors and 60 existing warnings. The edited citizen/authority files pass focused ESLint with no warnings.
-- [ ] Apply the scheduled-job telemetry migration, deploy `ui-redesign`, and confirm live provider updates in the deployed environment.
+- [x] Apply the scheduled-job telemetry migration to the configured public database.
+- [ ] Deploy the `ui-redesign` feed-status UI and confirm provider updates in the deployed environment.
 - [ ] Add production stale-feed alerts and validate provider credentials/quotas in the deployed environment.
+
+## Deployment status (2026-11-28)
+
+- [x] `ui-redesign` pushed to GitHub at `9105b2f` with production build, typecheck, lint error check, and 536/536 local tests passing.
+- [x] PR #1 opened from `ui-redesign` to `v2`: https://github.com/sk101-art/CivicPulse/pull/1
+- [ ] GitHub CI rerun and Vercel production deployment are pending; do not describe production data as live until both complete and feed timestamps are verified there.
+- [ ] Trigger/observe weather and traffic refresh after deployment, then verify provider-backed sample timestamps and persisted job outcomes.
+
