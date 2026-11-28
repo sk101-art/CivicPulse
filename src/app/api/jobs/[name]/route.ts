@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { apiError } from "@/lib/api/errors";
+import { apiError, sanitizeErrorMessage } from "@/lib/api/errors";
+import { prisma } from "@/lib/prisma";
 import { JOB_NAMES, runJob, type JobName } from "@/lib/jobs/runner";
 
 export const dynamic = "force-dynamic";
@@ -37,11 +38,60 @@ export async function POST(
     return apiError(404, "UNKNOWN_JOB", `Unknown job '${name}'. Known jobs: ${JOB_NAMES.join(", ")}`);
   }
 
+  const startedAt = new Date();
+  const runRecord = await prisma.scheduledJobRun.create({
+    data: { job: name, status: "RUNNING", startedAt },
+  }).catch((error: unknown) => {
+    // Job execution must continue if telemetry storage is temporarily unavailable.
+    console.warn("Unable to create scheduled job telemetry row:", sanitizeErrorMessage(error instanceof Error ? error.message : "Telemetry storage unavailable"));
+    return null;
+  });
+
   try {
     const result = await runJob(name as JobName);
+    if (runRecord) {
+      const status = result.partial
+        ? "PARTIAL"
+        : result.failed
+          ? "DEGRADED"
+          : result.skipped
+            ? "SKIPPED"
+            : "SUCCEEDED";
+      const skipNote = result.skipped == null ? null : sanitizeErrorMessage(String(result.skipped)).slice(0, 300);
+      const summary = result.firstError ?? skipNote;
+      await prisma.scheduledJobRun.update({
+        where: { id: runRecord.id },
+        data: {
+          status,
+          finishedAt: new Date(),
+          processed: result.processed,
+          failed: result.failed ?? 0,
+          skipped: skipNote,
+          remaining: result.remaining ?? null,
+          partial: result.partial ?? false,
+          durationMs: result.durationMs,
+          summary: summary ? sanitizeErrorMessage(summary).slice(0, 500) : null,
+        },
+      }).catch((error: unknown) => {
+        console.warn("Unable to update scheduled job telemetry row:", sanitizeErrorMessage(error instanceof Error ? error.message : "Telemetry storage unavailable"));
+      });
+    }
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
-    console.error(`Job ${name} failed:`, error instanceof Error ? error.message : error);
+    console.error(`Job ${name} failed:`, sanitizeErrorMessage(error instanceof Error ? error.message : "Job failed"));
+    if (runRecord) {
+      await prisma.scheduledJobRun.update({
+        where: { id: runRecord.id },
+        data: {
+          status: "FAILED",
+          finishedAt: new Date(),
+          failed: 1,
+          summary: sanitizeErrorMessage(error instanceof Error ? error.message : "Job failed").slice(0, 500),
+        },
+      }).catch((telemetryError: unknown) => {
+        console.warn("Unable to record scheduled job failure:", sanitizeErrorMessage(telemetryError instanceof Error ? telemetryError.message : "Telemetry storage unavailable"));
+      });
+    }
     return apiError(500, "JOB_FAILED", `Job '${name}' failed`);
   }
 }

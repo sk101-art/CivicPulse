@@ -18,6 +18,7 @@ export interface Report {
   voteCount?: number;
   commentCount?: number;
   isSeed?: boolean;
+  photoUrl?: string | null;
 }
 
 export interface RawReportInput {
@@ -36,6 +37,7 @@ export interface RawReportInput {
   voteCount?: number;
   commentCount?: number;
   isSeed?: boolean;
+  photoUrl?: string | null;
 }
 
 function normalizeReport(item: RawReportInput): Report {
@@ -59,19 +61,53 @@ function normalizeReport(item: RawReportInput): Report {
   };
 }
 
-export function useReports(options: {
-  endpoint: string;
+export interface UseReportsOptions {
+  endpoint?: string;
+  wardId?: string | null;
+  category?: string | null;
+  status?: string | null;
   autoRefresh?: number;
   initialData?: Report[];
-} = { endpoint: '/api/reports' }) {
-  const [reports, setReports] = useState<Report[]>(() => (options.initialData || []).map(normalizeReport));
-  const [loading, setLoading] = useState(() => !options.initialData);
+}
+
+export function useReports(options: UseReportsOptions = { endpoint: '/api/reports' }) {
+  const {
+    endpoint = '/api/reports',
+    wardId,
+    category,
+    status,
+    autoRefresh,
+    initialData,
+  } = options;
+
+  const [reports, setReports] = useState<Report[]>(() => (initialData || []).map(normalizeReport));
+  const [loading, setLoading] = useState(() => !initialData);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
+  const getEffectiveUrl = useCallback(() => {
+    const rawEndpoint = endpoint || '/api/reports';
+    const [path, queryString] = rawEndpoint.split('?');
+    const params = new URLSearchParams(queryString || '');
+    if (wardId) {
+      params.set('wardId', wardId);
+    }
+    if (category && category !== 'ALL') {
+      params.set('category', category);
+    }
+    if (status) {
+      params.set('status', status);
+    }
+    const qs = params.toString();
+    return qs ? `${path}?${qs}` : path;
+  }, [endpoint, wardId, category, status]);
+
   const fetchReports = useCallback(async () => {
     try {
-      const res = await fetch(options.endpoint);
+      setLoading(true);
+      setError(null);
+      const url = getEffectiveUrl();
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
         const rawList: RawReportInput[] = Array.isArray(data) ? data : data.reports || data.issues || [];
@@ -84,7 +120,7 @@ export function useReports(options: {
     } finally {
       setLoading(false);
     }
-  }, [options.endpoint]);
+  }, [getEffectiveUrl]);
 
   const invalidate = useCallback(() => {
     fetchReports();
@@ -107,7 +143,10 @@ export function useReports(options: {
     let ignore = false;
     async function load() {
       try {
-        const res = await fetch(options.endpoint);
+        setLoading(true);
+        setError(null);
+        const url = getEffectiveUrl();
+        const res = await fetch(url);
         if (res.ok) {
           const data = await res.json();
           if (!ignore) {
@@ -123,21 +162,22 @@ export function useReports(options: {
         if (!ignore) setLoading(false);
       }
     }
+
     load();
     return () => {
       ignore = true;
     };
-  }, [options.endpoint]);
+  }, [getEffectiveUrl]);
 
   // Auto-refresh interval
   useEffect(() => {
-    if (options.autoRefresh && options.autoRefresh > 0) {
+    if (autoRefresh && autoRefresh > 0) {
       const interval = setInterval(() => {
         fetchReports();
-      }, options.autoRefresh);
+      }, autoRefresh);
       return () => clearInterval(interval);
     }
-  }, [options.autoRefresh, fetchReports]);
+  }, [autoRefresh, fetchReports]);
 
   return { reports, loading, error, refetch: fetchReports, invalidate };
 }

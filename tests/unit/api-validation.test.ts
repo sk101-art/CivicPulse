@@ -44,8 +44,8 @@ describe("T12 Acceptance: Validation Layer and API Error Contract", () => {
     }
   });
 
-  it("accuracy 80 m → 400 (exceeds max allowable GPS accuracy for evidence)", () => {
-    const input = { lat: 12.9716, lng: 77.5946, gpsAccuracyM: 80 };
+  it("accuracy 501 m → 400 (exceeds 500 m max allowable GPS accuracy for evidence)", () => {
+    const input = { lat: 12.9716, lng: 77.5946, gpsAccuracyM: 501 };
     const result = evidenceGpsSchema.safeParse(input);
 
     expect(result.success).toBe(false);
@@ -59,15 +59,16 @@ describe("T12 Acceptance: Validation Layer and API Error Contract", () => {
     }
   });
 
-  it("valid coordinates and accuracy within pilot region succeed", () => {
-    const input = { lat: 12.9716, lng: 77.5946, gpsAccuracyM: 15 };
-    const result = evidenceGpsSchema.safeParse(input);
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.lat).toBe(12.9716);
-      expect(result.data.lng).toBe(77.5946);
-      expect(result.data.gpsAccuracyM).toBe(15);
+  it("valid coordinates and accuracy up to 500 m succeed", () => {
+    for (const gpsAccuracyM of [15, 30, 118, 250, 500]) {
+      const input = { lat: 12.9716, lng: 77.5946, gpsAccuracyM };
+      const result = evidenceGpsSchema.safeParse(input);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.lat).toBe(12.9716);
+        expect(result.data.lng).toBe(77.5946);
+        expect(result.data.gpsAccuracyM).toBe(gpsAccuracyM);
+      }
     }
   });
 

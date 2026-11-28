@@ -107,14 +107,46 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const auth = await withAuth(Role.AUTHORITY);
     if (auth.error) {
       return auth.error;
     }
 
+    const { searchParams } = new URL(req.url);
+    const wardParam = searchParams.get("wardId") || searchParams.get("ward");
+
+    let validatedWardId: string | undefined = undefined;
+    if (wardParam) {
+      const lower = wardParam.toLowerCase().trim();
+      const numOnly = lower.replace(/^ward-?/i, "");
+      const matchedWard = await prisma.ward.findFirst({
+        where: {
+          OR: [
+            { id: { equals: wardParam, mode: "insensitive" } },
+            { code: { equals: wardParam, mode: "insensitive" } },
+            { code: { equals: `WARD-${wardParam}`, mode: "insensitive" } },
+            { code: { equals: `WARD-${numOnly}`, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true },
+      });
+      if (matchedWard) {
+        validatedWardId = matchedWard.id;
+      } else {
+        return NextResponse.json([], {
+          headers: {
+            "Cache-Control": "no-store, max-age=0",
+          },
+        });
+      }
+    }
+
     const issues = await prisma.issue.findMany({
+      where: {
+        ...(validatedWardId && { wardId: validatedWardId }),
+      },
       orderBy: { priority: "desc" },
       include: {
         reports: {

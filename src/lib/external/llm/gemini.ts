@@ -179,7 +179,7 @@ export class GeminiAdapter implements LlmAdapter {
             totalTokens: data.usageMetadata.totalTokenCount,
           } : undefined,
         };
-      } catch (err: any) {
+      } catch (err: unknown) {
         lastError = err instanceof Error ? err : new Error(String(err));
         if (modelsToTry.indexOf(model) < modelsToTry.length - 1) {
           continue;

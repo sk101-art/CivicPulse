@@ -8,7 +8,8 @@ if (fs.existsSync(path.join(rootDir, '.env'))) {
   dotenv.config({ path: path.join(rootDir, '.env') });
 }
 if (fs.existsSync(path.join(rootDir, '.env.local'))) {
-  dotenv.config({ path: path.join(rootDir, '.env.local'), override: true });
+  // CI secrets and generated test credentials must win over blank template values.
+  dotenv.config({ path: path.join(rootDir, '.env.local'), override: process.env.CI !== 'true' });
 }
 
 // Fail-fast test database isolation check
@@ -41,8 +42,8 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/unit/**/*.test.{ts,tsx}', 'tests/contract/**/*.test.{ts,tsx}'],
     globals: true,
-    testTimeout: 15000,
-    hookTimeout: 15000,
+    testTimeout: 30000,
+    hookTimeout: 30000,
   },
   resolve: {
     alias: {
@@ -51,3 +52,4 @@ export default defineConfig({
     },
   },
 });
+

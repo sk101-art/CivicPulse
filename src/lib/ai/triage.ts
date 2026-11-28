@@ -140,6 +140,8 @@ export async function processG1Triage(
   const runResult = await runAi<G1TriageResult>({
     feature: "G1",
     promptVer: "g1-v1",
+    jsonSchema: g1JsonSchema,
+    schema: g1TriageSchema,
     systemPrompt: `You are an expert civic infrastructure vision analyst triaging citizen-submitted road defect photos.
 Analyze the photo carefully and answer structured questions:
 1. scene: Is the photo taken outdoors on a road or roadside ("road"), indoors ("indoor"), displaying a screen or printed picture ("screen"), or another non-road environment ("other")?
@@ -157,8 +159,6 @@ Examine the attached photo:
 - Explicitly determine whether the photo shows the reported defect ("${reportedCategory}") (shows_reported_defect: yes|no|unclear).
 - If the defect is not visible or the scene is not a road, set category to "unknown" and shows_reported_defect to "no".`,
     images,
-    schema: g1TriageSchema,
-    jsonSchema: g1JsonSchema,
     inputPayload: {
       reportId: report.id,
       category: reportedCategory,

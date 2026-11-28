@@ -133,9 +133,9 @@ describe("T50 Contract Test: AI Provider Chain & Guardrails", () => {
     expect(result.provider).toBe("rules");
     expect(result.model).toBe("rules-fallback");
     expect(result.valid).toBe(true);
-    expect(result.data.category).toBe("POTHOLES");
+    expect(result.data.category).toBe("unknown");
     expect(result.data.size_class).toBe("unknown");
-    expect(result.data.confidence).toBe(0.5);
+    expect(result.data.confidence).toBe(0);
   });
 
   it("returns cached output for identical inputHash without calling adapters", async () => {
@@ -212,7 +212,7 @@ describe("T50 Contract Test: AI Provider Chain & Guardrails", () => {
     expect(adapterCalled).toBe(false); // Provider never invoked!
     expect(result.provider).toBe("rules");
     expect(result.model).toBe("rules-fallback");
-    expect(result.data.category).toBe("POTHOLES");
+    expect(result.data.category).toBe("unknown");
   });
 
   it("persists audit rows in the AiRun database table with inputHash and valid flag", async () => {

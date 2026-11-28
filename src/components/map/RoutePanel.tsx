@@ -1,6 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import { PlacementMode, RouteOption } from "./types";
 import { pointToPolyDist } from "./utils";
+import { 
+  Navigation, Check, CheckCircle2, AlertTriangle, 
+  Car, Bike, Footprints, Shield, ArrowRight, RotateCcw
+} from "lucide-react";
 
 export type VehicleMode = "motorcycle" | "car" | "pedestrian" | "wheelchair";
 
@@ -33,274 +37,197 @@ export function RoutePanel({
   loading,
   onOptimize,
   onClear,
-  showReportButton = false,
   allRoutes,
   selectedRouteIndex,
   hazards,
   routeError,
-  vehicle = "motorcycle",
+  vehicle = "car",
   setVehicle,
-  beta = 0.15,
-  setBeta,
   explanation,
-  keyDisabled = false,
 }: RoutePanelProps) {
+  const [selectedRouteChoice, setSelectedRouteChoice] = useState<'A' | 'B'>('A');
+  const [applied, setApplied] = useState(false);
+
   const currentRoute = allRoutes[selectedRouteIndex];
 
   return (
     <>
-      {/* Top Action Bar */}
-      <div className="absolute top-4 left-4 right-28 z-[1000] pointer-events-none flex flex-wrap items-center gap-2">
-        {/* Source Button */}
-        <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
+      {/* Top Left Waypoint Placement Bar */}
+      <div className="absolute top-4 left-4 z-[1000] flex flex-wrap items-center gap-2 pointer-events-auto">
+        <div className="bg-[#FFFFFF] border border-[#DDDCD3] rounded-2xl p-1.5 shadow-[0_4px_16px_rgba(41,55,50,0.08)] flex items-center gap-1.5">
+          {/* Source Button */}
           <button
+            type="button"
             onClick={() => setMode("source")}
-            className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-black uppercase tracking-widest border transition-all ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
               mode === "source"
-                ? "bg-emerald-500 border-emerald-400 text-black animate-pulse shadow-[0_0_20px_rgba(16,185,129,0.4)]"
+                ? "bg-[#527B7A] text-white shadow-sm font-semibold"
                 : source
-                ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
-                : "bg-black/60 backdrop-blur-md border-white/10 text-white/50 hover:border-emerald-500/50"
+                ? "bg-[#D4E3DF] text-[#355858] font-semibold"
+                : "bg-[#E9ECE6] text-[#293732] hover:bg-[#DDDCD3]"
             }`}
           >
-            {mode === "source"
-              ? "⊕ Placing Source..."
-              : source
-              ? "✓ Source Set"
-              : "⊕ Set Source"}
+            <span className="w-2 h-2 rounded-full bg-[#537C60]" />
+            {mode === "source" ? "Click map for Source" : source ? "Source Set" : "Set Source (S)"}
           </button>
-        </div>
 
-        {/* Destination Button */}
-        <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
+          {/* Destination Button */}
           <button
+            type="button"
             onClick={() => setMode("destination")}
-            className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-black uppercase tracking-widest border transition-all ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
               mode === "destination"
-                ? "bg-rose-500 border-rose-400 text-white animate-pulse shadow-[0_0_20px_rgba(255,46,99,0.4)]"
+                ? "bg-[#B76F60] text-white shadow-sm font-semibold"
                 : destination
-                ? "bg-rose-500/20 border-rose-500/30 text-rose-400"
-                : "bg-black/60 backdrop-blur-md border-white/10 text-white/50 hover:border-rose-500/50"
+                ? "bg-[#FCEBE6] text-[#B76F60] font-semibold"
+                : "bg-[#E9ECE6] text-[#293732] hover:bg-[#DDDCD3]"
             }`}
           >
-            {mode === "destination"
-              ? "⊕ Placing Dest..."
-              : destination
-              ? "✓ Dest Set"
-              : "⊕ Set Destination"}
+            <span className="w-2 h-2 rounded-full bg-[#B76F60]" />
+            {mode === "destination" ? "Click map for Dest" : destination ? "Dest Set" : "Set Dest (D)"}
           </button>
-        </div>
 
-        {/* Vehicle Selector */}
-        {setVehicle && (
-          <div className="p-1.5 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center gap-1 pointer-events-auto">
-            {(
-              [
-                ["motorcycle", "🏍️ Moto"],
-                ["car", "🚗 Car"],
-                ["pedestrian", "🚶 Walk"],
-                ["wheelchair", "♿ Wheel"],
-              ] as const
-            ).map(([vKey, label]) => (
-              <button
-                key={vKey}
-                onClick={() => setVehicle(vKey)}
-                className={`px-2 py-1 rounded-lg text-[10px] font-mono font-bold transition-all ${
-                  vehicle === vKey
-                    ? "bg-cyan-500/30 text-cyan-300 border border-cyan-400/50"
-                    : "text-white/40 hover:text-white/80"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Safest vs Fastest Slider */}
-        {setBeta && (
-          <div className="px-3 py-1.5 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center gap-2 text-[10px] font-mono text-white/60 pointer-events-auto">
-            <span>⚡ Fast</span>
-            <input
-              type="range"
-              min="0"
-              max="0.5"
-              step="0.05"
-              value={beta}
-              onChange={(e) => setBeta(parseFloat(e.target.value))}
-              className="w-16 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-              title={`Safety Bias (β): ${beta}`}
-            />
-            <span>🛡️ Safe</span>
-            <span className="text-cyan-400 font-bold ml-1">{beta.toFixed(2)}</span>
-          </div>
-        )}
-
-        {/* Compute Safe Route Button */}
-        {source && destination && (
-          <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
+          {(source || destination) && (
             <button
-              onClick={onOptimize}
-              disabled={loading}
-              className="px-4 py-1.5 rounded-lg text-[10px] font-display font-black uppercase tracking-widest bg-cyan-400 text-black shadow-[0_0_30px_rgba(0,245,212,0.3)] hover:bg-cyan-300 active:scale-95 disabled:opacity-50 transition-all"
-            >
-              {loading ? "⏳ Computing Path..." : "▶ Compute Safe Route"}
-            </button>
-          </div>
-        )}
-
-        {/* Report Button (if enabled) */}
-        {showReportButton && (
-          <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
-            <button
-              onClick={() => setMode("report")}
-              className={`px-3 py-1.5 rounded-lg text-[10px] font-mono font-black uppercase tracking-widest border transition-all ${
-                mode === "report"
-                  ? "bg-amber-500 border-amber-400 text-black animate-pulse shadow-[0_0_20px_rgba(255,184,0,0.4)]"
-                  : "bg-black/60 backdrop-blur-md border-white/10 text-amber-400 hover:border-amber-500/50"
-              }`}
-            >
-              {mode === "report" ? "📍 Pinning Issue..." : "📍 Report on Map"}
-            </button>
-          </div>
-        )}
-
-        {/* Reset / Clear Button */}
-        {(source || destination || allRoutes.length > 0) && (
-          <div className="p-2 bg-gray-950/90 backdrop-blur-md rounded-xl shadow-lg border border-white/5 flex items-center justify-center pointer-events-auto">
-            <button
+              type="button"
               onClick={onClear}
-              className="px-2.5 py-1.5 rounded-lg text-[10px] font-mono uppercase tracking-widest text-white/40 hover:text-white hover:bg-white/5 transition"
+              className="p-1.5 rounded-lg text-[#65736B] hover:text-[#293732] hover:bg-[#E9ECE6] transition-colors"
+              title="Clear Route Points"
             >
-              ✕ Clear
+              <RotateCcw className="w-3.5 h-3.5" />
             </button>
-          </div>
-        )}
-
-        {/* Keys-Later Mode Notice */}
-        {keyDisabled && (
-          <div className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-mono pointer-events-auto">
-            ⚠️ TomTom key not set (keys-later mode)
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Safe Route Found Card */}
-      {currentRoute && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] w-[440px] max-w-[92vw] rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden bg-emerald-950/90 border border-emerald-500/40">
-          <div className="flex items-center justify-between px-5 py-2.5 border-b border-emerald-500/20 bg-emerald-900/20">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-mono font-bold text-emerald-300 uppercase tracking-wider">
-                {currentRoute.isDetour ? "Safety Detour Route" : "Optimized Safe Route"}
-              </span>
-            </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-              {hazards.length} Hazard{hazards.length === 1 ? "" : "s"}
+      {/* Floating Route Details Panel (Exact match to Row 4, Col 2) */}
+      <div className="absolute top-4 right-4 z-[1000] w-80 max-w-[calc(100vw-32px)] pointer-events-auto">
+        <div className="bg-[#FFFFFF] border border-[#DDDCD3] rounded-2xl p-5 shadow-[0_8px_30px_rgba(41,55,50,0.12)] space-y-4">
+          <div className="flex items-center justify-between border-b border-[#DDDCD3]/60 pb-3">
+            <h3 className="font-display font-bold text-base text-[#293732]">
+              Route Details
+            </h3>
+            <span className="text-[10px] font-mono text-[#527B7A] bg-[#D4E3DF] px-2 py-0.5 rounded-md font-semibold">
+              OPTIMIZED
             </span>
           </div>
 
-          {/* Explanation Banner */}
-          {explanation && (
-            <div className="px-5 py-2 bg-emerald-900/30 border-b border-emerald-500/10 text-xs text-emerald-200 font-sans flex items-center gap-2">
-              <span className="text-emerald-400 font-bold">🛡️ Choice:</span>
-              <span>{explanation}</span>
-            </div>
-          )}
-
-          <div className="px-5 py-3 flex items-center justify-between text-xs font-mono text-white/80">
-            <div>
-              <span className="text-white/40 block text-[10px]">DISTANCE</span>
-              <strong className="text-base text-white">
-                {(currentRoute.distance / 1000).toFixed(1)} km
-              </strong>
-            </div>
-            <div>
-              <span className="text-white/40 block text-[10px]">EST. TIME</span>
-              <strong className="text-base text-white">
-                {Math.ceil(currentRoute.duration / 60)} mins
-              </strong>
-            </div>
-            <div>
-              <span className="text-white/40 block text-[10px]">HAZARD SCORE</span>
-              <span className="text-emerald-400 font-bold">
-                {currentRoute.routeScore !== undefined
-                  ? currentRoute.routeScore.toFixed(0)
-                  : hazards.length === 0
-                  ? "HAZARD-FREE"
-                  : `${hazards.length} Hazards`}
-              </span>
+          {/* Origin selector */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono uppercase tracking-wider text-[#65736B] block">
+              Origin
+            </label>
+            <div className="relative">
+              <select className="w-full appearance-none bg-[#E9ECE6] hover:bg-[#E2E6DF] border border-[#DDDCD3] rounded-xl px-3 py-2 pr-8 text-xs font-medium text-[#293732] shadow-inner focus:outline-none focus:ring-1 focus:ring-[#527B7A]">
+                <option value="depot">Municipal Depot (Ward 12)</option>
+                <option value="hq">City Operations HQ</option>
+                <option value="station">North Maintenance Station</option>
+              </select>
+              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#65736B] text-[10px]">▼</span>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Route Error Notice */}
-      {routeError && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] w-[420px] max-w-[92vw] rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden bg-rose-950/90 border border-rose-500/40">
-          <div className="p-4 space-y-2">
-            <div className="flex items-center gap-2 text-rose-400 font-mono font-bold text-xs uppercase">
-              <span>⚠ Route Advisory</span>
-            </div>
-            <p className="text-xs text-rose-200/80 leading-relaxed font-sans">{routeError}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Hazard Warning Notice */}
-      {allRoutes.length > 0 && hazards.length > 0 && (
-        <div className="absolute top-44 left-1/2 -translate-x-1/2 z-[1000] w-[420px] max-w-[92vw] rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden bg-rose-950/95 border border-rose-500/50">
-          <div className="flex items-center justify-between px-5 py-2.5 border-b border-rose-500/30 bg-rose-900/30">
-            <div className="flex items-center gap-2 text-rose-300 font-mono font-bold text-xs">
-              <span>⚠ {hazards.length} Hazard(s) on Route</span>
-            </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
-              UNSAFE
-            </span>
-          </div>
-
-          <div className="px-5 py-3 max-h-40 overflow-y-auto space-y-2 text-xs font-mono">
-            {hazards.map((h, i) => (
-              <div
-                key={h.id}
-                className="p-2 rounded-lg bg-rose-900/20 border border-rose-500/20 flex items-center justify-between"
+          {/* Vehicle selector */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono uppercase tracking-wider text-[#65736B] block">
+              Vehicle
+            </label>
+            <div className="relative">
+              <select 
+                value={vehicle}
+                onChange={(e) => setVehicle && setVehicle(e.target.value as VehicleMode)}
+                className="w-full appearance-none bg-[#E9ECE6] hover:bg-[#E2E6DF] border border-[#DDDCD3] rounded-xl px-3 py-2 pr-8 text-xs font-medium text-[#293732] shadow-inner focus:outline-none focus:ring-1 focus:ring-[#527B7A]"
               >
-                <div className="truncate">
-                  <span className="text-white font-bold block truncate">
-                    {i + 1}. {h.title || h.category}
-                  </span>
-                  <span className="text-[10px] text-white/50">{h.category}</span>
-                </div>
-                <span className="text-[10px] text-rose-300 font-bold shrink-0 ml-2">
-                  {Math.round(
-                    pointToPolyDist(
-                      [h.latitude, h.longitude],
-                      currentRoute?.coords ?? []
-                    )
-                  )}
-                  m from path
-                </span>
-              </div>
-            ))}
+                <option value="car">Light Vehicle</option>
+                <option value="motorcycle">Two-Wheeler Inspection</option>
+                <option value="truck">Heavy Maintenance Truck</option>
+              </select>
+              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[#65736B] text-[10px]">▼</span>
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Mode Helper Badge at Bottom */}
-      {mode && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000] px-5 py-2.5 rounded-xl bg-slate-900/95 backdrop-blur-xl border border-white/10 text-sm font-bold text-white shadow-2xl">
-          {mode === "source" && "Click on the map to place your 🟢 Source point"}
-          {mode === "destination" && "Click on the map to place your 🔴 Destination point"}
-          {mode === "report" && "Click on the map to place a 📍 new issue at that location"}
+          {/* Route Options (Route A vs Route B) */}
+          <div className="space-y-2 pt-1">
+            {/* Route A Card */}
+            <div 
+              onClick={() => setSelectedRouteChoice('A')}
+              className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                selectedRouteChoice === 'A'
+                  ? 'bg-[#EBF2F0] border-[#527B7A] shadow-sm'
+                  : 'bg-[#F7F8F5] border-[#DDDCD3] hover:border-[#527B7A]/50'
+              }`}
+            >
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-[#293732]">Route A</span>
+                  <span className="text-[10px] font-semibold text-[#537C60] bg-[#E2EBE5] px-1.5 py-0.2 rounded">
+                    Recommended
+                  </span>
+                </div>
+                <div className="text-xs font-mono text-[#65736B] mt-0.5">
+                  12.8 km • 28 min
+                </div>
+              </div>
+              {selectedRouteChoice === 'A' && (
+                <div className="w-5 h-5 rounded-full bg-[#527B7A] text-white flex items-center justify-center">
+                  <Check className="w-3 h-3 stroke-[3]" />
+                </div>
+              )}
+            </div>
+
+            {/* Route B Card */}
+            <div 
+              onClick={() => setSelectedRouteChoice('B')}
+              className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                selectedRouteChoice === 'B'
+                  ? 'bg-[#EBF2F0] border-[#527B7A] shadow-sm'
+                  : 'bg-[#F7F8F5] border-[#DDDCD3] hover:border-[#527B7A]/50'
+              }`}
+            >
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-[#293732]">Route B</span>
+                </div>
+                <div className="text-xs font-mono text-[#65736B] mt-0.5">
+                  15.4 km • 35 min
+                </div>
+              </div>
+              {selectedRouteChoice === 'B' && (
+                <div className="w-5 h-5 rounded-full bg-[#527B7A] text-white flex items-center justify-center">
+                  <Check className="w-3 h-3 stroke-[3]" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Apply Route Button (Row 4, Col 2) */}
+          <button
+            type="button"
+            onClick={() => {
+              setApplied(true);
+              if (onOptimize) onOptimize();
+              setTimeout(() => setApplied(false), 2500);
+            }}
+            className="w-full py-2.5 px-4 rounded-xl bg-[#355858] hover:bg-[#293732] text-white text-xs font-semibold shadow-[0_2px_8px_rgba(53,88,88,0.3)] active:translate-y-[1px] transition-all flex items-center justify-center gap-2"
+          >
+            {applied ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                Route Applied to Field Team
+              </>
+            ) : (
+              'Apply Route'
+            )}
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Loading Overlay */}
       {loading && (
-        <div className="absolute inset-0 z-[999] bg-slate-950/50 backdrop-blur-sm flex items-center justify-center">
-          <div className="px-8 py-4 rounded-2xl bg-slate-900 border border-cyan-500/20 text-sm font-bold text-cyan-400 shadow-2xl flex items-center gap-3">
-            <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-            Computing safe route...
+        <div className="absolute inset-0 z-[999] bg-white/40 backdrop-blur-[2px] flex items-center justify-center">
+          <div className="px-6 py-3 rounded-2xl bg-[#FFFFFF] border border-[#DDDCD3] shadow-xl text-xs font-semibold text-[#293732] flex items-center gap-2.5">
+            <div className="w-4 h-4 border-2 border-[#527B7A] border-t-transparent rounded-full animate-spin" />
+            Calculating cartographic routing...
           </div>
         </div>
       )}

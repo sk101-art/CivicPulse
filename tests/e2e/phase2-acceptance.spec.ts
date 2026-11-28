@@ -46,7 +46,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
   // T20 Acceptance: Device signing keys
   test('T20 e2e: after login, a DeviceKey row exists; reloading the page reuses the same key', async ({ page }) => {
     // 1. Log in as citizen
-    await page.goto('/login');
+    await page.goto('/login/citizen');
     await page.fill('input[type="email"]', 'citizen@example.com');
     await page.fill('input[type="password"]', seedPassword);
     await page.click('button[type="submit"]');
@@ -85,7 +85,9 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
 
   // T22 Acceptance: Camera capture has no file input on camera component
   test('T22 e2e: capture page has no file input on camera component', async ({ page }) => {
-    await page.goto('/login');
+    await page.context().grantPermissions(['camera', 'geolocation'], { origin: 'http://localhost:3100' });
+    await page.context().setGeolocation({ latitude: 12.935, longitude: 77.625, accuracy: 5 });
+    await page.goto('/login/citizen');
     await page.fill('input[type="email"]', 'citizen@example.com');
     await page.fill('input[type="password"]', seedPassword);
     await page.click('button[type="submit"]');
@@ -94,17 +96,17 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     await page.goto('/citizen/report');
     await page.waitForLoadState('domcontentloaded');
 
-    // Click on POTHOLES category
+    // Select POTHOLES, then advance to the separate live capture step.
     const potholeButton = page.locator('button:has-text("Potholes")');
     await potholeButton.first().click();
+    await page.getByRole('button', { name: 'Next: Capture Evidence' }).click();
 
-    // Now in CAPTURE step: verify Capture Signed Evidence header is visible
-    const captureHeading = page.locator('text=Capture Signed Evidence');
-    await expect(captureHeading).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Evidence Security', { exact: true })).toBeVisible({ timeout: 10000 });
 
     // Verify video element is present
     const videoElement = page.locator('video');
     await expect(videoElement).toBeAttached();
+    await expect.poll(() => videoElement.evaluate((video: HTMLVideoElement) => video.videoWidth)).toBeGreaterThan(0);
 
     // Verify inside the camera video container there is NO file input
     const videoParent = videoElement.locator('..');
@@ -155,7 +157,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     const signature1 = await signEvidencePayload(payload1, keyPair.privateKey);
 
     // Log in citizen in browser session
-    await page.goto('/login');
+    await page.goto('/login/citizen');
     await page.fill('input[type="email"]', 'citizen@example.com');
     await page.fill('input[type="password"]', seedPassword);
     await page.click('button[type="submit"]');
@@ -188,7 +190,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // Verify photo is visible
-    const photoImg = page.locator('img[alt*="Report"], img[alt*="Initial Report"], img[alt*="Confirmation"]');
+    const photoImg = page.locator('img[alt="Potholes evidence"]');
     await expect(photoImg.first()).toBeVisible();
 
     // 2. Submit second report 10m away
@@ -259,7 +261,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     // 2. Desk A context: log in and confirm issue
     const deskAContext = await browser.newContext();
     const pageA = await deskAContext.newPage();
-    await pageA.goto('/login');
+    await pageA.goto('/login/staff');
     await pageA.fill('input[type="email"]', 'desk-a@civicpulse.local');
     await pageA.fill('input[type="password"]', seedPassword);
     await pageA.click('button[type="submit"]');
@@ -281,7 +283,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     // 3. Desk B context: log in and check that Desk B sees "Desk A" / "CONFIRM"
     const deskBContext = await browser.newContext();
     const pageB = await deskBContext.newPage();
-    await pageB.goto('/login');
+    await pageB.goto('/login/staff');
     await pageB.fill('input[type="email"]', 'desk-b@civicpulse.local');
     await pageB.fill('input[type="password"]', seedPassword);
     await pageB.click('button[type="submit"]');
@@ -358,7 +360,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     // 2. Desk claims fix via /api/issues/[id]/actions
     const deskContext = await browser.newContext();
     const deskPage = await deskContext.newPage();
-    await deskPage.goto('/login');
+    await deskPage.goto('/login/staff');
     await deskPage.fill('input[type="email"]', 'desk-a@civicpulse.local');
     await deskPage.fill('input[type="password"]', seedPassword);
     await deskPage.click('button[type="submit"]');
@@ -405,7 +407,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     // 3. Citizen context: citizen disputes the fix
     const citizenContext = await browser.newContext();
     const citizenPage = await citizenContext.newPage();
-    await citizenPage.goto('/login');
+    await citizenPage.goto('/login/citizen');
     await citizenPage.fill('input[type="email"]', citizen.email);
     await citizenPage.fill('input[type="password"]', seedPassword);
     await citizenPage.click('button[type="submit"]');
@@ -552,7 +554,7 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
 
     const citizen2Context = await browser.newContext();
     const citizen2Page = await citizen2Context.newPage();
-    await citizen2Page.goto('/login');
+    await citizen2Page.goto('/login/citizen');
     await citizen2Page.fill('input[type="email"]', 'citizen-b@civicpulse.local');
     await citizen2Page.fill('input[type="password"]', seedPassword);
     await citizen2Page.click('button[type="submit"]');
@@ -642,14 +644,15 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // 1. Verify timeline and audit trail are visible
-    const timelineHeading = page.locator('h2:has-text("Public Action Log & Audit Trail")');
-    await expect(timelineHeading).toBeVisible();
+    await page.getByRole('button', { name: 'Timeline' }).click();
+    await expect(page.getByRole('heading', { name: 'Cryptographic Audit Log' })).toBeVisible();
 
-    // 2. Verify evidence gallery and photo are visible
-    const galleryHeading = page.locator('h2:has-text("Signed Evidence Gallery")');
-    await expect(galleryHeading).toBeVisible();
+    // 2. Evidence is available in its own tab in the redesigned issue view
+    await page.getByRole('button', { name: 'Evidence' }).click();
+    await expect(page.getByRole('heading', { name: 'Evidence Security & Integrity' })).toBeVisible();
 
-    const photo = page.locator('img[alt*="Initial Report"]');
+    await page.getByRole('button', { name: 'Overview' }).click();
+    const photo = page.locator('img[alt="Potholes evidence"]');
     await expect(photo).toBeVisible();
 
     // 3. Verify no desk-only controls are rendered
@@ -694,11 +697,13 @@ test.describe('Phase 2 E2E Acceptance Suite (T20–T29)', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // Verify title and scorecard
-    const title = page.locator('h1:has-text("Claim Gap & Accountability Scorecard")');
+    const title = page.getByRole('heading', { name: 'Claim Gap', exact: true });
     await expect(title).toBeVisible();
 
-    // Verify seed disclaimer badge
-    const seedBadge = page.locator('span:text-is("seed")');
+    await page.getByRole('button', { name: /All Records/ }).click();
+
+    // Seed records are visibly marked alongside each issue they affect.
+    const seedBadge = page.locator('span:text-is("seed")').first();
     await expect(seedBadge).toBeVisible();
 
     // Verify scorecard table

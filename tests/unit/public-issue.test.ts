@@ -9,6 +9,18 @@ vi.mock("next-auth/next", () => ({
   getServerSession: vi.fn(),
 }));
 
+vi.mock("next-auth/react", () => ({
+  useSession: () => ({ data: null, status: "unauthenticated" }),
+}));
+
+vi.mock("next/navigation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("next/navigation")>();
+  return {
+    ...actual,
+    useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), back: vi.fn() }),
+  };
+});
+
 describe("T28 Acceptance: Public issue page, photo gallery, action log and logged-out access", () => {
   let deskAUser: { id: string; email: string };
   let citizenUser: { id: string; email: string };

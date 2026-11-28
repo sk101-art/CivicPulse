@@ -28,6 +28,7 @@ export interface QueuedOfflineReport {
   blockedShare?: string;
   address?: string;
   offline?: boolean;
+  captureCoords?: { lat: number; lng: number };
   /** Stable uuid sent with every attempt so the server stores the report once. */
   clientReportId?: string;
   createdAt: number;
@@ -80,7 +81,8 @@ let syncInFlight: Promise<number> | null = null;
  */
 export async function flushQueue(
   db: QueueStore,
-  send: (body: Record<string, unknown>) => Promise<{ ok: boolean; status: number }>
+  send: (body: Record<string, unknown>) => Promise<{ ok: boolean; status: number }>,
+  onRejected?: (status: number) => void
 ): Promise<number> {
   const queued = (await db.getAll(STORE_NAME)) as QueuedOfflineReport[];
   let synced = 0;
@@ -108,7 +110,10 @@ export async function flushQueue(
     if (res.ok || permanent) {
       await db.delete(STORE_NAME, item.id);
       if (res.ok) synced += 1;
-      else console.warn('Offline report rejected by server, removed from queue:', item.id, res.status);
+      else {
+        console.warn('Offline report rejected by server, removed from queue:', item.id, res.status);
+        onRejected?.(res.status);
+      }
     }
   }
   return synced;
@@ -120,6 +125,9 @@ export function useOfflineSync() {
   );
   const [db, setDb] = useState<IDBPDatabase | null>(null);
   const [pendingCount, setPendingCount] = useState<number>(0);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncError, setLastSyncError] = useState<string | null>(null);
+  const [lastSyncedCount, setLastSyncedCount] = useState<number>(0);
 
   useEffect(() => {
     let ignore = false;
@@ -195,7 +203,12 @@ export function useOfflineSync() {
       return;
     }
 
+    setIsSyncing(true);
+    setLastSyncError(null);
+
     syncInFlight = (async () => {
+      const pending = await db.count(STORE_NAME);
+      if (pending === 0) return 0;
       // Ensure device key is registered so offline signatures are accepted
       try {
         const { initDeviceKey } = await import('@/lib/evidence/deviceKey');
@@ -203,17 +216,23 @@ export function useOfflineSync() {
       } catch {
         // proceed
       }
-      return flushQueue(db, (body) =>
-        fetch('/api/reports', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
+      return flushQueue(
+        db,
+        (body) =>
+          fetch('/api/reports', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }),
+        (status) => {
+          setLastSyncError(`Offline report was rejected by server (HTTP ${status}).`);
+        }
       );
     })();
 
     try {
       const syncedCount = await syncInFlight;
+      setLastSyncedCount(syncedCount);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('civicpulse:queue-changed'));
         if (syncedCount > 0) {
@@ -221,9 +240,12 @@ export function useOfflineSync() {
         }
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Offline synchronization failed';
+      setLastSyncError(msg);
       console.error('Offline sync error:', err);
     } finally {
       syncInFlight = null;
+      setIsSyncing(false);
     }
   }, [db, isOnline]);
 
@@ -253,10 +275,10 @@ export function useOfflineSync() {
   );
 
   useEffect(() => {
-    if (isOnline && db) {
-      void syncReports();
-    }
+    if (!isOnline || !db) return;
+    const retryTimer = window.setTimeout(() => void syncReports(), 0);
+    return () => window.clearTimeout(retryTimer);
   }, [isOnline, db, syncReports]);
 
-  return { isOnline, pendingCount, queueReport, syncReports };
+  return { isOnline, pendingCount, isSyncing, lastSyncError, lastSyncedCount, queueReport, syncReports };
 }

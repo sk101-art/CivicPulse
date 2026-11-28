@@ -8,6 +8,7 @@ import {
   AuditObserved,
 } from "@prisma/client";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
+import { MAX_EVIDENCE_DISTANCE_METERS } from "@/lib/evidence/locationLimits";
 import { verifyEvidence } from "@/lib/evidence/verify";
 import { uploadEvidencePhoto } from "@/lib/external/storage";
 import { transition } from "@/lib/issues/stateMachine";
@@ -375,6 +376,7 @@ export interface SubmitAuditVoteInput {
   taskId: string;
   observed: AuditObserved;
   deviceHeadingDeg?: number;
+  note?: string;
   evidence: {
     payload: EvidencePayload;
     signature: string;
@@ -389,7 +391,7 @@ export interface SubmitAuditVoteInput {
  * Failures throw AuditError carrying the HTTP status (400 evidence, 403 eligibility, 409 repeat/closed).
  */
 export async function submitAuditVote(input: SubmitAuditVoteInput) {
-  const { userId, taskId, observed, deviceHeadingDeg, evidence } = input;
+  const { userId, taskId, observed, deviceHeadingDeg, note, evidence } = input;
 
   const task = await prisma.auditTask.findUnique({
     where: { id: taskId },
@@ -448,18 +450,18 @@ export async function submitAuditVote(input: SubmitAuditVoteInput) {
     );
   }
 
-  // Verify distance <= 30m
+  // Verify distance <= MAX_EVIDENCE_DISTANCE_METERS (500m)
   const distanceM = haversineDistanceM(
     task.issue.lat,
     task.issue.lng,
     evidence.payload.lat,
     evidence.payload.lng
   );
-  if (distanceM > 30) {
+  if (!Number.isFinite(distanceM) || distanceM > MAX_EVIDENCE_DISTANCE_METERS) {
     throw new AuditError(
       400,
       "AUDIT_VOTE_REJECTED",
-      `Audit photo must be taken within 30m of the challenge spot (distance was ${Math.round(distanceM)}m)`
+      `Audit photo must be taken within ${MAX_EVIDENCE_DISTANCE_METERS}m of the challenge spot (distance was ${Math.round(distanceM)}m)`
     );
   }
 
@@ -502,7 +504,13 @@ export async function submitAuditVote(input: SubmitAuditVoteInput) {
         gpsAccuracyM: evidence.payload.accuracy,
         headingDeg: deviceHeadingDeg ?? null,
         capturedAt: new Date(evidence.payload.capturedAt),
-        note: `Blind audit: observed ${observed} facing ${deviceHeadingDeg ?? task.challengeBearingDeg}°`,
+        note: note?.trim()
+          ? `${note.trim()} [Blind audit: observed ${observed}${
+              deviceHeadingDeg !== undefined ? ` facing ${deviceHeadingDeg}°` : ''
+            }]`
+          : `Blind audit: observed ${observed}${
+              deviceHeadingDeg !== undefined ? ` facing ${deviceHeadingDeg}°` : ''
+            }`,
       },
     });
 

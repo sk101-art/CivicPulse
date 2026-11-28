@@ -41,6 +41,10 @@ test.describe('Mobile Viewport E2E: Desk Actions & Mobile Logout Flows', () => {
   });
 
   test('Desk logs in on mobile, opens /desk, confirms an issue via IssueDrawer and sees it logged, then logs out', async ({ page }) => {
+    // Keep this test deterministic across runs: display the full authority scope.
+    await page.addInitScript(() => {
+      localStorage.setItem('civicpulse_selected_ward_code_AUTHORITY', 'ALL');
+    });
     // 1. Create a dedicated OPEN test issue
     const agency = await prisma.agency.findFirstOrThrow({ where: { code: 'GBA' } });
 
@@ -64,26 +68,29 @@ test.describe('Mobile Viewport E2E: Desk Actions & Mobile Logout Flows', () => {
     });
 
     // 2. Desk logs in on mobile viewport
-    await page.goto('/login');
+    await page.goto('/login/staff');
     await page.fill('input[type="email"]', 'desk-a@civicpulse.local');
     await page.fill('input[type="password"]', seedPassword);
     await page.click('button[type="submit"]');
     await page.waitForURL((url) => url.pathname.includes('/desk'), { timeout: 15000 });
 
     // 3. Find and open the created issue in the desk queue
-    const issueRow = page.locator(`text=${testIssue.address}`).first();
+    const issueRow = page.locator(`[title="${testIssue.address}"]:visible`).first();
     await expect(issueRow).toBeVisible({ timeout: 15000 });
     await issueRow.click();
 
     // 4. Drawer opens: confirm the issue
-    const confirmButton = page.locator('button:has-text("Confirm Issue")');
+    const confirmButton = page.getByTestId('action-btn-CONFIRM');
     await expect(confirmButton).toBeVisible({ timeout: 10000 });
     await confirmButton.click();
 
     // 5. Verify status updates to CONFIRMED and action is logged in audit trail
-    await expect(page.locator('span:has-text("CONFIRMED")').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('span:has-text("CONFIRM")').first()).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('.pl-8 span.text-cyan-300').first()).toBeVisible({ timeout: 10000 });
+    const drawer = page.getByTestId('issue-drawer');
+    await expect(drawer.getByText('CONFIRMED', { exact: true })).toBeVisible({ timeout: 10000 });
+    const confirmLog = await prisma.actionLog.findFirst({
+      where: { issueId: testIssue.id, action: 'CONFIRM' },
+    });
+    expect(confirmLog?.toStatus).toBe(Status.CONFIRMED);
 
     // 6. Verify seed badge is visible
     const seedTag = page.locator('[data-testid="seed-tag"]').first();
@@ -93,15 +100,15 @@ test.describe('Mobile Viewport E2E: Desk Actions & Mobile Logout Flows', () => {
     await page.locator('[data-testid="close-drawer-button"]').click();
     await expect(page.locator('[data-testid="close-drawer-button"]')).not.toBeVisible();
 
-    const deskLogoutBtn = page.locator('[data-testid="desk-logout-button"], button:has-text("Log out")').first();
+    const deskLogoutBtn = page.getByTestId('global-signout-btn');
     await expect(deskLogoutBtn).toBeVisible();
     await deskLogoutBtn.click();
-    await page.waitForURL((url) => url.pathname.includes('/login'), { timeout: 15000 });
+    await page.waitForURL((url) => url.pathname === '/login/staff', { timeout: 15000 });
   });
 
   test('Citizen logs in on mobile, views profile, and logs out', async ({ page }) => {
     // 1. Citizen logs in on mobile viewport
-    await page.goto('/login');
+    await page.goto('/login/citizen');
     await page.fill('input[type="email"]', 'citizen@example.com');
     await page.fill('input[type="password"]', seedPassword);
     await page.click('button[type="submit"]');
@@ -112,12 +119,12 @@ test.describe('Mobile Viewport E2E: Desk Actions & Mobile Logout Flows', () => {
     await page.waitForLoadState('domcontentloaded');
 
     // 3. Verify profile page rendered and log out via profile logout button
-    const profileLogoutBtn = page.locator('[data-testid="citizen-logout-button"], [data-testid="logout-button"]').first();
+    const profileLogoutBtn = page.getByTestId('global-signout-btn');
     await expect(profileLogoutBtn).toBeVisible({ timeout: 10000 });
     await profileLogoutBtn.click();
 
     // 4. Verifies redirected to /login
-    await page.waitForURL((url) => url.pathname.includes('/login'), { timeout: 15000 });
-    expect(page.url()).toContain('/login');
+    await page.waitForURL((url) => url.pathname === '/login/citizen', { timeout: 15000 });
+    expect(page.url()).toContain('/login/citizen');
   });
 });

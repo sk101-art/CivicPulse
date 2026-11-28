@@ -14,13 +14,23 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const query = typeof body?.query === "string" ? body.query.trim() : "";
+    const query = typeof body?.query === "string" 
+      ? body.query.trim() 
+      : typeof body?.message === "string" 
+      ? body.message.trim() 
+      : "";
 
     if (!query) {
       return apiError(400, "BAD_REQUEST", "Query string is required");
     }
 
-    const result = await askDeskAnalyst(query, { wardId: body.wardId });
+    const rawWardId = typeof body?.wardId === "string" ? body.wardId.trim() : "";
+    const normalizedWardId =
+      rawWardId && rawWardId.toLowerCase() !== "zone-all" && rawWardId.toLowerCase() !== "all"
+        ? rawWardId
+        : undefined;
+
+    const result = await askDeskAnalyst(query, { wardId: normalizedWardId });
 
     return NextResponse.json(result, { status: 200 });
   } catch (err: unknown) {

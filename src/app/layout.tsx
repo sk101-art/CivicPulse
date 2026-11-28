@@ -1,39 +1,65 @@
 import type { Metadata, Viewport } from "next";
-import { Unbounded, IBM_Plex_Sans, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const unbounded = Unbounded({
+const newsreader = localFont({
+  src: [
+    {
+      path: "./fonts/newsreader-latin-opsz-normal.woff2",
+      weight: "200 800",
+      style: "normal",
+    },
+    {
+      path: "./fonts/newsreader-latin-opsz-italic.woff2",
+      weight: "200 800",
+      style: "italic",
+    },
+  ],
   variable: "--font-display",
-  subsets: ["latin"],
-  weight: ["400", "700", "900"],
+  display: "swap",
+  fallback: ["Georgia", "Cambria", "Times New Roman", "serif"],
 });
 
-const ibmPlexSans = IBM_Plex_Sans({
+const dmSans = localFont({
+  src: [
+    {
+      path: "./fonts/dm-sans-latin-wght-normal.woff2",
+      weight: "100 1000",
+      style: "normal",
+    },
+  ],
   variable: "--font-body",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  display: "swap",
+  fallback: ["system-ui", "-apple-system", "Segoe UI", "Roboto", "sans-serif"],
 });
 
-const jetbrainsMono = JetBrains_Mono({
+const jetbrainsMono = localFont({
+  src: [
+    {
+      path: "./fonts/jetbrains-mono-latin-wght-normal.woff2",
+      weight: "100 800",
+      style: "normal",
+    },
+  ],
   variable: "--font-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
+  display: "swap",
+  fallback: ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"],
 });
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#0D1117",
+  themeColor: "#F3F2EB",
 };
 
 export const metadata: Metadata = {
-  title: "CivicPulse | Road Truth Ledger & Civic Infrastructure",
-  description: "Bengaluru road truth ledger and civic infrastructure monitoring. Empowering citizens and municipal authorities with cryptographic evidence and transparent accountability.",
-  keywords: ["civic tech", "road safety", "potholes", "bengaluru", "citizen reporting", "road truth ledger"],
+  title: "CivicPulse — Civic Atlas | Municipal Road Truth Ledger",
+  description: "A clearer record of the city we share. Municipal infrastructure monitoring, cryptographic evidence and transparent civic accountability.",
+  keywords: ["civic tech", "road safety", "potholes", "civic atlas", "road truth ledger", "citizen reporting"],
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: "CivicPulse",
   },
   icons: {
@@ -53,13 +79,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${unbounded.variable} ${ibmPlexSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${newsreader.variable} ${dmSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col bg-[#F3F2EB] text-[#293732] font-body selection:bg-[#D4E3DF] selection:text-[#293732]">
         <Providers>{children}</Providers>
-        <Toaster position="bottom-right" richColors theme="dark" />
+        <Toaster position="bottom-right" richColors theme="light" />
       </body>
     </html>
   );
 }
-

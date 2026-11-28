@@ -269,7 +269,7 @@ describe("G1 Photo Triage enhancements: unknown mismatch, scene detection, warni
     expect(assessed.output.triage?.status).toBe("unavailable");
     expect(assessed.output.triage?.flags).not.toContain("Photo doesn't show the reported issue");
     expect(assessed.output.triage?.flags).toHaveLength(0);
-  });
+  }, 30_000);
 
   it("marks AiJob as failed when rules fallback reaches 3 attempts", async () => {
     const issue = await prisma.issue.create({

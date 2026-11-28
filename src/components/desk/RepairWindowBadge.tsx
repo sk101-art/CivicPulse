@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { CalendarClock, Sparkles, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { CalendarClock, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import type { RepairWindowResult, CandidateSlot } from '@/lib/traffic/repairWindow';
 
 interface RepairWindowBadgeProps {
@@ -29,18 +29,11 @@ export function RepairWindowBadge({
     // Cards only render from stored initialResult.
     // Only the issue drawer (variant === 'drawer' or 'page') may call /repair-window live.
     if (variant === 'card') {
-      if (initialResult) setData(initialResult);
-      setLoading(false);
       return;
     }
 
     // For drawer and page: show initial stored window immediately without loading flicker,
     // then fetch full candidate slots and alternatives via drawer's 10-minute cached route.
-    if (initialResult) {
-      setData(initialResult);
-      setLoading(false);
-    }
-
     let isMounted = true;
     const fetchWindow = async () => {
       try {
@@ -62,6 +55,8 @@ export function RepairWindowBadge({
     };
   }, [issueId, initialResult, variant]);
 
+  const visibleData = data ?? initialResult ?? null;
+
   if (loading) {
     return (
       <div className={`flex items-center gap-2 text-xs font-mono text-zinc-300 ${className}`}>
@@ -71,36 +66,46 @@ export function RepairWindowBadge({
     );
   }
 
-  if (!data || !data.bestWindow) {
+  if (!visibleData || !visibleData.bestWindow) {
     return null;
   }
 
-  const { bestWindow, basis, sampleCount, windows, allSlots = [] } = data;
-  const isHistoric = basis === 'tomtom_historic' || (bestWindow as any)?.basis === 'tomtom_historic';
-  const isLive = basis === 'live' || (bestWindow as any)?.basis === 'live';
+  const { bestWindow, basis, sampleCount, windows, allSlots = [] } = visibleData;
+  const isHistoric = basis === 'tomtom_historic' || bestWindow.basis === 'tomtom_historic';
+  const isLive = basis === 'live' || bestWindow.basis === 'live';
 
   if (variant === 'card') {
+    const conditionText = bestWindow.condition || (bestWindow as { reason?: string }).reason || '';
+
     return (
       <div
         data-testid="repair-window-card"
-        className={`flex items-center gap-2 text-[11px] font-mono text-cyan-300/90 bg-cyan-950/30 border border-cyan-800/40 px-2.5 py-1 rounded-lg ${className}`}
+        title={`Best repair window: ${bestWindow.display}${conditionText ? ` · ${conditionText}` : ''} (${sampleCount} samples)`}
+        className={`w-full min-w-0 rounded-lg bg-[#FAF9F5] border border-[#DDDCD3] px-2.5 py-1.5 text-[11px] leading-snug text-[#293732] space-y-1 ${className}`}
       >
-        <CalendarClock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-        <span className="truncate">
-          Best repair window: <strong className="text-white font-semibold">{bestWindow.display}</strong> ({bestWindow.condition || (bestWindow as any).reason}) · based on {sampleCount} samples
-        </span>
-        <span
-          data-testid="repair-window-basis-chip"
-          className={`px-1.5 py-0.2 rounded text-[9px] uppercase font-bold shrink-0 border ${
-            isHistoric
-              ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-              : isLive
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                : 'bg-zinc-500/20 text-zinc-300 border-zinc-500/30'
-          }`}
-        >
-          {isHistoric ? 'TomTom Historic' : isLive ? 'Live Samples' : 'Estimated'}
-        </span>
+        <div className="flex flex-wrap items-center justify-between gap-x-1.5 gap-y-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0">
+            <CalendarClock className="w-3.5 h-3.5 text-[#527B7A] shrink-0" />
+            <span className="font-semibold text-[#355858] whitespace-nowrap">Best repair window</span>
+            <span className="text-[#929B92]">·</span>
+            <span className="font-mono font-semibold text-[#293732] break-words">
+              {bestWindow.display}
+            </span>
+          </div>
+          {isHistoric && (
+            <span
+              data-testid="repair-window-basis-chip"
+              className="px-1.5 py-0.5 rounded text-[9px] font-mono uppercase font-semibold shrink-0 border bg-[#D4E3DF]/60 text-[#355858] border-[#527B7A]/30"
+            >
+              Historic
+            </span>
+          )}
+        </div>
+        {conditionText && (
+          <div className="text-[10px] text-[#65736B] leading-snug break-words pl-5">
+            {conditionText}
+          </div>
+        )}
       </div>
     );
   }
@@ -144,7 +149,7 @@ export function RepairWindowBadge({
             Best: {bestWindow.display}
           </span>
           <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">
-            Score: {bestWindow.score > 100 ? bestWindow.score : `${bestWindow.score ?? 90}/100`}
+            {typeof bestWindow.score === 'number' ? `Score: ${bestWindow.score > 100 ? bestWindow.score : `${bestWindow.score}/100`}` : 'Score unavailable'}
           </span>
         </div>
 
@@ -180,7 +185,7 @@ export function RepairWindowBadge({
               >
                 <div className="flex items-center justify-between">
                   <span className="text-white/90 font-bold">{win.display}</span>
-                  <span className="text-[10px] font-bold text-cyan-400">{win.score > 100 ? `Score: ${win.score}` : `${win.score ?? 75}/100`}</span>
+                  <span className="text-[10px] font-bold text-cyan-400">{typeof win.score === 'number' ? (win.score > 100 ? `Score: ${win.score}` : `${win.score}/100`) : 'Score unavailable'}</span>
                 </div>
                 <div className="text-[10px] text-zinc-300 truncate">
                   {win.condition}
@@ -221,9 +226,11 @@ export function RepairWindowBadge({
               {/* 84-slot micro grid */}
               <div className="grid grid-cols-12 gap-1 max-h-48 overflow-y-auto p-1">
                 {allSlots.map((slot, idx) => {
-                  const s = slot.score ?? 50;
+                  const s = slot.score;
                   const color =
-                    s >= 80
+                    typeof s !== 'number'
+                      ? 'bg-zinc-600/70 hover:bg-zinc-500 text-white'
+                      : s >= 80
                       ? 'bg-emerald-500/80 hover:bg-emerald-400 text-black'
                       : s >= 50
                       ? 'bg-amber-500/70 hover:bg-amber-400 text-black'
@@ -233,14 +240,14 @@ export function RepairWindowBadge({
                     <button
                       key={idx}
                       type="button"
-                      title={`${slot.display} (Score: ${s > 100 ? s : `${s}/100`})`}
+                      title={`${slot.display} (${typeof s === 'number' ? `Score: ${s > 100 ? s : `${s}/100`}` : 'Score unavailable'})`}
                       onClick={() => {
                         setSelectedSlot(slot);
                         if (onSlotSelect) onSlotSelect(slot);
                       }}
                       className={`h-6 rounded text-[9px] font-mono font-bold flex items-center justify-center transition-all ${color}`}
                     >
-                      {s}
+                      {typeof s === 'number' ? s : '—'}
                     </button>
                   );
                 })}
@@ -251,7 +258,7 @@ export function RepairWindowBadge({
                 <div className="p-2.5 rounded-lg bg-white/5 border border-white/10 text-xs font-mono space-y-1">
                   <div className="flex items-center justify-between text-white font-bold">
                     <span>{selectedSlot.display}</span>
-                    <span className="text-cyan-400">{selectedSlot.score > 100 ? `Score: ${selectedSlot.score}` : `Score: ${selectedSlot.score}/100`}</span>
+                    <span className="text-cyan-400">{typeof selectedSlot.score === 'number' ? (selectedSlot.score > 100 ? `Score: ${selectedSlot.score}` : `Score: ${selectedSlot.score}/100`) : 'Score unavailable'}</span>
                   </div>
                   <p className="text-[11px] text-white/70 leading-relaxed">
                     {selectedSlot.explanation}

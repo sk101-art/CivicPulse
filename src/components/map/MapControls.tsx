@@ -2,11 +2,26 @@ import { useEffect } from "react";
 import { useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import { PlacementMode, ReportPoint } from "./types";
+import { WardViewportSync, WardViewportSyncProps } from "./WardViewportSync";
 
-export function MapSync({ reports }: { reports: ReportPoint[] }) {
+export { WardViewportSync };
+export type { WardViewportSyncProps };
+
+export function MapSync({
+  reports,
+  hasSelectedWard = false,
+}: {
+  reports: ReportPoint[];
+  hasSelectedWard?: boolean;
+}) {
   const map = useMap();
 
   useEffect(() => {
+    // When a ward is selected, report-based fitBounds must NOT override the selected ward's geographical viewport
+    if (hasSelectedWard) {
+      return;
+    }
+
     const valid = reports.filter((r) => {
       const lat = r.latitude ?? r.lat;
       const lng = r.longitude ?? r.lng;
@@ -24,9 +39,11 @@ export function MapSync({ reports }: { reports: ReportPoint[] }) {
       const bounds = L.latLngBounds(
         valid.map((r) => [(r.latitude ?? r.lat)!, (r.longitude ?? r.lng)!])
       );
-      map.fitBounds(bounds, { padding: [50, 50] });
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+      }
     }
-  }, [reports, map]);
+  }, [reports, map, hasSelectedWard]);
 
   return null;
 }

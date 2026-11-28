@@ -5,15 +5,18 @@ import { apiError } from "@/lib/api/errors";
 import { AuditObserved } from "@prisma/client";
 import { submitAuditVote } from "@/lib/audit/blindAudit";
 import { AuditError } from "@/lib/audit/rules";
+import { TEXT_LIMITS } from "@/lib/validation/limits";
+import { MAX_GPS_ACCURACY_METERS } from "@/lib/evidence/locationLimits";
 
 export const dynamic = "force-dynamic";
 
 const submitVoteSchema = z.object({
   observed: z.nativeEnum(AuditObserved),
   deviceHeadingDeg: z.number().min(0).max(360).optional(),
+  note: z.string().trim().max(TEXT_LIMITS.actionNote).optional(),
   evidence: z.object({
     payload: z.object({
-      accuracy: z.number().min(0).max(30),
+      accuracy: z.number().finite().min(0).max(MAX_GPS_ACCURACY_METERS),
       capturedAt: z.string(),
       lat: z.number(),
       lng: z.number(),
@@ -62,6 +65,7 @@ export async function POST(
       taskId: id,
       observed: parsed.data.observed,
       deviceHeadingDeg: parsed.data.deviceHeadingDeg,
+      note: parsed.data.note,
       evidence: parsed.data.evidence,
     });
 

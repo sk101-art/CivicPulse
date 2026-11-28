@@ -12,8 +12,9 @@ import { uploadEvidencePhoto } from "@/lib/external/storage";
 import { enqueueAiJob } from "@/lib/jobs/aiQueue";
 import { recomputeIssuePriority } from "@/lib/jobs/priorityRecompute";
 import { haversineDistanceM, type EvidencePayload } from "@/lib/evidence/sign";
+import { MAX_GPS_ACCURACY_METERS } from "@/lib/evidence/locationLimits";
 import { NextResponse } from "next/server";
-import { Role, EvidenceRole } from "@prisma/client";
+import { Role, EvidenceRole, AuditKind, AuditTaskStatus, AssignmentStatus } from "@prisma/client";
 import { assignBlindAuditTasks } from "@/lib/audit/blindAudit";
 import { TEXT_LIMITS } from "@/lib/validation/limits";
 import { z } from "zod";
@@ -45,7 +46,7 @@ const actionSchema = z.object({
       distanceM: z.number().optional(),
       payload: z
         .object({
-          accuracy: z.number().min(0).max(30),
+          accuracy: z.number().finite().min(0).max(MAX_GPS_ACCURACY_METERS),
           capturedAt: z.string(),
           lat: z.number(),
           lng: z.number(),
@@ -222,6 +223,14 @@ export async function POST(
         issueUpdateData.warrantyUntil = warrantyDate;
         if (body.contractorName) issueUpdateData.contractorName = body.contractorName;
         if (body.tenderId) issueUpdateData.tenderId = body.tenderId;
+
+        await tx.assignment.updateMany({
+          where: {
+            issueId: issue.id,
+            status: { in: [AssignmentStatus.PENDING, AssignmentStatus.IN_PROGRESS] },
+          },
+          data: { status: AssignmentStatus.COMPLETED, completedAt: claimDate },
+        });
       }
       if (body.liabilityClauseRef !== undefined) {
         issueUpdateData.liabilityClauseRef = body.liabilityClauseRef;
@@ -239,6 +248,28 @@ export async function POST(
       const updated = await tx.issue.update({
         where: { id: issue.id },
         data: issueUpdateData,
+        include: {
+          agency: { select: { id: true, code: true, name: true, slaHours: true } },
+          assignments: {
+            take: 1,
+            orderBy: { createdAt: "desc" },
+            include: { personnel: true },
+          },
+          _count: { select: { reports: true, comments: true } },
+          reports: {
+            take: 5,
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              role: true,
+              photoUrl: true,
+              photoSha256: true,
+              gpsAccuracyM: true,
+              capturedAt: true,
+              createdAt: true,
+            },
+          },
+        },
       });
 
       const log = await tx.actionLog.create({
@@ -249,10 +280,40 @@ export async function POST(
     });
 
     if (body.action === "CLAIM_FIX") {
-      // Assign 3 random eligible citizens to blind audit tasks
-      await assignBlindAuditTasks(issue.id).catch((err) =>
-        console.error("Failed to assign blind audit tasks:", err)
-      );
+      // Assign 3 random eligible citizens to blind audit tasks, and ALWAYS ensure
+      // one open public CLAIM_CHECK task exists so any nearby eligible citizen can verify.
+      try {
+        const assignedTasks = await assignBlindAuditTasks(issue.id);
+        const hasPublicTask = assignedTasks.some((t) => t.assigneeId === null);
+        if (!hasPublicTask) {
+          const existingPublic = await prisma.auditTask.findFirst({
+            where: {
+              issueId: issue.id,
+              kind: AuditKind.CLAIM_CHECK,
+              status: AuditTaskStatus.OPEN,
+              assigneeId: null,
+              dueAt: { gt: new Date() },
+            },
+            select: { id: true },
+          });
+          if (!existingPublic) {
+            await prisma.auditTask.create({
+              data: {
+                issueId: issue.id,
+                assigneeId: null,
+                kind: AuditKind.CLAIM_CHECK,
+                dueAt: new Date(Date.now() + 48 * 3600 * 1000),
+                challengeBearingDeg: Math.floor(Math.random() * 360),
+                challengeNonce: crypto.randomUUID(),
+                status: AuditTaskStatus.OPEN,
+                isSeed: issue.isSeed,
+              },
+            });
+          }
+        }
+      } catch (err) {
+        console.error("Failed to assign blind audit tasks:", err);
+      }
     }
 
     if (claimReportId) {

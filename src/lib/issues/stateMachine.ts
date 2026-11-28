@@ -1,4 +1,5 @@
 import { Status, type Band, type Prisma } from "@prisma/client";
+import { MAX_EVIDENCE_DISTANCE_METERS } from "@/lib/evidence/locationLimits";
 
 export type IssueAction =
   | "CONFIRM"
@@ -151,9 +152,10 @@ const TRANSITION_RULES: TransitionRule[] = [
       }
       if (
         ctx.evidence.distanceM !== undefined &&
-        ctx.evidence.distanceM > 50
+        (!Number.isFinite(ctx.evidence.distanceM) ||
+          ctx.evidence.distanceM > MAX_EVIDENCE_DISTANCE_METERS)
       ) {
-        return `Claim photo must be taken within 50m of the issue (distance was ${Math.round(ctx.evidence.distanceM)}m)`;
+        return `Claim photo must be taken within ${MAX_EVIDENCE_DISTANCE_METERS}m of the issue (distance was ${Math.round(ctx.evidence.distanceM)}m)`;
       }
       return null;
     },
@@ -208,7 +210,7 @@ const TRANSITION_RULES: TransitionRule[] = [
     from: [Status.VERIFIED_FIXED],
     action: "REOPEN_IN_WARRANTY",
     to: () => Status.REOPENED_IN_WARRANTY,
-    allowedRoles: ["SYSTEM"],
+    allowedRoles: ["SYSTEM", "AUTHORITY"],
   },
 
   // 9. Band Override (Desk, allowed in any non-terminal state, requires note)
@@ -267,6 +269,14 @@ export function transition(
       issue.status,
       action,
       `Actor role '${actor.role}' is not authorized to perform action '${action}' (allowed: ${rule.allowedRoles.join(", ")})`
+    );
+  }
+
+  if (action === "REOPEN_IN_WARRANTY" && actor.role === "AUTHORITY" && !context.note?.trim()) {
+    throw new InvalidStateTransitionError(
+      issue.status,
+      action,
+      "A written reason is required to reopen a work order during warranty"
     );
   }
 

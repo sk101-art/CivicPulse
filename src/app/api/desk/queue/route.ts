@@ -43,7 +43,17 @@ export async function GET(req: Request) {
     }
 
     if (wardIdParam && wardIdParam !== "ALL") {
-      where.wardId = wardIdParam;
+      const matchedWard = await prisma.ward.findFirst({
+        where: {
+          OR: [
+            { id: wardIdParam },
+            { code: { equals: wardIdParam, mode: "insensitive" } },
+            { code: { equals: `WARD-${wardIdParam.replace(/^ward-?/i, '')}`, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true },
+      });
+      where.wardId = matchedWard ? matchedWard.id : wardIdParam;
     }
 
     if (slaBreachedParam === "true") {
@@ -51,10 +61,15 @@ export async function GET(req: Request) {
     }
 
     if (searchParam && searchParam.trim()) {
+      const rawSearch = searchParam.trim();
+      const strippedCp = rawSearch.replace(/^CP-/i, "");
       where.OR = [
-        { id: { contains: searchParam.trim(), mode: "insensitive" } },
-        { address: { contains: searchParam.trim(), mode: "insensitive" } },
-        { piText: { contains: searchParam.trim(), mode: "insensitive" } },
+        { id: { contains: rawSearch, mode: "insensitive" } },
+        ...(strippedCp && strippedCp !== rawSearch
+          ? [{ id: { contains: strippedCp, mode: "insensitive" as const } }]
+          : []),
+        { address: { contains: rawSearch, mode: "insensitive" } },
+        { piText: { contains: rawSearch, mode: "insensitive" } },
       ];
     }
 
@@ -62,11 +77,23 @@ export async function GET(req: Request) {
       where,
       include: {
         agency: { select: { id: true, code: true, name: true, slaHours: true } },
+        assignments: {
+          take: 1,
+          orderBy: { createdAt: "desc" },
+          include: { personnel: true },
+        },
         _count: { select: { reports: true, comments: true } },
         reports: {
           take: 1,
           orderBy: { createdAt: "desc" },
-          select: { id: true, photoUrl: true, createdAt: true },
+          select: {
+            id: true,
+            photoUrl: true,
+            photoSha256: true,
+            gpsAccuracyM: true,
+            capturedAt: true,
+            createdAt: true,
+          },
         },
       },
       orderBy: [{ priority: "desc" }, { createdAt: "desc" }],

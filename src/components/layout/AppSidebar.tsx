@@ -1,22 +1,35 @@
 'use client';
 
+import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import { LogOut, Radio, TrendingUp, User, Map, FileText, LayoutDashboard, Compass } from 'lucide-react';
-
-const iconMap = {
-  TrendingUp,
-  User,
-  Map,
-  FileText,
+import { 
+  LogOut, 
+  Home, 
+  User, 
+  Map as MapIcon, 
+  FileText, 
+  Compass, 
+  CheckCircle2, 
+  MapPin, 
   LayoutDashboard,
-  Compass,
-};
+  ChevronRight,
+  ShieldCheck,
+  Building2,
+  Check,
+  Settings,
+  PanelLeftClose,
+  PanelLeftOpen
+} from 'lucide-react';
+import { CivicLogo, CivicEmblem } from '@/components/ui/CivicLogo';
+import { CivicHallArt } from '@/components/ui/CivicHallArt';
+import { getInitials } from '@/lib/format/avatar';
+import { useSidebar } from '@/context/SidebarContext';
 
 interface SidebarLink {
   href: string;
-  icon: keyof typeof iconMap;
+  icon: string;
   label: string;
 }
 
@@ -27,100 +40,249 @@ interface AppSidebarProps {
   userSubtitle?: string;
 }
 
+const iconComponents: Record<string, React.ComponentType<{ className?: string }>> = {
+  Home,
+  FileText,
+  Map: MapIcon,
+  CheckCircle2,
+  Compass,
+  MapPin,
+  User,
+  LayoutDashboard,
+  TrendingUp: Home,
+  ShieldCheck,
+  Settings,
+};
+
 export function AppSidebar({ role, links, userName, userSubtitle }: AppSidebarProps) {
   const pathname = usePathname();
   const isAuthority = role === 'AUTHORITY';
-  const accentColor = isAuthority ? 'var(--accent-electric-blue)' : 'var(--accent-cyan)';
-  
+  const { isCollapsed, toggleSidebar } = useSidebar();
+
+  const displayName = userName || (isAuthority ? 'Operations Desk' : 'Citizen');
+  const displaySubtitle = userSubtitle || (isAuthority ? 'Municipal Staff' : 'Citizen');
+
   return (
-    <aside className="hidden lg:flex flex-col w-64 shrink-0 z-40 border-r bg-secondary border-white/5">
-      {/* Logo Section */}
-      <div className="px-6 py-8 border-b border-white/5">
-        <div className="flex items-center gap-4">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center font-display font-black text-sm"
-            style={{ 
-              background: `linear-gradient(135deg, ${accentColor}, ${isAuthority ? '#00D1FF' : '#00F5D4'})`, 
-              color: '#000',
-              boxShadow: `0 0 20px ${accentColor}30`
-            }}
-          >CP</div>
-          <div className="flex flex-col relative">
-            <span className="font-display font-black text-xl tracking-tighter leading-none text-white">CIVIC</span>
-            <span className="font-display font-black text-xl tracking-tighter leading-none" style={{ color: accentColor }}>PULSE</span>
-            <span className="absolute -top-1 -right-8 text-[8px] font-mono border border-white/10 px-1 py-0.5 rounded text-white/30 tracking-widest bg-white/5 font-black">V2.4</span>
-          </div>
+    <aside 
+      data-testid="app-sidebar"
+      aria-expanded={!isCollapsed}
+      className={`hidden lg:flex flex-col shrink-0 z-40 bg-[#FAF9F5] border-r border-[#DDDCD3] select-none h-screen sticky top-0 justify-between relative transition-[width] duration-300 ease-in-out ${
+        isCollapsed ? 'w-[80px]' : 'w-[260px]'
+      }`}
+    >
+      {/* ── TACTILE FLOATING TOGGLE BUTTON: PANEL CONTROL DESIGN ── */}
+      <button
+        type="button"
+        data-testid="sidebar-toggle-btn"
+        onClick={toggleSidebar}
+        aria-expanded={!isCollapsed}
+        aria-label={isCollapsed ? 'Expand navigation sidebar' : 'Collapse navigation sidebar'}
+        title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        className="absolute -right-[19px] top-7 z-50 w-[38px] h-[38px] rounded-xl bg-white border border-[#DDDCD3] shadow-[0_2px_8px_rgba(41,55,50,0.12),0_1px_2px_rgba(41,55,50,0.06)] flex items-center justify-center text-[#527B7A] hover:text-[#355858] hover:bg-[#F3F2EB] hover:scale-105 active:scale-95 transition-all duration-150 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#527B7A]/40"
+      >
+        {isCollapsed ? (
+          <PanelLeftOpen className="w-[18px] h-[18px] stroke-[2.2]" />
+        ) : (
+          <PanelLeftClose className="w-[18px] h-[18px] stroke-[2.2]" />
+        )}
+      </button>
+
+      {/* Decorative Architectural Base Art (Cleanly hidden when collapsed) */}
+      <div 
+        className={`absolute bottom-0 left-0 right-0 w-full pointer-events-none select-none transition-opacity duration-300 overflow-hidden ${
+          isCollapsed ? 'opacity-0' : 'opacity-35'
+        }`}
+      >
+        <CivicHallArt />
+      </div>
+
+      {/* ── TOP SECTION: LOGO & ROLE INDICATOR ── */}
+      <div className="flex flex-col flex-1 relative z-10 min-h-0">
+        <div className={`pt-7 pb-4 transition-all duration-300 ${isCollapsed ? 'px-3 flex flex-col items-center' : 'px-6 space-y-3.5'}`}>
+          <Link 
+            href={isAuthority ? "/desk" : "/citizen/dashboard"}
+            title="CivicPulse • Civic Atlas"
+            className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[#527B7A]/30 rounded-xl"
+          >
+            {isCollapsed ? (
+              <div className="flex items-center justify-center p-1 rounded-xl hover:bg-[#EAECE6] transition-colors">
+                <CivicEmblem size={34} />
+              </div>
+            ) : (
+              <CivicLogo size={40} showSubtitle={true} />
+            )}
+          </Link>
+
+          {/* Role Pill */}
+          {!isCollapsed ? (
+            <div className="animate-in fade-in duration-200">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-[#DDDCD3] shadow-[0_1px_3px_rgba(41,55,50,0.04)]">
+                {isAuthority ? (
+                  <>
+                    <Building2 className="w-3.5 h-3.5 text-[#527B7A]" />
+                    <span className="text-xs font-semibold text-[#293732] tracking-tight">Municipal Staff</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-3.5 h-3.5 rounded-full bg-[#E5E9E3] flex items-center justify-center text-[#527B7A]">
+                      <Check className="w-2.5 h-2.5 stroke-[3]" />
+                    </div>
+                    <span className="text-xs font-semibold text-[#293732] tracking-tight">Citizen</span>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* Compact dot indicator in rail */
+            <div 
+              title={isAuthority ? 'Municipal Staff' : 'Citizen Contributor'}
+              className="w-2 h-2 rounded-full bg-[#527B7A] ring-4 ring-[#E5E9E3] transition-all"
+            />
+          )}
         </div>
-      </div>
 
-      {/* Navigation Section */}
-      <nav className="flex-1 px-4 py-10 space-y-3">
-        {links.map((item) => {
-          const isActive = pathname === item.href || (item.href !== '/citizen/dashboard' && item.href !== '/authority/dashboard' && item.href !== '/desk' && pathname.startsWith(item.href + '/'));
-          const IconComponent = iconMap[item.icon] || LayoutDashboard;
+        {/* Subtle Horizontal Divider */}
+        <div className={`w-full py-1 ${isCollapsed ? 'px-3' : 'px-6'}`}>
+          <div className="w-full border-b border-[#DDDCD3]" />
+        </div>
 
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="flex items-center gap-4 px-5 py-4 rounded-xl text-sm font-bold transition-all hover:translate-x-1"
-              style={{
-                background: isActive ? `${accentColor}15` : 'transparent',
-                color: isActive ? accentColor : 'var(--text-secondary)',
-                border: isActive ? `1px solid ${accentColor}30` : '1px solid transparent',
-              }}
-            >
-              <IconComponent className="w-5 h-5 shrink-0" />
-              <span className="tracking-wide">{item.label}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Footer Section */}
-      <div className="px-6 py-8 border-t border-white/5 space-y-6">
-        {userName && (
-          <div className="flex items-center gap-3 mb-2">
-            <div
-              className="w-8 h-8 rounded-full flex items-center justify-center font-display font-bold text-xs"
-              style={{ background: `${accentColor}15`, color: accentColor }}
-            >
-              {(userName || 'U')[0].toUpperCase()}
-            </div>
-            <div className="overflow-hidden">
-              <div className="text-sm font-semibold text-white truncate">{userName}</div>
-              {userSubtitle && (
-                <div className="text-[10px] font-mono uppercase text-muted truncate">
-                  {userSubtitle}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-        
-        {isAuthority && (
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <Radio className="w-4 h-4 shrink-0" style={{ color: 'var(--accent-lime)' }} />
-              <span className="absolute inset-0 rounded-full animate-ping opacity-30" style={{ background: 'var(--accent-lime)' }} />
-            </div>
-            <span className="text-[10px] font-mono uppercase tracking-[0.2em] font-bold" style={{ color: 'var(--accent-lime)' }}>
-              SECURE LINK ACTIVE
-            </span>
-          </div>
-        )}
-
-        {/* signOut() posts the CSRF token itself, so there is no NextAuth confirmation page */}
-        <button
-          type="button"
-          data-testid="sidebar-sign-out"
-          onClick={() => void signOut({ callbackUrl: '/login' })}
-          className="flex items-center gap-3 text-xs font-bold transition-all hover:text-white uppercase tracking-wider text-muted w-full"
+        {/* ── NAVIGATION LINKS WITH PORCELAIN TOOLTIPS ── */}
+        <nav 
+          data-testid="sidebar-nav"
+          className={`flex-1 py-4 overflow-y-auto space-y-1.5 ${
+            isCollapsed ? 'px-2 flex flex-col items-center' : 'px-4'
+          }`}
         >
-          <LogOut className="w-5 h-5 shrink-0" aria-hidden="true" />
-          Sign Out
-        </button>
+          {links.map((item) => {
+            const isActive = pathname === item.href || (
+              item.href !== '/citizen/dashboard' && 
+              item.href !== '/authority/dashboard' && 
+              item.href !== '/desk' && 
+              pathname.startsWith(item.href + '/')
+            );
+
+            const IconComponent = iconComponents[item.icon] || FileText;
+
+            return (
+              <div key={item.href} className="relative group w-full flex justify-center">
+                <Link
+                  href={item.href}
+                  aria-label={item.label}
+                  className={`flex items-center rounded-xl text-sm font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#527B7A]/40 ${
+                    isCollapsed 
+                      ? 'w-11 h-11 justify-center' 
+                      : 'w-full gap-3.5 px-4 py-3'
+                  } ${
+                    isActive
+                      ? 'bg-[#D4E3DF] text-[#355858] font-semibold border border-[#C2D7D1] shadow-[0_2px_5px_rgba(41,55,50,0.06),inset_0_1px_0_rgba(255,255,255,0.7)]'
+                      : 'text-[#65736B] hover:text-[#293732] hover:bg-[#EAECE6] border border-transparent'
+                  }`}
+                >
+                  <IconComponent className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#355858]' : 'text-[#65736B]'}`} />
+                  {!isCollapsed && <span className="truncate">{item.label}</span>}
+                </Link>
+
+                {/* Floating Porcelain Tooltip in Collapsed Rail */}
+                {isCollapsed && (
+                  <div 
+                    role="tooltip"
+                    className="absolute left-[calc(100%+14px)] top-1/2 -translate-y-1/2 hidden group-hover:flex group-focus-visible:flex items-center z-50 pointer-events-none"
+                  >
+                    <div className="relative bg-white text-[#293732] text-xs font-semibold px-3 py-1.5 rounded-lg border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.14),0_1px_3px_rgba(41,55,50,0.06)] whitespace-nowrap select-none flex items-center">
+                      {/* Directional arrow caret */}
+                      <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-white border-l border-b border-[#DDDCD3] rotate-45" />
+                      <span>{item.label}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
       </div>
+
+      {/* ── USER PROFILE AT BOTTOM (EXPANDED VS COMPACT) ── */}
+      <div className={`relative z-20 border-t border-[#DDDCD3] bg-[#FAF9F5]/90 backdrop-blur-sm transition-all duration-300 ${
+        isCollapsed ? 'p-2 flex flex-col items-center space-y-2' : 'p-4'
+      }`}>
+        {!isCollapsed ? (
+          <div className="w-full bg-white border border-[#DDDCD3] rounded-2xl p-3 shadow-[0_2px_8px_rgba(41,55,50,0.05),inset_0_1px_0_rgba(255,255,255,1)] flex items-center justify-between gap-2.5">
+            <Link 
+              href={isAuthority ? "/desk" : "/citizen/profile"} 
+              className="flex items-center gap-3 min-w-0 flex-1 hover:opacity-90 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#527B7A]/30 rounded-xl"
+            >
+              {/* Dynamic Initials Badge */}
+              <div className="w-9 h-9 rounded-full overflow-hidden border border-[#B8D5CF] shadow-xs shrink-0 bg-[#D4E3DF] text-[#355858] font-display font-semibold text-xs flex items-center justify-center select-none">
+                {getInitials(displayName, null)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-[#293732] truncate">
+                  {displayName}
+                </div>
+                <div className="text-[11px] text-[#65736B] truncate font-medium">
+                  {displaySubtitle}
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-[#929B92] shrink-0" />
+            </Link>
+            
+            <button
+              onClick={() => signOut({ callbackUrl: '/login' })}
+              title="Sign Out"
+              aria-label="Sign Out"
+              className="p-1.5 text-[#929B92] hover:text-[#B76F60] hover:bg-[#FBF1EF] rounded-lg transition-colors cursor-pointer shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B76F60]/40"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          /* Collapsed Rail Compact User Identity */
+          <div className="flex flex-col items-center space-y-2.5 py-1">
+            <div className="relative group">
+              <Link 
+                href={isAuthority ? "/desk" : "/citizen/profile"} 
+                aria-label={`Profile: ${displayName}`}
+                className="w-9 h-9 rounded-full overflow-hidden border border-[#B8D5CF] shadow-xs shrink-0 bg-[#D4E3DF] text-[#355858] font-display font-semibold text-xs flex items-center justify-center select-none hover:ring-2 hover:ring-[#527B7A]/30 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[#527B7A]/40"
+              >
+                {getInitials(displayName, null)}
+              </Link>
+              {/* Tooltip */}
+              <div 
+                role="tooltip"
+                className="absolute left-[calc(100%+14px)] top-1/2 -translate-y-1/2 hidden group-hover:flex group-focus-visible:flex items-center z-50 pointer-events-none"
+              >
+                <div className="relative bg-white text-[#293732] text-xs font-semibold px-3 py-1.5 rounded-lg border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.14)] whitespace-nowrap select-none">
+                  <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-white border-l border-b border-[#DDDCD3] rotate-45" />
+                  <div className="font-semibold">{displayName}</div>
+                  <div className="text-[10px] text-[#65736B] font-normal">{displaySubtitle}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative group">
+              <button
+                onClick={() => signOut({ callbackUrl: '/login' })}
+                aria-label="Sign Out"
+                title="Sign Out"
+                className="w-9 h-9 rounded-xl flex items-center justify-center text-[#929B92] hover:text-[#B76F60] hover:bg-[#FBF1EF] transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B76F60]/40"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+              {/* Tooltip */}
+              <div 
+                role="tooltip"
+                className="absolute left-[calc(100%+14px)] top-1/2 -translate-y-1/2 hidden group-hover:flex group-focus-visible:flex items-center z-50 pointer-events-none"
+              >
+                <div className="relative bg-white text-[#B76F60] text-xs font-semibold px-2.5 py-1 rounded-lg border border-[#DDDCD3] shadow-[0_4px_16px_rgba(41,55,50,0.14)] whitespace-nowrap select-none">
+                  <div className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 bg-white border-l border-b border-[#DDDCD3] rotate-45" />
+                  <span>Sign Out</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
     </aside>
   );
 }

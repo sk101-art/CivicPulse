@@ -96,10 +96,7 @@ export function MapWrapper(props: MapWrapperProps) {
 
   return (
     <>
-      <Map 
-        {...props} 
-        onReportLocationAction={handleReportLocation}
-      />
+      <Map />
 
       {/* Report Modal */}
       <AnimatePresence>

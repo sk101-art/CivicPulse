@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/db/prisma";
-import { DeteriorationRisk, Category, Status } from "@prisma/client";
+import { DeteriorationRisk, Category, Status, Prisma } from "@prisma/client";
 
 export interface DeteriorationDriver {
   name: string;
@@ -281,7 +281,7 @@ export async function assessIssueDeterioration(issueId: string): Promise<Deterio
       deteriorationRisk: result.risk,
       deteriorationScore: result.score,
       expectedDaysToWorsen: result.expectedDaysToWorsen,
-      deteriorationDrivers: result.drivers as any,
+      deteriorationDrivers: result.drivers as unknown as Prisma.InputJsonValue,
       insightsComputedAt: now,
     },
   });

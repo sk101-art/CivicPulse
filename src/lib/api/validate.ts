@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { NextResponse } from "next/server";
 import { validationErrorResponse, apiError } from "./errors";
+import { MAX_GPS_ACCURACY_METERS } from "@/lib/evidence/locationLimits";
 
 export const PILOT_BOUNDS = {
   minLat: 11.5,
   maxLat: 14.5,
   minLng: 76.5,
   maxLng: 78.5,
-  maxGpsAccuracyM: 30,
+  maxGpsAccuracyM: MAX_GPS_ACCURACY_METERS,
 } as const;
 
 export const coordinateSchema = z.object({
