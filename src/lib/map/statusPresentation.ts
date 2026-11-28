@@ -177,18 +177,28 @@ export function notifyIssueUpdated(issueId?: string): void {
   window.dispatchEvent(new CustomEvent(ISSUE_UPDATE_EVENT, { detail: { issueId, ts: Date.now() } }));
 }
 
+// Polling is deliberately bounded and pauses when hidden/offline. Browser events alone
+// cannot observe an officer's update made on a citizen's separate device.
 export function subscribeIssueUpdates(onUpdate: () => void): () => void {
   if (typeof window === 'undefined') return () => {};
-  const handleCustom = () => onUpdate();
-  const handleStorage = (e: StorageEvent) => {
-    if (e.key === ISSUE_UPDATE_STORAGE_KEY) {
-      onUpdate();
-    }
+  const refresh = () => {
+    if (document.visibilityState !== 'hidden' && navigator.onLine !== false) onUpdate();
   };
-  window.addEventListener(ISSUE_UPDATE_EVENT, handleCustom);
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key === ISSUE_UPDATE_STORAGE_KEY) refresh();
+  };
+  const timer = window.setInterval(refresh, 30000);
+  window.addEventListener(ISSUE_UPDATE_EVENT, refresh);
   window.addEventListener('storage', handleStorage);
+  window.addEventListener('focus', refresh);
+  window.addEventListener('online', refresh);
+  document.addEventListener('visibilitychange', refresh);
   return () => {
-    window.removeEventListener(ISSUE_UPDATE_EVENT, handleCustom);
+    window.clearInterval(timer);
+    window.removeEventListener(ISSUE_UPDATE_EVENT, refresh);
     window.removeEventListener('storage', handleStorage);
+    window.removeEventListener('focus', refresh);
+    window.removeEventListener('online', refresh);
+    document.removeEventListener('visibilitychange', refresh);
   };
 }

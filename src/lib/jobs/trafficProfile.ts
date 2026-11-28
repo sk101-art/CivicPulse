@@ -5,6 +5,8 @@ import { buildPlaceProfile, PROFILE_TTL_DAYS } from "@/lib/traffic/profile";
 import {
   getDailyTomTomCallCount,
   MAX_DAILY_QUOTA,
+  getMonthlyTomTomCallCount,
+  MAX_MONTHLY_QUOTA,
 } from "@/lib/external/tomtom";
 
 const MAX_PLACES_PER_RUN = 25;
@@ -25,7 +27,7 @@ export async function runTrafficProfileJob(
   startedAt: number,
   timeBudgetMs: number = 40_000
 ): Promise<TrafficProfileJobResult> {
-  const currentDailyCalls = await getDailyTomTomCallCount().catch(() => 0);
+  const currentDailyCalls = await getDailyTomTomCallCount(undefined, "routing").catch(() => 0);
   if (currentDailyCalls >= MAX_DAILY_QUOTA) {
     return {
       processed: 0,
@@ -33,21 +35,21 @@ export async function runTrafficProfileJob(
     };
   }
 
+  const monthlyUsage = await getMonthlyTomTomCallCount("routing");
+  if (monthlyUsage >= MAX_MONTHLY_QUOTA) return { processed: 0, skipped: "TomTom Routing monthly application budget reached" };
+
   const validSince = new Date(
     Date.now() - PROFILE_TTL_DAYS * 24 * 60 * 60 * 1000
   );
 
   // Find candidate open issues ordered by highest priority first
-  // Allow real non-seed issues OR seed DEMO issues (whose id starts with "seed-demo-")
+  // Scheduled provider calls are reserved for operational records, not demo fixtures.
   const openIssues = await prisma.issue.findMany({
     where: {
       status: {
         notIn: [Status.VERIFIED_FIXED, Status.REJECTED],
       },
-      OR: [
-        { isSeed: false },
-        { id: { startsWith: "seed-demo-" } },
-      ],
+      isSeed: false,
     },
     select: {
       id: true,
@@ -102,8 +104,7 @@ export async function runTrafficProfileJob(
           lng: issue.lng,
           segmentId: issue.segmentId,
           roadClass: issue.segment?.roadClass,
-        },
-        issue.id.startsWith("seed-demo-")
+        }
       );
 
       processed++;

@@ -279,7 +279,7 @@ export function AreaBriefingView() {
               </span>
             )}
             <span className="px-2.5 py-1.5 rounded-xl bg-[#FAF9F5] border border-[#DDDCD3] text-[#65736B] text-[11px] font-mono">
-              {lastUpdated ? `Refreshed ${lastUpdated}` : 'Live Telemetry'}
+              {lastUpdated ? `Refreshed ${lastUpdated}` : 'Awaiting data refresh'}
             </span>
             <button
               type="button"

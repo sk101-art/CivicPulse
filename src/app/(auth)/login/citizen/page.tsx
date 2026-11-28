@@ -143,6 +143,7 @@ export default function CitizenLoginPage() {
               src="/images/auth/citizen-login-scene.jpg"
               alt="Civic neighborhood illustration"
               fill
+              sizes="(max-width: 1024px) 100vw, 42vw"
               className="object-cover"
               priority
             />
@@ -299,13 +300,7 @@ export default function CitizenLoginPage() {
                     <span>Remember me</span>
                   </label>
 
-                  <button
-                    type="button"
-                    onClick={() => alert('Password recovery: Please contact support@civicpulse.org or request an OTP link.')}
-                    className="text-xs text-[#527B7A] hover:text-[#355858] font-medium transition-colors"
-                  >
-                    Forgot password?
-                  </button>
+                  <Link href="/account/recovery" className="text-xs text-[#527B7A] underline hover:text-[#355858]">Forgot password?</Link>
                 </div>
               )}
 

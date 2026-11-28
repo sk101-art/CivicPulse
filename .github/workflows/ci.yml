@@ -6,10 +6,15 @@ on:
   pull_request:
     branches: [main, v2]
 
+concurrency:
+  group: civicpulse-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     name: Lint, Typecheck, Test, Build
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       DATABASE_URL_TEST: ${{ secrets.DATABASE_URL_TEST }}
       DIRECT_DATABASE_URL_TEST: ${{ secrets.DIRECT_DATABASE_URL_TEST }}
@@ -39,6 +44,12 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Migrate isolated test database
+        timeout-minutes: 3
+        run: npx prisma migrate deploy
+        env:
+          PRISMA_TARGET: test
 
       - name: Seed isolated test database
         run: npm run db:seed

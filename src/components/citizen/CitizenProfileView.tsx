@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { getInitials } from '@/lib/format/avatar';
 import { formatDateIST } from '@/lib/time/ist';
 import { TIER_THRESHOLDS, nextTierProgress } from '@/lib/citizen/statsPure';
-import { MAP_STATUS_META } from '@/lib/map/statusPresentation';
+import { MAP_STATUS_META, subscribeIssueUpdates } from '@/lib/map/statusPresentation';
 import {
   Home,
   ChevronRight,
@@ -217,6 +217,10 @@ export function CitizenProfileView({
     }, 250);
     return () => clearTimeout(timer);
   }, [searchQuery, statusFilter, fetchReports]);
+
+  useEffect(() => subscribeIssueUpdates(() => {
+    void fetchReports({ targetPage: 1, append: false, q: searchQuery, status: statusFilter });
+  }), [fetchReports, searchQuery, statusFilter]);
 
   const handleOpenEditModal = () => {
     setDraftName(savedName || effectiveDisplayName);

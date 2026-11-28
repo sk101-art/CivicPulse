@@ -18,6 +18,7 @@ import { prisma } from "@/lib/db/prisma";
 import * as tomtomModule from "@/lib/external/tomtom";
 import * as overpassModule from "@/lib/external/overpass";
 import * as runAiModule from "@/lib/ai/run";
+import { numbersGrounded } from "@/lib/ai/validators";
 import { getRulesFallback } from "@/lib/ai/providers/rules";
 
 describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () => {
@@ -79,8 +80,18 @@ describe("Phase 4: AI Analyst (Desk Co-pilot: Gemini → Groq → Rules)", () =>
       vi.spyOn(tomtomModule, "getFlowSegment").mockResolvedValue(null as any);
       vi.spyOn(prisma.aiRun, "findFirst").mockResolvedValue(null as any);
 
-      await assessIssue("issue-test-no-overpass", { skipCache: true }).catch(() => {});
+      const output = {
+        summary: "Recorded deterioration estimate 80/100; expected days to worsen 14.",
+        priorityAdjustmentRecommended: 0,
+        reasoning: "Review recorded evidence.", keyRisks: [], suggestedAction: "Staff review",
+      };
+      const run = vi.spyOn(runAiModule, "runAi").mockResolvedValue({ data: output, provider: "rules", model: "rules-v1", cached: false } as never);
+      await assessIssue("issue-test-no-overpass", { skipCache: true });
       expect(overpassSpy).not.toHaveBeenCalled();
+      const facts = run.mock.calls[0][0].factsForGrounding!;
+      expect(numbersGrounded(JSON.stringify(output), facts)).toBe(true);
+      expect(numbersGrounded("Invented deterioration score 97", facts)).toBe(false);
+      expect(run.mock.calls[0][0].userPrompt).toContain("Not available");
     });
   });
 

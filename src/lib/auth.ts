@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
-import { checkRateLimit, recordFailedAttempt, clearRateLimit } from "@/lib/auth/rateLimit";
+import { reserveLoginAttempt, clearLoginAttempts } from "@/lib/auth/sharedRateLimit";
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -23,7 +24,7 @@ export const authOptions: NextAuthOptions = {
         const portal = (credentials.portal || "").trim().toUpperCase();
 
         // 1. Rate Limiting Protection against brute-force attacks
-        const rateCheck = checkRateLimit(email);
+        const rateCheck = await reserveLoginAttempt(email);
         if (!rateCheck.allowed) {
           throw new Error(`RATE_LIMITED:${rateCheck.retryAfterSeconds || 60}`);
         }
@@ -35,7 +36,6 @@ export const authOptions: NextAuthOptions = {
 
         // Use generic failure if user not found or has no password hash
         if (!user || !user.passwordHash) {
-          recordFailedAttempt(email);
           return null;
         }
 
@@ -47,12 +47,11 @@ export const authOptions: NextAuthOptions = {
         // 3. Verify Password Hash
         const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
         if (!isValid) {
-          recordFailedAttempt(email);
           return null;
         }
 
         // Successful authentication clears rate-limiting
-        clearRateLimit(email);
+        await clearLoginAttempts(email);
 
         // 4. Strict Role & Portal Verification (Server-Side Enforced)
         // Never allow a staff account through citizen portal or citizen account through staff portal
@@ -77,6 +76,17 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.role = user.role;
         token.id = user.id;
+      }
+      if (token.id) {
+        const account = await prisma.user.findUnique({
+          where: { id: String(token.id) },
+          select: { isActive: true, role: true, passwordHash: true },
+        });
+        const version = account ? createHash("sha256").update(account.passwordHash).digest("hex") : null;
+        if (user && version) token.passwordVersion = version;
+        if (!account?.isActive || account.role !== token.role || token.passwordVersion !== version) {
+          throw new Error("SESSION_REVOKED");
+        }
       }
       return token;
     },

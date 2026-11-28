@@ -171,6 +171,7 @@ async function runWeather(startedAt: number): Promise<Omit<JobResult, "job" | "d
              ST_X(ST_Centroid(geom::geometry)) AS lng
       FROM "Ward"
       WHERE geom IS NOT NULL
+      ORDER BY COALESCE((SELECT MAX("fetchedAt") FROM "WeatherForecast" f WHERE f."pointKey" = "Ward".id), 'epoch'::timestamp) ASC
     `
     .catch(() => []);
 
@@ -185,13 +186,15 @@ async function runWeather(startedAt: number): Promise<Omit<JobResult, "job" | "d
   for (const p of points) {
     if (!budgetLeft(startedAt)) break;
     try {
-      await syncWeatherForecast(p.key, p.lat, p.lng);
-      processed++;
+      const result = await syncWeatherForecast(p.key, p.lat, p.lng);
+      if (result.count > 0) processed++;
+      else failed++;
     } catch {
       failed++;
     }
   }
-  return { processed, failed };
+  const remaining = Math.max(0, points.length - processed - failed);
+  return { processed, failed, remaining, partial: remaining > 0 };
 }
 
 /** M4: recomputes the Priority Index for open issues, least recently updated first. */

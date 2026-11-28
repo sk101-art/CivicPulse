@@ -91,69 +91,39 @@ export function getRulesFallback(feature: string, input: unknown): Record<string
     }
 
     case "G-ASSESS": {
-      const p = typeof inp.priority === "number" ? inp.priority : 50;
-      const detScore = typeof inp.deteriorationScore === "number" ? inp.deteriorationScore : 30;
-      const category = typeof inp.category === "string" ? inp.category : "Defect";
-      const delayRatio = typeof inp.delayRatio === "number" ? inp.delayRatio : 0.15;
-      const busPerHour = typeof inp.busesPerHour === "number" ? inp.busesPerHour : 0;
-      const rainMm = typeof inp.past7DaysRainMm === "number" ? inp.past7DaysRainMm : 0;
-
-      let adjustment = 0;
-      const keyRisks: string[] = [];
-      if (detScore >= 70) {
-        adjustment += 5;
-        keyRisks.push(`High deterioration risk (score ${detScore}/100)`);
-      }
-      if (busPerHour >= 30) {
-        adjustment += 3;
-        keyRisks.push(`Heavy bus corridor (${Math.round(busPerHour)} buses/h)`);
-      }
-      if (rainMm >= 20) {
-        keyRisks.push(`Pavement subgrade weakened by ${Math.round(rainMm)} mm rain`);
-      }
-
-      adjustment = Math.max(-10, Math.min(10, adjustment));
-
+      const number = (key: string) => typeof inp[key] === "number" && Number.isFinite(inp[key]) ? inp[key] as number : null;
+      const priority = number("priority");
+      const deterioration = number("deteriorationScore");
+      const delay = number("liveCongestionPct");
+      const buses = number("busesPerHour");
+      const category = typeof inp.category === "string" ? inp.category : "Recorded issue";
+      const summary = [
+        category,
+        priority === null ? "Priority unavailable." : `Recorded priority ${priority}.`,
+        deterioration === null ? "Deterioration estimate unavailable." : `Model deterioration estimate ${deterioration}/100.`,
+        delay === null ? "Current traffic unavailable." : `Provider traffic delay ${delay}%.`,
+        buses === null ? "Bus frequency unavailable." : `Recorded bus frequency ${buses} buses/h.`,
+      ].join(" ");
       return {
-        summary: `${category} with priority ${Math.round(p)} and deterioration score ${detScore}/100. Pavement traffic delay is ${Math.round(delayRatio * 100)}% with ${Math.round(busPerHour)} buses/h.`,
-        priorityAdjustmentRecommended: adjustment,
-        reasoning: adjustment !== 0
-          ? `Adjustment ${adjustment > 0 ? `+${adjustment}` : adjustment} points recommended: ${keyRisks.join(" and ")}.`
-          : "Defect priority matches observed conditions; no adjustment required.",
-        keyRisks: keyRisks.length > 0 ? keyRisks : ["Standard wear and tear"],
-        suggestedAction: detScore >= 70
-          ? "Schedule immediate patch repair during night window."
-          : "Queue for routine ward maintenance.",
+        summary,
+        priorityAdjustmentRecommended: 0,
+        reasoning: "Automated assessment unavailable; retain recorded priority pending staff review.",
+        keyRisks: ["Risk assessment requires staff review; missing readings are not evidence of low risk."],
+        suggestedAction: "Review recorded evidence and assign the responsible team.",
       };
     }
 
     case "G-BRIEF": {
-      const wardName = typeof inp.wardName === "string" ? inp.wardName : "Ward";
-      const wardCode = typeof inp.wardCode === "string" ? inp.wardCode : "150";
-      const openCount = typeof inp.totalOpen === "number" ? inp.totalOpen : typeof inp.openIssuesCount === "number" ? inp.openIssuesCount : 0;
-      const rainPast24h = typeof inp.rainPast24hMm === "number" ? inp.rainPast24hMm : 0;
-      const highRiskCount = typeof inp.totalHighRisk === "number" ? inp.totalHighRisk : typeof inp.highRiskCount === "number" ? inp.highRiskCount : 0;
-      const wardsList = Array.isArray(inp.wards) ? inp.wards : [];
-
-      let briefText: string;
-      if (wardsList.length > 0) {
-        const parts = wardsList
-          .filter((w: Record<string, unknown>) => (w.total as number) > 0)
-          .map((w: Record<string, unknown>) => `${w.wardName} (${w.wardCode}): ${w.total} active (${w.highRisk} high risk)`);
-        briefText = `Morning brief across active wards: ${parts.join(" · ")}. ${highRiskCount} high-risk defects flagged after ${Math.round(rainPast24h)} mm recent rain. Dispatch repair crews during scheduled dry windows.`;
-      } else {
-        briefText = `${wardName} (${wardCode}) Morning Brief: ${openCount} open issues. ${highRiskCount} high-risk defects flagged after ${Math.round(rainPast24h)} mm recent rain. Recommended today: dispatch repair crews during the recommended dry night window.`;
-      }
-
+      const wardName = typeof inp.wardName === "string" ? inp.wardName : "Selected area";
+      const wardCode = typeof inp.wardCode === "string" ? inp.wardCode : "ALL";
+      const openCount = typeof inp.totalActiveIssues === "number" ? inp.totalActiveIssues : typeof inp.totalOpen === "number" ? inp.totalOpen : typeof inp.openIssuesCount === "number" ? inp.openIssuesCount : null;
+      const countText = openCount === null ? "Active issue count unavailable" : `${openCount} open issues`;
       return {
         wardCode,
-        wardName: wardsList.length > 0 ? "Bengaluru Pilot Wards" : wardName,
-        headline: `${openCount} active issues across pilot corridors`,
-        brief: briefText,
-        recommendedActions: [
-          "Deploy asphalt repair crew to high-risk road corridors.",
-          "Inspect drainage outlets before next forecast rain.",
-        ],
+        wardName,
+        headline: `${wardName}: ${countText}`,
+        brief: `${wardName} (${wardCode}): ${countText}. Automated interpretation is unavailable; review the recorded issue queue. No weather or road-condition measurement is inferred from missing data.`,
+        recommendedActions: ["Review recorded evidence and assign the responsible team."],
       };
     }
 

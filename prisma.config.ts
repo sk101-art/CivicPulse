@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { testMigrationUrl } from "./scripts/lib/test-migration-url";
 import path from "path";
 import fs from "fs";
 import { defineConfig } from "prisma/config";
@@ -13,7 +14,10 @@ if (fs.existsSync(path.join(rootDir, ".env.local"))) {
 
 const isTestTarget = process.env.PRISMA_TARGET === "test";
 let rawUrl = isTestTarget
-  ? (process.env["DIRECT_DATABASE_URL_TEST"] || process.env["DATABASE_URL_TEST"] || "")
+  ? testMigrationUrl({
+      DIRECT_DATABASE_URL_TEST: process.env.DIRECT_DATABASE_URL_TEST,
+      DATABASE_URL_TEST: process.env.DATABASE_URL_TEST,
+    })
   : (process.env["DIRECT_DATABASE_URL"] || process.env["APP_DATABASE_URL"] || process.env["DATABASE_URL"] || "");
 
 function getTargetSchema(urlStr: string): string {

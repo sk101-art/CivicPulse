@@ -72,6 +72,8 @@ export default async function CitizenSettingsPage() {
           </p>
         </div>
 
+        <Link href="/account/security" className="inline-block underline">Change password and account security</Link>
+
         {/* ── SECTION 1: APP INSTALLATION ── */}
         <section aria-labelledby="app-installation-heading">
           <AppInstallationCard />

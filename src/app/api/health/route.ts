@@ -11,6 +11,8 @@ export async function GET() {
     geminiKeyPresent: Boolean(env.GEMINI_API_KEY && env.GEMINI_API_KEY.length > 0),
     groqKeyPresent: Boolean(env.GROQ_API_KEY && env.GROQ_API_KEY.length > 0),
     timestamp: new Date().toISOString(),
+    release: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+    environment: process.env.VERCEL_ENV ?? "local",
   };
 
   try {

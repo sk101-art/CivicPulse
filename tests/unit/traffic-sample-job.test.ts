@@ -15,6 +15,7 @@ vi.mock("@/lib/env", async (importOriginal) => {
 describe("Traffic Sample Job & Budget Limiting", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(tomtom, "getMonthlyTomTomCallCount").mockResolvedValue(0);
   });
 
   it("exports the daily budget cap of 1500 calls", () => {
@@ -30,6 +31,15 @@ describe("Traffic Sample Job & Budget Limiting", () => {
     expect(result.processed).toBe(0);
     expect(result.skipped).toMatch(/Daily TomTom budget reached \(1500\/1500\)/);
     expect(flowSpy).not.toHaveBeenCalled();
+  });
+
+  it("reports the exhausted monthly budget instead of a successful empty refresh", async () => {
+    vi.spyOn(prisma.trafficSample, "count").mockResolvedValue(0);
+    vi.mocked(tomtom.getMonthlyTomTomCallCount).mockResolvedValue(tomtom.MAX_MONTHLY_QUOTA);
+    const flow = vi.spyOn(tomtom, "getFlowSegment");
+    const result = await runTrafficSample(Date.now());
+    expect(result.skipped).toContain("Monthly TomTom Traffic Flow application budget reached");
+    expect(flow).not.toHaveBeenCalled();
   });
 
   it("samples eligible open and claimed/assigned issues excluding seeds and capping at 40 each", async () => {
@@ -56,7 +66,7 @@ describe("Traffic Sample Job & Budget Limiting", () => {
       return Promise.resolve(mockActiveIssues) as unknown as ReturnType<typeof prisma.issue.findMany>;
     });
 
-    // Suppose issue-open-2 was already sampled for this hourOfWeek in last 7 days
+    // Suppose issue-open-2 was already observed within the 90-minute duplicate window
     vi.spyOn(prisma.trafficSample, "findMany").mockResolvedValue([
       { issueId: "issue-open-2" } as never,
     ]);
@@ -94,6 +104,14 @@ describe("Traffic Sample Job & Budget Limiting", () => {
         orderBy: { priority: "desc" },
       })
     );
+
+    expect(prisma.trafficSample.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ isSeed: false, sampledAt: { gte: expect.any(Date) } }),
+    }));
+    const where = vi.mocked(prisma.trafficSample.findMany).mock.calls[0][0]!.where!;
+    expect(where).not.toHaveProperty("hourOfWeek");
+    const since = (where.sampledAt as { gte: Date }).gte;
+    expect(Date.now() - since.getTime()).toBeLessThan(91 * 60000);
 
     // Should sample issue-open-1 and issue-assigned-3 (skipping issue-open-2)
     expect(result.processed).toBe(2);

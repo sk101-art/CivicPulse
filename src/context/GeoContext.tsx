@@ -242,6 +242,10 @@ export function GeoContextProvider({ children }: { children: React.ReactNode }) 
     let cancelled = false;
 
     const run = async () => {
+      if (pathname.startsWith('/login') || pathname.startsWith('/account/recovery')) {
+        if (!cancelled) setIsLoading(false);
+        return;
+      }
       try {
         const sp = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
         const urlWard = sp?.get('ward') || sp?.get('wardId');

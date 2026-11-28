@@ -173,7 +173,7 @@ export function useReports(options: UseReportsOptions = { endpoint: '/api/report
   useEffect(() => {
     if (autoRefresh && autoRefresh > 0) {
       const interval = setInterval(() => {
-        fetchReports();
+        if (document.visibilityState !== 'hidden' && navigator.onLine !== false) void fetchReports();
       }, autoRefresh);
       return () => clearInterval(interval);
     }

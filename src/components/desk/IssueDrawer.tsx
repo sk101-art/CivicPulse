@@ -46,6 +46,12 @@ interface PersonnelOption {
 }
 
 interface AnalystData {
+  dataContext?: {
+    traffic?: string;
+    deterioration?: string;
+    profileSources?: string[];
+    profileFetchedAt?: string | null;
+  };
   summary?: string;
   reasoning?: string;
   suggestedAction?: string;
@@ -266,14 +272,15 @@ export function IssueDrawer({
     fetchPersonnels();
   }, [issue, agencies]);
 
-  // Fetch real AI assessment when AI Analysis tab is opened
+  const analystIssueId = issue?.id;
+  // Fetch once per issue/tab activation. Loading state must not cancel its own request.
   useEffect(() => {
-    if (!issue || activeTab !== 'AI Analysis' || analystSummary || loadingAnalyst) return;
+    if (!analystIssueId || activeTab !== 'AI Analysis') return;
     let cancelled = false;
     // Mark the request pending before synchronizing the selected tab with the API.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoadingAnalyst(true);
-    fetch(`/api/issues/${issue.id}/analyst`)
+    fetch(`/api/issues/${analystIssueId}/analyst`)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!cancelled && data) {
@@ -287,7 +294,7 @@ export function IssueDrawer({
     return () => {
       cancelled = true;
     };
-  }, [issue, activeTab, analystSummary, loadingAnalyst]);
+  }, [analystIssueId, activeTab]);
 
   if (!issue || !portalRoot) return null;
 
@@ -1236,6 +1243,12 @@ export function IssueDrawer({
                     <p className="text-[#293732] leading-relaxed bg-[#FAF9F5] p-3 rounded-xl border border-[#E5E9E3]">
                       {analystSummary.summary || 'Assessment recorded.'}
                     </p>
+                    {analystSummary.dataContext && <div className="rounded-xl border border-[#DDDCD3] p-3 text-xs text-[#65736B]">
+                      <p>Traffic source: {analystSummary.dataContext.traffic ?? 'unavailable'}</p>
+                      <p>Deterioration: {analystSummary.dataContext.deterioration ?? 'unavailable'}</p>
+                      <p>Planning profile: {analystSummary.dataContext.profileSources?.join(', ') || 'unavailable'}</p>
+                      <p>Profile last fetched: {analystSummary.dataContext.profileFetchedAt ? formatDateTimeIST(analystSummary.dataContext.profileFetchedAt) : 'unavailable'}</p>
+                    </div>}
                     {analystSummary.reasoning && (
                       <div className="text-[#65736B] text-[11px]">
                         <strong className="text-[#293732]">Reasoning:</strong> {analystSummary.reasoning}

@@ -92,7 +92,7 @@ function FeedRow({
           <div className="mt-1 text-[10px] text-[#929B92]">
             {lastRun
               ? `Refresh job ${lastRun.status.toLowerCase()} · ${lastRun.finishedAt ? formatDateTimeIST(lastRun.finishedAt) : "still running"} · ${lastRun.processed} processed${lastRun.failed ? ` · ${lastRun.failed} failed` : ""}${lastRun.skipped || lastRun.summary ? ` · ${lastRun.skipped ?? lastRun.summary}` : ""}`
-              : "No scheduled-job run has been recorded yet. Apply the telemetry migration and wait for the next scheduled run."}
+              : "No refresh history recorded yet. Ask the operations administrator to check the feed schedule."}
           </div>
         </div>
       </div>
@@ -116,7 +116,7 @@ export function LiveDataStatus({
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <h2 id="live-data-status-title" className="font-display text-lg font-semibold text-[#293732]">
-            Live data feeds
+            Data sources and freshness
           </h2>
           <p className="mt-0.5 text-xs text-[#65736B]">
             Feed age comes from the latest stored source reading. A delayed badge means refresh is behind schedule, not that the provider is confirmed offline.

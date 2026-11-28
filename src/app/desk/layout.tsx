@@ -37,6 +37,7 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
     { href: '/desk/map', icon: 'Map', label: 'Route Optimizer' },
     { href: '/desk/claim-gap', icon: 'TrendingUp', label: 'Claim Gap' },
     { href: '/desk/personnels', icon: 'User', label: 'Field Personnel' },
+    { href: '/account/security', icon: 'User', label: 'Account Security' },
   ];
 
   const userSubtitle = user?.email === 'desk-a@civicpulse.local'

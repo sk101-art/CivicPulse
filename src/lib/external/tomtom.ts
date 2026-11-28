@@ -1,4 +1,5 @@
 import "server-only";
+import { getTomTomProductUsage, reserveTomTomRequest, type TomTomProduct } from "./tomtomQuota";
 import { env, isConfigured } from "@/lib/env";
 import { prisma } from "@/lib/db/prisma";
 import fs from "fs";
@@ -78,8 +79,8 @@ interface CacheEntry {
 const routeCache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-// Request quota tracking (20,000 / month free tier cap, 1,200 / day job cap, persisted in ApiUsage)
-export const MAX_MONTHLY_QUOTA = 20000;
+// Application budgets, not a claim about the provider plan. Confirm allowance before increasing.
+export const MAX_MONTHLY_QUOTA = env.TOMTOM_MONTHLY_CALL_CAP ?? 20000;
 export const MAX_DAILY_QUOTA = 1200;
 const PROVIDER_NAME = "tomtom";
 const PROVIDER_DAILY_NAME = "tomtom_daily";
@@ -125,7 +126,8 @@ export async function tryIncrementDailyQuota(dateStr?: string): Promise<boolean>
   }
 }
 
-export async function getDailyTomTomCallCount(dateStr?: string): Promise<number> {
+export async function getDailyTomTomCallCount(dateStr?: string, product?: TomTomProduct): Promise<number> {
+  if (product) return (await getTomTomProductUsage(product)).dailyUsed;
   const currentDay = dateStr || new Date().toISOString().slice(0, 10);
   try {
     const usage = await prisma.apiUsage.findUnique({
@@ -144,6 +146,7 @@ export async function getDailyTomTomCallCount(dateStr?: string): Promise<number>
 }
 
 export async function resetDailyTomTomCallCount(dateStr?: string): Promise<void> {
+  if (process.env.NODE_ENV !== "test") throw new Error("Quota resets are restricted to isolated tests");
   const currentDay = dateStr || new Date().toISOString().slice(0, 10);
   try {
     await prisma.apiUsage.upsert({
@@ -167,7 +170,8 @@ export async function resetDailyTomTomCallCount(dateStr?: string): Promise<void>
   }
 }
 
-export async function tryIncrementMonthlyQuota(): Promise<boolean> {
+export async function tryIncrementMonthlyQuota(product?: TomTomProduct): Promise<boolean> {
+  if (product) return reserveTomTomRequest(product);
   const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
   try {
     const usage = await prisma.apiUsage.findUnique({
@@ -214,13 +218,13 @@ export async function tryIncrementMonthlyQuota(): Promise<boolean> {
 async function checkAndIncrementQuota(): Promise<void> {
   const currentMonth = new Date().toISOString().slice(0, 7); // e.g. "2026-10"
   const currentDay = new Date().toISOString().slice(0, 10);
-  const dailyCount = await getDailyTomTomCallCount(currentDay);
+  const dailyCount = await getDailyTomTomCallCount(currentDay, "routing");
   if (dailyCount >= MAX_DAILY_QUOTA) {
     throw new Error(
       `TomTom daily quota exceeded: reached ${MAX_DAILY_QUOTA} calls for ${currentDay}`
     );
   }
-  const ok = await tryIncrementMonthlyQuota();
+  const ok = await tryIncrementMonthlyQuota("routing");
   if (!ok) {
     throw new Error(
       `TomTom monthly quota exceeded: reached ${MAX_MONTHLY_QUOTA} calls for ${currentMonth}`
@@ -228,7 +232,11 @@ async function checkAndIncrementQuota(): Promise<void> {
   }
 }
 
-export async function getMonthlyTomTomCallCount(): Promise<number> {
+export async function getMonthlyTomTomCallCount(product?: TomTomProduct): Promise<number> {
+  if (product) {
+    const usage = await getTomTomProductUsage(product);
+    return usage.reconciliationRequired ? usage.cap : usage.monthlyUsed;
+  }
   const currentMonth = new Date().toISOString().slice(0, 7);
   try {
     const usage = await prisma.apiUsage.findUnique({
@@ -247,6 +255,7 @@ export async function getMonthlyTomTomCallCount(): Promise<number> {
 }
 
 export async function resetMonthlyTomTomCallCount(): Promise<void> {
+  if (process.env.NODE_ENV !== "test") throw new Error("Quota resets are restricted to isolated tests");
   const currentMonth = new Date().toISOString().slice(0, 7);
   try {
     await prisma.apiUsage.upsert({
@@ -440,14 +449,15 @@ export async function calculateTomTomRoute(
 
   // Keys-later mode check
   if (!isConfigured("TOMTOM_API_KEY")) {
-    const syntheticRoutes = loadSyntheticFixture();
+    // Synthetic route fixtures are confined to isolated tests, never user navigation.
+    const syntheticRoutes = process.env.NODE_ENV === "test" ? loadSyntheticFixture() : [];
     const result: CalculateRouteResult = {
       routes: syntheticRoutes,
       travelModeUsed: options.travelMode || "car",
       fallbackNote: "TomTom routing disabled – key not set (keys-later mode)",
       cached: false,
       disabled: true,
-      _synthetic: true,
+      _synthetic: syntheticRoutes.length > 0,
     };
     routeCache.set(cacheKey, { data: result, timestamp: Date.now() });
     return result;
@@ -591,7 +601,7 @@ export function clearTomTomFlowCache(): void {
  * Enforces:
  * - India geographical bounding box
  * - 15-minute in-memory cache
- * - Shared monthly request quota counter (20,000 / month cap)
+ * - Separate Traffic Flow API monthly request budget
  * - Returns null on missing API key, quota hit, network error, or invalid payload (never throws)
  */
 export async function getFlowSegment(
@@ -616,7 +626,7 @@ export async function getFlowSegment(
   }
 
   // Quota check
-  if (!(await tryIncrementMonthlyQuota())) {
+  if (!(await tryIncrementMonthlyQuota("flow"))) {
     return null;
   }
 
@@ -710,7 +720,7 @@ export async function getTomTomTrafficIncidents(
   }
 
   // Quota checks
-  if (!(await tryIncrementDailyQuota()) || !(await tryIncrementMonthlyQuota())) {
+  if (!(await tryIncrementMonthlyQuota("incidents"))) {
     return { incidents: [], hasNearbyIncident: false, cached: false };
   }
 
@@ -830,7 +840,7 @@ export async function reverseGeocode(
   }
 
   try {
-    const quotaOk = await tryIncrementMonthlyQuota().catch(() => false);
+    const quotaOk = await tryIncrementMonthlyQuota("reverse-geocoding").catch(() => false);
     if (!quotaOk) {
       return { address: fallback, formatted: fallback, cached: false };
     }
