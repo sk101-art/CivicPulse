@@ -15,7 +15,9 @@ const isTestEnv =
 
 if (isTestEnv) {
   const testUrl = process.env.DATABASE_URL_TEST;
-  const prodUrl = process.env.PROD_DATABASE_URL || process.env.APP_DATABASE_URL;
+  // Test runners deliberately redirect APP_DATABASE_URL to DATABASE_URL_TEST.
+  // Only compare against the preserved production URL captured before that redirect.
+  const prodUrl = process.env.PROD_DATABASE_URL;
   if (!testUrl) {
     throw new Error('DATABASE_URL_TEST must be defined in test environment');
   }
@@ -102,3 +104,4 @@ export const prisma =
 
 // Cache on globalThis in production too so warm serverless instances reuse it
 globalForPrisma.newPrisma = prisma;
+
